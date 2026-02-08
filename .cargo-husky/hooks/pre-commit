@@ -1,0 +1,10 @@
+#!/bin/sh
+
+# Format all Rust files that are being committed
+cargo fmt -- --check
+if [ $? -ne 0 ]; then
+    echo "Code formatting check failed. Running cargo fmt..."
+    cargo fmt
+    echo "Files have been formatted. Please review and re-add them to your commit."
+    exit 1
+fi

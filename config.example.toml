@@ -1,0 +1,13 @@
+# Example configuration file for rust-template applications
+# Copy this file to config.toml and customize as needed
+
+# Logging configuration
+log_level = "info"  # Options: trace, debug, info, warn, error
+log_format = "text"  # Options: text, json
+
+# CLI-specific options
+# name = "World"
+
+# Web-specific options
+# host = "127.0.0.1"  # Host/IP address to bind to
+# port = 3000         # Port to bind to

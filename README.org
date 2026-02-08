@@ -1,0 +1,95 @@
+#+title:     Rust Template
+#+author:    Logan Barnett
+#+email:     logustus@gmail.com
+#+date:      <2026-02-07 Sat>
+#+language:  en
+#+file_tags:
+#+tags:
+
+A Rust template that includes a lot of best-in-class setup for things that will
+wind up going into the Rust project anyways.  Any programs emitted from this
+template will immediately enjoy various features:
+
+** Quick Links
+- [[file:GETTING_STARTED.md][Getting Started Guide]] - How to use this template
+- [[file:CUSTOMIZING.md][Customization Guide]] - How to adapt for your project
+- [[file:ERROR_HANDLING.md][Error Handling Philosophy]] - Semantic error types pattern
+
+** Features
+
+1. An integration test suite that actually runs the program.
+2. Command line arguments, environment variables, and configuration files all
+   aggregate into an application configuration.
+3. CICD where your crate is versioned and published (currently GitHub Actions).
+   a. ~CHANGELOG~ rolling.
+   b. Published to GitHub Releases.
+   c. Published to crates.io.
+   d. Published to docs.rs.
+   e. Version automatically incremented.
+   f. Build system tests.
+   g. Signed committers required.
+4. Logging which is ready to go in common runners such as ~systemd~.
+5. Common quality of life crates (~tap~, ~thiserror~).
+6. Directives to help keep LLMs from spewing slop all over your ~main.rs~.
+7. ~rustfmt.toml~ with ~cargo-husky~ so we can stop arguing about code
+   formatting in pull requests that aren't about code formatting.
+8. Common web patterns nobody wants to bother with:
+   a. ~healthz~ health check endpoints.
+   b. ~metrics~ OpenMetrics/Prometheus endpoints.
+   c. OpenAPI specs published.
+   d. ~SIGTERM~ graceful shutdown handling.
+9. Centralized workspace crates configuration in ~flake.nix~.
+   a. Single source of truth for package/binary names.
+   b. Automatically generates Nix packages, apps, and overlays.
+   c. Easy to maintain as crates are added/removed.
+
+** Architecture Patterns
+
+*** Workspace Crates Configuration
+
+The ~flake.nix~ maintains a single ~workspaceCrates~ definition that drives all
+package generation:
+
+#+begin_src nix
+workspaceCrates = {
+  cli = {
+    name = "rust-template-cli";
+    binary = "rust-template-cli";
+    description = "CLI application";
+  };
+  web = {
+    name = "rust-template-web";
+    binary = "rust-template-web";
+    description = "Web service";
+  };
+};
+#+end_src
+
+This eliminates repetitive boilerplate when:
+- Building Nix packages with crane
+- Generating ~nix run~ apps
+- Creating overlays for NixOS modules
+- Adding new workspace members
+
+See [[file:CUSTOMIZING.md][CUSTOMIZING.md]] for how to modify this for your project.
+
+*** Semantic Error Types
+
+This template enforces semantic error handling with ~thiserror~ rather than lazy
+error wrapping with ~anyhow~.  Every error includes:
+- What operation failed
+- Where it happened (file paths, addresses, etc.)
+- Why it matters (startup, runtime, etc.)
+
+See [[file:ERROR_HANDLING.md][ERROR_HANDLING.md]] for the full philosophy and patterns.
+
+*** Staged Configuration
+
+Configuration flows through typed stages:
+1. ~CliRaw~ - Raw command-line arguments (all ~Option<String>~)
+2. ~ConfigFileRaw~ - Raw file contents (all ~Option<T>~)
+3. Merge and validate
+4. ~Config~ - Final validated config (no ~Option~ for required fields)
+
+This ensures validation happens early and configuration errors are caught at
+startup with clear error messages.

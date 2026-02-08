@@ -1,0 +1,33 @@
+[package]
+name = "rust-template-web"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "rust_template_web"
+path = "src/lib.rs"
+
+[[bin]]
+name = "rust-template-web"
+path = "src/main.rs"
+
+[dependencies]
+rust-template-lib = { workspace = true }
+clap = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+thiserror = { workspace = true }
+tap = { workspace = true }  # For method chaining, reduces superfluous locals
+axum = { workspace = true }
+tokio = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+prometheus = { workspace = true }
+utoipa = { workspace = true }
+utoipa-swagger-ui = { workspace = true }
