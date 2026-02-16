@@ -1,10 +1,28 @@
 #!/bin/sh
+# Pre-commit hook for Rust projects
+# Automatically formats staged Rust files before committing.
 
-# Format all Rust files that are being committed
-cargo fmt -- --check
-if [ $? -ne 0 ]; then
-    echo "Code formatting check failed. Running cargo fmt..."
-    cargo fmt
-    echo "Files have been formatted. Please review and re-add them to your commit."
-    exit 1
+set -e
+
+# Get list of staged Rust files
+# --staged: only files in the staging area
+# --name-only: show only filenames, not diffs
+# --diff-filter=ACM: only Added, Copied, or Modified files (not Deleted)
+STAGED_RS_FILES=$(git diff --staged --name-only --diff-filter=ACM | grep '\.rs$' || true)
+
+if [ -z "$STAGED_RS_FILES" ]; then
+  echo "No Rust files staged for commit."
+  exit 0
 fi
+
+echo "Formatting staged Rust files..."
+
+# Format each staged file and re-add it to staging area
+for file in $STAGED_RS_FILES; do
+  echo "  - $file"
+  rustfmt "$file"
+  # Re-stage the file after formatting
+  git add "$file"
+done
+
+echo "✓ Staged files formatted and re-staged successfully."
