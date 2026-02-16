@@ -28,93 +28,96 @@ use web_base::AppState;
 
 #[derive(Debug, Error)]
 enum ApplicationError {
-    #[error("Failed to load configuration during startup: {0}")]
-    ConfigurationLoad(#[from] ConfigError),
+  #[error("Failed to load configuration during startup: {0}")]
+  ConfigurationLoad(#[from] ConfigError),
 
-    #[error("Failed to bind server to address {address}: {source}")]
-    ServerBind {
-        address: SocketAddr,
-        source: std::io::Error,
-    },
+  #[error("Failed to bind server to address {address}: {source}")]
+  ServerBind {
+    address: SocketAddr,
+    source: std::io::Error,
+  },
 
-    #[error("Server encountered a runtime error: {0}")]
-    ServerRuntime(#[source] std::io::Error),
+  #[error("Server encountered a runtime error: {0}")]
+  ServerRuntime(#[source] std::io::Error),
 }
 
 #[tokio::main]
 async fn main() -> Result<(), ApplicationError> {
-    let cli = CliRaw::parse();
+  let cli = CliRaw::parse();
 
-    let config = Config::from_cli_and_file(cli).map_err(|e| {
-        eprintln!("Configuration error: {}", e);
-        ApplicationError::ConfigurationLoad(e)
+  let config = Config::from_cli_and_file(cli).map_err(|e| {
+    eprintln!("Configuration error: {}", e);
+    ApplicationError::ConfigurationLoad(e)
+  })?;
+
+  init_logging(config.log_level, config.log_format);
+
+  info!("Starting rust-template-web");
+  info!("Configuration loaded successfully");
+  info!("Binding to {}", config.bind_address);
+
+  let state = AppState::new();
+
+  let app = create_app(state);
+
+  let listener = tokio::net::TcpListener::bind(&config.bind_address)
+    .await
+    .map_err(|e| {
+      error!("Failed to bind to {}: {}", config.bind_address, e);
+      ApplicationError::ServerBind {
+        address: config.bind_address,
+        source: e,
+      }
     })?;
 
-    init_logging(config.log_level, config.log_format);
+  info!("Server listening on {}", config.bind_address);
+  info!("Health check available at http://{}/healthz", config.bind_address);
+  info!("Metrics available at http://{}/metrics", config.bind_address);
+  info!(
+    "API documentation available at http://{}/swagger-ui",
+    config.bind_address
+  );
 
-    info!("Starting rust-template-web");
-    info!("Configuration loaded successfully");
-    info!("Binding to {}", config.bind_address);
+  axum::serve(listener, app)
+    .with_graceful_shutdown(shutdown_signal())
+    .await
+    .map_err(|e| {
+      error!("Server error: {}", e);
+      ApplicationError::ServerRuntime(e)
+    })?;
 
-    let state = AppState::new();
-
-    let app = create_app(state);
-
-    let listener = tokio::net::TcpListener::bind(&config.bind_address)
-        .await
-        .map_err(|e| {
-            error!("Failed to bind to {}: {}", config.bind_address, e);
-            ApplicationError::ServerBind {
-                address: config.bind_address,
-                source: e,
-            }
-        })?;
-
-    info!("Server listening on {}", config.bind_address);
-    info!("Health check available at http://{}/healthz", config.bind_address);
-    info!("Metrics available at http://{}/metrics", config.bind_address);
-    info!("API documentation available at http://{}/swagger-ui", config.bind_address);
-
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await
-        .map_err(|e| {
-            error!("Server error: {}", e);
-            ApplicationError::ServerRuntime(e)
-        })?;
-
-    info!("Shutting down rust-template-web");
-    Ok(())
+  info!("Shutting down rust-template-web");
+  Ok(())
 }
 
 fn create_app(state: AppState) -> Router {
-    web_base::base_router(state).layer(TraceLayer::new_for_http())
+  web_base::base_router(state).layer(TraceLayer::new_for_http())
 }
 
 async fn shutdown_signal() {
-    let ctrl_c = async {
-        signal::ctrl_c()
-            .await
-            .expect("failed to install Ctrl+C handler");
-    };
+  let ctrl_c = async {
+    signal::ctrl_c()
+      .await
+      .expect("failed to install Ctrl+C handler");
+  };
 
-    #[cfg(unix)]
-    let terminate = async {
-        signal::unix::signal(signal::unix::SignalKind::terminate())
-            .expect("failed to install signal handler")
-            .recv()
-            .await;
-    };
+  #[cfg(unix)]
+  let terminate = async {
+    signal::unix::signal(signal::unix::SignalKind::terminate())
+      .expect("failed to install signal handler")
+      .recv()
+      .await;
+  };
 
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
+  #[cfg(not(unix))]
+  let terminate = std::future::pending::<()>();
 
-    tokio::select! {
-        _ = ctrl_c => {
-            info!("Received Ctrl+C, shutting down gracefully");
-        },
-        _ = terminate => {
-            info!("Received SIGTERM, shutting down gracefully");
-        },
-    }
+  tokio::select! {
+      _ = ctrl_c => {
+          info!("Received Ctrl+C, shutting down gracefully");
+      },
+      _ = terminate => {
+          info!("Received SIGTERM, shutting down gracefully");
+      },
+  }
 }

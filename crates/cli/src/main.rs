@@ -19,35 +19,35 @@ use tracing::info;
 
 #[derive(Debug, Error)]
 enum ApplicationError {
-    #[error("Failed to load configuration during startup: {0}")]
-    ConfigurationLoad(#[from] ConfigError),
+  #[error("Failed to load configuration during startup: {0}")]
+  ConfigurationLoad(#[from] ConfigError),
 
-    // Example of an execution error - expand with real errors as needed
-    #[allow(dead_code)]
-    #[error("Application execution failed: {0}")]
-    Execution(String),
+  // Example of an execution error - expand with real errors as needed
+  #[allow(dead_code)]
+  #[error("Application execution failed: {0}")]
+  Execution(String),
 }
 
 fn main() -> Result<(), ApplicationError> {
-    let cli = CliRaw::parse();
+  let cli = CliRaw::parse();
 
-    let config = Config::from_cli_and_file(cli).map_err(|e| {
-        eprintln!("Configuration error: {}", e);
-        ApplicationError::ConfigurationLoad(e)
-    })?;
+  let config = Config::from_cli_and_file(cli).map_err(|e| {
+    eprintln!("Configuration error: {}", e);
+    ApplicationError::ConfigurationLoad(e)
+  })?;
 
-    init_logging(config.log_level, config.log_format);
+  init_logging(config.log_level, config.log_format);
 
-    info!("Starting rust-template-cli");
-    info!("Configuration loaded successfully");
+  info!("Starting rust-template-cli");
+  info!("Configuration loaded successfully");
 
-    run(config)?;
+  run(config)?;
 
-    info!("Shutting down rust-template-cli");
-    Ok(())
+  info!("Shutting down rust-template-cli");
+  Ok(())
 }
 
 fn run(config: Config) -> Result<(), ApplicationError> {
-    info!("Hello, {}!", config.name);
-    Ok(())
+  info!("Hello, {}!", config.name);
+  Ok(())
 }
