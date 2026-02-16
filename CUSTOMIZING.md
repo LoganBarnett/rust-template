@@ -333,7 +333,7 @@ specific-crate = "1.0"  # Not in workspace dependencies
 
 ## Next Steps
 
-- Review `ERROR_HANDLING.md` for error handling patterns
+- Review `ERROR_HANDLING.org` for error handling patterns
 - Review `GETTING_STARTED.md` for development workflow
 - Set up your CI/CD pipeline
 - Customize the README.org with your project details
