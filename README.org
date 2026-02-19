@@ -10,12 +10,12 @@ A Rust template that includes a lot of best-in-class setup for things that will
 wind up going into the Rust project anyways.  Any programs emitted from this
 template will immediately enjoy various features:
 
-** Quick Links
+* Quick Links
 - [[file:GETTING_STARTED.md][Getting Started Guide]] - How to use this template
 - [[file:CUSTOMIZING.md][Customization Guide]] - How to adapt for your project
 - [[file:ERROR_HANDLING.org][Error Handling Philosophy]] - Semantic error types pattern
 
-** Features
+* Features
 
 1. An integration test suite that actually runs the program.
 2. Command line arguments, environment variables, and configuration files all
@@ -43,9 +43,9 @@ template will immediately enjoy various features:
    b. Automatically generates Nix packages, apps, and overlays.
    c. Easy to maintain as crates are added/removed.
 
-** Architecture Patterns
+* Architecture Patterns
 
-*** Workspace Crates Configuration
+** Workspace Crates Configuration
 
 The ~flake.nix~ maintains a single ~workspaceCrates~ definition that drives all
 package generation:
@@ -73,7 +73,7 @@ This eliminates repetitive boilerplate when:
 
 See [[file:CUSTOMIZING.md][CUSTOMIZING.md]] for how to modify this for your project.
 
-*** Semantic Error Types
+** Semantic Error Types
 
 This template enforces semantic error handling with ~thiserror~ rather than lazy
 error wrapping with ~anyhow~.  Every error includes:
@@ -83,7 +83,7 @@ error wrapping with ~anyhow~.  Every error includes:
 
 See [[file:ERROR_HANDLING.org][ERROR_HANDLING.org]] for the full philosophy and patterns.
 
-*** Staged Configuration
+** Staged Configuration
 
 Configuration flows through typed stages:
 1. ~CliRaw~ - Raw command-line arguments (all ~Option<String>~)
