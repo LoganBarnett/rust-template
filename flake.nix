@@ -7,13 +7,7 @@
   };
 
   outputs = { self, nixpkgs, rust-overlay, crane }@inputs: let
-    systems = [
-      "aarch64-darwin"
-      "aarch64-linux"
-      "x86_64-darwin"
-      "x86_64-linux"
-    ];
-    forAllSystems = f: nixpkgs.lib.genAttrs systems f;
+    forAllSystems = nixpkgs.lib.genAttrs nixpkgs.lib.systems.flakeExposed;
     overlays = [
       (import rust-overlay)
     ];
