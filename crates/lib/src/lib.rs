@@ -1,3 +1,3 @@
 pub mod logging;
 
-pub use logging::{init_logging, LogFormat, LogLevel};
+pub use logging::{LogFormat, LogLevel};

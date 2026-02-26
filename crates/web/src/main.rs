@@ -12,13 +12,14 @@
 //! - Keep logging structured and consistent
 
 mod config;
+mod logging;
 
 use rust_template_web::web_base;
 
 use axum::Router;
 use clap::Parser;
 use config::{CliRaw, Config, ConfigError};
-use rust_template_lib::init_logging;
+use logging::init_logging;
 use std::net::SocketAddr;
 use thiserror::Error;
 use tokio::signal;

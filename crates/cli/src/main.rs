@@ -10,10 +10,11 @@
 //! - Keep logging structured and consistent
 
 mod config;
+mod logging;
 
 use clap::Parser;
 use config::{CliRaw, Config, ConfigError};
-use rust_template_lib::init_logging;
+use logging::init_logging;
 use thiserror::Error;
 use tracing::info;
 

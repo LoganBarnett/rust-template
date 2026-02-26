@@ -1,9 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use thiserror::Error;
-use tracing_subscriber::{
-  fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer,
-};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -94,33 +91,4 @@ pub enum LogLevelParseError {
 pub enum LogFormatParseError {
   #[error("Invalid log format: {0}. Valid values are: text, json")]
   InvalidFormat(String),
-}
-
-pub fn init_logging(level: LogLevel, format: LogFormat) {
-  let env_filter = EnvFilter::try_from_default_env()
-    .unwrap_or_else(|_| EnvFilter::new(level.to_string()));
-
-  match format {
-    LogFormat::Text => {
-      tracing_subscriber::registry()
-        .with(
-          fmt::layer()
-            .with_target(true)
-            .with_line_number(true)
-            .with_filter(env_filter),
-        )
-        .init();
-    }
-    LogFormat::Json => {
-      tracing_subscriber::registry()
-        .with(
-          fmt::layer()
-            .json()
-            .with_target(true)
-            .with_line_number(true)
-            .with_filter(env_filter),
-        )
-        .init();
-    }
-  }
 }

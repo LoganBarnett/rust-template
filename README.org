@@ -83,6 +83,19 @@ error wrapping with ~anyhow~.  Every error includes:
 
 See [[file:ERROR_HANDLING.org][ERROR_HANDLING.org]] for the full philosophy and patterns.
 
+** Output and Logging Streams
+
+CLIs separate program output from diagnostic output so callers can consume
+them independently:
+
+- *stdout* — machine-readable or human-readable program output (tables, JSON,
+  results).
+- *stderr* — all ~tracing~ log output (warnings, errors, progress).
+
+The ~init_logging~ function lives in the CLI crate (not the library) so the
+binary is always the one that decides where logs go.  The ~with_writer~
+call is explicit so it is obvious to future readers.
+
 ** Staged Configuration
 
 Configuration flows through typed stages:
