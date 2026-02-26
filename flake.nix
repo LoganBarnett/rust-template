@@ -102,6 +102,10 @@
     #     nativeBuildInputs = with pkgs; [
     #       pkg-config
     #     ];
+    #     # Run unit tests only.  Integration tests in tests/ typically invoke
+    #     # the compiled binary directly, which is not available in the Nix
+    #     # sandbox.  Run them with `cargo test` outside the derivation.
+    #     cargoTestExtraArgs = "--lib --bins";
     #   };
     #
     #   # Build individual crate packages from workspaceCrates
