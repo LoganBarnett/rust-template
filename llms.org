@@ -35,58 +35,6 @@ _authoring_ new identifiers in camel case.
 
 ** Rust
 
-*** Formatting
-
-**** 80-column layout
-
-Break long lines by splitting argument lists and other repetitious items.
-
-Here is an example of a long line:
-
-#+begin_src rustic :results none :exports code
-fn open_or_clone_repo(git_url: &str, sync_dir: &PathBuf) -> Result<Repository, SyncError> {
-  // ...
-}
-#+end_src
-
-Breaking the argument list makes it fit within 80 columns.
-
-#+begin_src rustic :results none :exports code
-fn open_or_clone_repo(
-  git_url: &str,
-  sync_dir: &PathBuf,
-) -> Result<Repository, SyncError> {
-  // ...
-}
-#+end_src
-
-**** Trailing commas in multi-line items
-
-Argument lists, struct fields, match arms, and similar multi-line constructs
-should have a trailing comma on the last item.
-
-Bad example:
-
-#+begin_src rustic :results none :exports code
-fn open_or_clone_repo(
-  git_url: &str,
-  sync_dir: &PathBuf
-) -> Result<Repository, SyncError> {
-  // ...
-}
-#+end_src
-
-Good example:
-
-#+begin_src rustic :results none :exports code
-fn open_or_clone_repo(
-  git_url: &str,
-  sync_dir: &PathBuf,
-) -> Result<Repository, SyncError> {
-  // ...
-}
-#+end_src
-
 *** Error Handling
 
 Prefer semantic errors.  Do not just wrap or propagate a ~FileMissingError~ or
