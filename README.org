@@ -3,52 +3,46 @@
 #+email:     logustus@gmail.com
 #+date:      <2026-02-07 Sat>
 #+language:  en
-#+file_tags:
-#+tags:
 
-A Rust template that includes a lot of best-in-class setup for things that will
-wind up going into the Rust project anyways.  Any programs emitted from this
-template will immediately enjoy various features:
+A Rust workspace template providing best-in-class project structure and
+tooling, so new projects start with everything already wired up correctly
+rather than accumulating it piecemeal.
 
-* Quick Links
-- [[file:GETTING_STARTED.md][Getting Started Guide]] - How to use this template
-- [[file:CUSTOMIZING.md][Customization Guide]] - How to adapt for your project
-- [[file:ERROR_HANDLING.org][Error Handling Philosophy]] - Semantic error types pattern
+* Usage
+
+Clone or copy this repository, then follow [[file:template-application.org][template-application.org]] for the
+full process of renaming, customizing, and activating the project.
 
 * Features
 
-1. An integration test suite that actually runs the program.
-2. Command line arguments, environment variables, and configuration files all
-   aggregate into an application configuration.
-3. CICD where your crate is versioned and published (currently GitHub Actions).
-   a. ~CHANGELOG~ rolling.
+1. Integration test suite that actually runs the compiled binary.
+2. Command-line arguments, environment variables, and a configuration file all
+   aggregate into a single validated application configuration.
+3. CI/CD workflow for versioning and publishing:
+   a. Rolling ~CHANGELOG~.
    b. Published to GitHub Releases.
-   c. Published to crates.io.
-   d. Published to docs.rs.
-   e. Version automatically incremented.
-   f. Build system tests.
-   g. Signed committers required.
-4. Logging which is ready to go in common runners such as ~systemd~.
-5. Common quality of life crates (~tap~, ~thiserror~).
-6. Directives to help keep LLMs from spewing slop all over your ~main.rs~.
-7. ~rustfmt.toml~ with ~cargo-husky~ so we can stop arguing about code
-   formatting in pull requests that aren't about code formatting.
-8. Common web patterns nobody wants to bother with:
-   a. ~healthz~ health check endpoints.
-   b. ~metrics~ OpenMetrics/Prometheus endpoints.
-   c. OpenAPI specs published.
-   d. ~SIGTERM~ graceful shutdown handling.
-9. Centralized workspace crates configuration in ~flake.nix~.
-   a. Single source of truth for package/binary names.
-   b. Automatically generates Nix packages, apps, and overlays.
-   c. Easy to maintain as crates are added/removed.
+   c. Published to crates.io and docs.rs.
+   d. Automatic version increment.
+   e. Signed-committer enforcement.
+4. Logging ready for structured environments (~systemd~, JSON log pipelines).
+5. Quality-of-life crates included: ~tap~, ~thiserror~.
+6. ~rustfmt.toml~ enforced on commit via ~cargo-husky~ (2-space indent,
+   80-column width).
+7. Common web service patterns out of the box:
+   a. ~/healthz~ health check endpoint.
+   b. ~/metrics~ OpenMetrics/Prometheus endpoint.
+   c. OpenAPI specification via ~utoipa~, served with Swagger UI.
+   d. ~SIGTERM~ graceful shutdown.
+8. Centralized workspace crates configuration in ~flake.nix~ — one place to
+   add, remove, or rename binaries.
+9. Nix flake development environment via ~flake.nix~ and ~direnv~.
 
 * Architecture Patterns
 
-** Workspace Crates Configuration
+** Workspace crates configuration
 
-The ~flake.nix~ maintains a single ~workspaceCrates~ definition that drives all
-package generation:
+~flake.nix~ contains a single ~workspaceCrates~ attribute set that drives
+all Nix package, app, and overlay generation:
 
 #+begin_src nix
 workspaceCrates = {
@@ -65,44 +59,35 @@ workspaceCrates = {
 };
 #+end_src
 
-This eliminates repetitive boilerplate when:
-- Building Nix packages with crane
-- Generating ~nix run~ apps
-- Creating overlays for NixOS modules
-- Adding new workspace members
+Adding a new binary means adding one entry here; everything else
+(~nix build~, ~nix run~, overlays) picks it up automatically.
 
-See [[file:CUSTOMIZING.md][CUSTOMIZING.md]] for how to modify this for your project.
+** Semantic error types
 
-** Semantic Error Types
+Errors carry context about /what was happening/, not just /what went wrong/.
+~thiserror~ is used for ergonomic error type declaration.  See
+[[file:ERROR_HANDLING.org][ERROR_HANDLING.org]] for the full philosophy and patterns.
 
-This template enforces semantic error handling with ~thiserror~ rather than lazy
-error wrapping with ~anyhow~.  Every error includes:
-- What operation failed
-- Where it happened (file paths, addresses, etc.)
-- Why it matters (startup, runtime, etc.)
+** Output and logging streams
 
-See [[file:ERROR_HANDLING.org][ERROR_HANDLING.org]] for the full philosophy and patterns.
+Stdout carries program output (tables, JSON, results).
+Stderr carries all ~tracing~ diagnostic output.
+The ~init_logging~ function lives in the binary crate so the binary controls
+where logs go.
 
-** Output and Logging Streams
+** Staged configuration
 
-CLIs separate program output from diagnostic output so callers can consume
-them independently:
+Configuration flows through explicit typed stages:
 
-- *stdout* — machine-readable or human-readable program output (tables, JSON,
-  results).
-- *stderr* — all ~tracing~ log output (warnings, errors, progress).
+1. ~CliRaw~ — raw command-line arguments (all ~Option<String>~).
+2. ~ConfigFileRaw~ — raw TOML file contents (all ~Option<T>~).
+3. Merge and validate.
+4. ~Config~ — final validated state (no ~Option~ for required fields).
 
-The ~init_logging~ function lives in the CLI crate (not the library) so the
-binary is always the one that decides where logs go.  The ~with_writer~
-call is explicit so it is obvious to future readers.
+Validation happens at startup, producing clear error messages before any work
+begins.
 
-** Staged Configuration
+* Supporting Documentation
 
-Configuration flows through typed stages:
-1. ~CliRaw~ - Raw command-line arguments (all ~Option<String>~)
-2. ~ConfigFileRaw~ - Raw file contents (all ~Option<T>~)
-3. Merge and validate
-4. ~Config~ - Final validated config (no ~Option~ for required fields)
-
-This ensures validation happens early and configuration errors are caught at
-startup with clear error messages.
+- [[file:template-application.org][template-application.org]] — How to apply this template to a new project.
+- [[file:ERROR_HANDLING.org][ERROR_HANDLING.org]] — Semantic error type philosophy and patterns.
