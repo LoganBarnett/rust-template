@@ -86,52 +86,46 @@
     # ============================================================================
     # PACKAGES
     # ============================================================================
-    # Uncomment and customize when you want to build Nix packages
-    # This will use crane to build your Rust binaries
-    # ============================================================================
-    # packages = forAllSystems (system: let
-    #   pkgs = pkgsFor system;
-    #   craneLib = (crane.mkLib pkgs).overrideToolchain (p: p.rust-bin.stable.latest.default);
-    #
-    #   # Common build arguments shared by all crates
-    #   commonArgs = {
-    #     src = craneLib.cleanCargoSource ./.;
-    #     buildInputs = with pkgs; [
-    #       openssl
-    #     ];
-    #     nativeBuildInputs = with pkgs; [
-    #       pkg-config
-    #     ];
-    #     # Run unit tests only.  Integration tests in tests/ typically invoke
-    #     # the compiled binary directly, which is not available in the Nix
-    #     # sandbox.  Run them with `cargo test` outside the derivation.
-    #     cargoTestExtraArgs = "--lib --bins";
-    #   };
-    #
-    #   # Build individual crate packages from workspaceCrates
-    #   cratePackages = pkgs.lib.mapAttrs (key: crate:
-    #     craneLib.buildPackage (commonArgs // {
-    #       pname = crate.name;
-    #       cargoExtraArgs = "-p ${crate.name}";
-    #     })
-    #   ) workspaceCrates;
-    #
-    # in cratePackages // {
-    #   # Build all crates together
-    #   default = craneLib.buildPackage commonArgs;
-    # });
+    packages = forAllSystems (system: let
+      pkgs = pkgsFor system;
+      craneLib = (crane.mkLib pkgs).overrideToolchain (p: p.rust-bin.stable.latest.default);
+
+      # Common build arguments shared by all crates.
+      # Tests run via 'cargo test' in the dev shell; the Nix sandbox typically
+      # lacks access to external services and integration test binaries.
+      # Do NOT use darwin.apple_sdk.frameworks here — removed in nixpkgs 25.11;
+      # macOS SDK frameworks are part of the default Darwin stdenv.
+      commonArgs = {
+        src = craneLib.cleanCargoSource ./.;
+        doCheck = false;
+        # Uncomment if your project needs OpenSSL or other system libraries:
+        # buildInputs = with pkgs; [ openssl ];
+        # nativeBuildInputs = with pkgs; [ pkg-config ];
+      };
+
+      # Build individual crate packages from workspaceCrates.
+      cratePackages = pkgs.lib.mapAttrs (key: crate:
+        craneLib.buildPackage (commonArgs // {
+          pname = crate.name;
+          cargoExtraArgs = "-p ${crate.name}";
+        })
+      ) workspaceCrates;
+
+    in cratePackages // {
+      # Build all workspace binaries together.
+      # Update pname to match your project name.
+      default = craneLib.buildPackage (commonArgs // { pname = "rust-template"; });
+    });
 
     # ============================================================================
     # APPS
     # ============================================================================
-    # Uncomment to enable 'nix run' for your binaries
-    # ============================================================================
-    # apps = forAllSystems (system:
-    #   pkgs.lib.mapAttrs (key: crate: {
-    #     type = "app";
-    #     program = "${self.packages.${system}.${key}}/bin/${crate.binary}";
-    #   }) workspaceCrates
-    # );
+    apps = forAllSystems (system: let
+      pkgs = pkgsFor system;
+    in pkgs.lib.mapAttrs (key: crate: {
+      type = "app";
+      program = "${self.packages.${system}.${key}}/bin/${crate.binary}";
+    }) workspaceCrates);
 
     # ============================================================================
     # OVERLAYS
