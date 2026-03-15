@@ -94,17 +94,21 @@
       pkgs = pkgsFor system;
       craneLib = (crane.mkLib pkgs).overrideToolchain (p: p.rust-bin.stable.latest.default);
 
-      # Common build arguments shared by all crates.
-      # Tests run via 'cargo test' in the dev shell; the Nix sandbox typically
-      # lacks access to external services and integration test binaries.
-      # Do NOT use darwin.apple_sdk.frameworks here — removed in nixpkgs 25.11;
-      # macOS SDK frameworks are part of the default Darwin stdenv.
+      # Common build arguments shared by all crates
       commonArgs = {
         src = craneLib.cleanCargoSource ./.;
-        doCheck = false;
-        # Uncomment if your project needs OpenSSL or other system libraries:
-        # buildInputs = with pkgs; [ openssl ];
-        # nativeBuildInputs = with pkgs; [ pkg-config ];
+        buildInputs = with pkgs; [
+          openssl
+        ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin (with pkgs.darwin; [
+          libiconv
+        ]);
+        nativeBuildInputs = with pkgs; [
+          pkg-config
+        ];
+        # Run only unit tests (--lib --bins), skip integration tests in tests/ directories
+        # Integration tests may require external services not available in Nix sandbox
+        # Full test suite can be run locally with 'cargo test --all'
+        cargoTestExtraArgs = "--lib --bins";
       };
 
       # Build individual crate packages from workspaceCrates.
