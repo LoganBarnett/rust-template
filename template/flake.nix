@@ -115,12 +115,18 @@
         cargoTestExtraArgs = "--lib --bins";
       };
 
-      # Build individual crate packages from workspaceCrates.
+      # Build individual crate packages from workspaceCrates.  When a
+      # per-crate file exists under nix/packages/, it is used instead of
+      # the generic crane build; this lets individual crates carry custom
+      # build options without cluttering the top-level flake.
       cratePackages = pkgs.lib.mapAttrs (key: crate:
-        craneLib.buildPackage (commonArgs // {
-          pname = crate.name;
-          cargoExtraArgs = "-p ${crate.name}";
-        })
+        let pkgFile = ./. + "/nix/packages/${key}.nix";
+        in if builtins.pathExists pkgFile
+          then import pkgFile { inherit craneLib commonArgs; }
+          else craneLib.buildPackage (commonArgs // {
+            pname = crate.name;
+            cargoExtraArgs = "-p ${crate.name}";
+          })
       ) workspaceCrates;
 
     in cratePackages // {
@@ -140,13 +146,21 @@
     }) workspaceCrates);
 
     # ============================================================================
+    # NIXOS MODULES
+    # ============================================================================
+    nixosModules = {
+      web = import ./nix/modules/web.nix { inherit self; };
+      default = self.nixosModules.web;
+    };
+
+    # ============================================================================
     # OVERLAYS
     # ============================================================================
     # Uncomment to expose your packages as an overlay
     # ============================================================================
     # overlays.default = final: prev:
     #   pkgs.lib.mapAttrs' (key: crate:
-    #     pkgs.lib.nameValuePair crate.name self.packages.${final.system}.${key}
+    #     pkgs.lib.nameValuePair crate.name self.packages.${final.stdenv.hostPlatform.system}.${key}
     #   ) workspaceCrates;
 
   };
