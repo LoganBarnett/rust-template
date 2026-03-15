@@ -1,93 +1,234 @@
 #+title:     Rust Template
 #+author:    Logan Barnett
 #+email:     logustus@gmail.com
-#+date:      <2026-02-07 Sat>
 #+language:  en
 
-A Rust workspace template providing best-in-class project structure and
-tooling, so new projects start with everything already wired up correctly
-rather than accumulating it piecemeal.
+An opinionated Rust workspace template.  Clone this repository once; use
+=new-project.sh= whenever you need a new project.
+
+* Prerequisites
+
+- [[https://nixos.org/download.html][Nix]] with flakes enabled.
+- Git.
 
 * Usage
 
-Clone or copy this repository, then follow [[file:template-application.org][template-application.org]] for the
-full process of renaming, customizing, and activating the project.
+#+begin_src sh :exports code
+./new-project.sh --name <project-name> --output <destination> [options]
+#+end_src
 
-* Features
+| Option          | Required | Description                                              |
+|-----------------+----------+----------------------------------------------------------|
+| =--name=        | yes      | Project name — used for package names and identifiers.   |
+| =--output=      | yes      | Destination directory (must not already exist).          |
+| =--description= | no       | One-line description substituted into project metadata.  |
+| =--crates=      | no       | Comma-separated binary crates to include (default: cli,web). =lib= is always included. |
 
-1. Integration test suite that actually runs the compiled binary.
-2. Command-line arguments, environment variables, and a configuration file all
-   aggregate into a single validated application configuration.
-3. CI/CD workflow for versioning and publishing:
-   a. Rolling ~CHANGELOG~.
-   b. Published to GitHub Releases.
-   c. Published to crates.io and docs.rs.
-   d. Automatic version increment.
-   e. Signed-committer enforcement.
-4. Logging ready for structured environments (~systemd~, JSON log pipelines).
-5. Quality-of-life crates included: ~tap~, ~thiserror~.
-6. ~rustfmt.toml~ enforced on commit via ~cargo-husky~ (2-space indent,
-   80-column width).
-7. Common web service patterns out of the box:
-   a. ~/healthz~ health check endpoint.
-   b. ~/metrics~ OpenMetrics/Prometheus endpoint.
-   c. OpenAPI specification via ~utoipa~, served with Swagger UI.
-   d. ~SIGTERM~ graceful shutdown.
-8. Centralized workspace crates configuration in ~flake.nix~ — one place to
-   add, remove, or rename binaries.
-9. Nix flake development environment via ~flake.nix~ and ~direnv~.
+** Examples
 
-* Architecture Patterns
+Start with both binary crates:
 
-** Workspace crates configuration
+#+begin_src sh :exports code
+./new-project.sh --name my-app --output ~/dev/my-app
+#+end_src
 
-~flake.nix~ contains a single ~workspaceCrates~ attribute set that drives
-all Nix package, app, and overlay generation:
+Web service only, with a description:
 
-#+begin_src nix
+#+begin_src sh :exports code
+./new-project.sh \
+  --name my-svc \
+  --output ~/dev/my-svc \
+  --crates web \
+  --description "HTTP microservice for billing"
+#+end_src
+
+* What the script does
+
+1. Copies =template/= to the destination.
+2. Substitutes every occurrence of =rust-template= with the project name
+   throughout all files (including =Cargo.toml=, =Cargo.lock=, =flake.nix=,
+   source files, and documentation).
+3. If a description is provided, substitutes the placeholder description in
+   project metadata.
+4. Removes any binary crate directories not listed in =--crates= and scrubs
+   their entries from =Cargo.toml= and =flake.nix=.
+
+After generation, initialize git and allow direnv:
+
+#+begin_src sh :exports code
+cd <destination>
+git init && git add . && git commit -m "Initial commit"
+direnv allow   # if using nix + direnv
+#+end_src
+
+* Post-generation steps
+
+After running =new-project.sh=, a few things still need manual attention.
+
+** Update workspace metadata in Cargo.toml
+
+#+begin_src toml :exports code
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Your Name <your.email@example.com>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/yourusername/your-project"
+#+end_src
+
+** Update flake.nix workspaceCrates
+
+Edit the ~workspaceCrates~ section in ~flake.nix~ to match your actual crate
+descriptions.  The name and binary fields are already substituted by the
+script; update the human-readable descriptions:
+
+#+begin_src nix :exports code
 workspaceCrates = {
   cli = {
-    name = "rust-template-cli";
-    binary = "rust-template-cli";
-    description = "CLI application";
+    name = "my-app-cli";
+    binary = "my-app-cli";
+    description = "Description of your CLI tool";
   };
   web = {
-    name = "rust-template-web";
-    binary = "rust-template-web";
-    description = "Web service";
+    name = "my-app-web";
+    binary = "my-app-web";
+    description = "Description of your web service";
   };
 };
 #+end_src
 
-Adding a new binary means adding one entry here; everything else
-(~nix build~, ~nix run~, overlays) picks it up automatically.
+** Rename crate directories (optional)
 
-** Semantic error types
+The script preserves the original directory names (=crates/cli=, =crates/web=,
+=crates/lib=).  If you prefer project-namespaced directories:
 
-Errors carry context about /what was happening/, not just /what went wrong/.
-~thiserror~ is used for ergonomic error type declaration.  See
-[[file:ERROR_HANDLING.org][ERROR_HANDLING.org]] for the full philosophy and patterns.
+#+begin_src sh :exports code
+mv crates/cli "crates/my-app-cli"
+mv crates/web "crates/my-app-web"
+mv crates/lib "crates/my-app-lib"
+#+end_src
 
-** Output and logging streams
+Update the ~members~ list in ~Cargo.toml~ to match.
 
-Stdout carries program output (tables, JSON, results).
-Stderr carries all ~tracing~ diagnostic output.
-The ~init_logging~ function lives in the binary crate so the binary controls
-where logs go.
+** Build and verify
 
-** Staged configuration
+#+begin_src sh :exports code
+nix develop --command cargo build --workspace
+nix develop --command cargo test --workspace
+#+end_src
 
-Configuration flows through explicit typed stages:
+Both must succeed before the project is ready.
 
-1. ~CliRaw~ — raw command-line arguments (all ~Option<String>~).
-2. ~ConfigFileRaw~ — raw TOML file contents (all ~Option<T>~).
-3. Merge and validate.
-4. ~Config~ — final validated state (no ~Option~ for required fields).
+** Update README.org
 
-Validation happens at startup, producing clear error messages before any work
-begins.
+Replace the generated README content with text describing your project.
 
-* Supporting Documentation
+* What's in the template
 
-- [[file:template-application.org][template-application.org]] — How to apply this template to a new project.
-- [[file:ERROR_HANDLING.org][ERROR_HANDLING.org]] — Semantic error type philosophy and patterns.
+See =template/README.org= for the full feature list and architecture notes.
+
+The short version: structured logging, staged configuration, semantic error
+types, integration tests, a Nix dev shell, and optional web service scaffolding
+(health check, metrics, OpenAPI/Swagger).
+
+* Adding a new workspace crate
+
+1. Create the crate:
+   #+begin_src sh :exports code
+   cargo new --bin crates/worker
+   #+end_src
+
+2. Add to ~[workspace] members~ in ~Cargo.toml~.
+
+3. Set up the crate ~Cargo.toml~ to inherit workspace metadata and follow the
+   staged-configuration pattern from the existing crates.
+
+4. Add an entry to ~workspaceCrates~ in ~flake.nix~.
+
+5. Add integration tests under ~crates/worker/tests/~.
+
+* Removing a crate
+
+1. Remove its entry from ~[workspace] members~ in ~Cargo.toml~.
+2. Remove its entry from ~workspaceCrates~ in ~flake.nix~.
+3. Delete the crate directory:
+   #+begin_src sh :exports code
+   rm -rf crates/web
+   #+end_src
+
+* Enabling Nix package builds
+
+The ~packages~ section in ~flake.nix~ is commented out by default.  Uncomment
+it when you want ~nix build .#cli~ and friends to work.  Then:
+
+#+begin_src sh :exports code
+nix build .#cli
+nix run .#cli -- --help
+#+end_src
+
+* Pulling template updates into a derived project
+
+#+begin_src sh :exports code
+git remote add template <template-repo-url>
+git fetch template
+git cherry-pick <commit-hash>   # cherry-pick specific improvements
+#+end_src
+
+Or merge selectively and resolve conflicts, preserving your customizations.
+
+* LLM instructions
+
+This section describes what an LLM agent should do when asked to apply this
+template to a new project.
+
+** Read the project brief first
+
+Before touching any files, confirm the new project name and purpose with the
+user (or from context).  Everything else flows from that.
+
+** Apply the template
+
+Run =new-project.sh= as described in [[*Usage]], then work through
+[[*Post-generation steps]] in order.  Do not skip metadata updates — downstream
+steps assume the names are already correct.
+
+** What to change
+
+- ~Cargo.toml~ :: Update ~[workspace.package]~ metadata (authors, license,
+  repository).
+- ~flake.nix~ :: Update ~description~ and ~workspaceCrates~ descriptions.
+  Match the crate ~name~ and ~binary~ fields to the actual Cargo package and
+  binary names.
+- ~README.org~ :: Replace this file's content with a README that describes the
+  /new/ project.
+- ~crates/*/src/main.rs~ :: Replace the placeholder business logic (~run()~
+  function in the CLI, route handlers in the web crate) with the actual
+  application.
+- ~crates/*/src/config.rs~ :: Add application-specific configuration fields to
+  ~CliRaw~, ~ConfigFileRaw~, and ~Config~; add semantic error variants for any
+  new validation that can fail.
+- ~config.example.toml~ :: Update with any new configuration keys.
+
+** What to keep unchanged
+
+- ~rustfmt.toml~ — formatting rules apply to all derived projects.
+- ~crates/lib/src/logging.rs~ — the logging infrastructure is reusable as-is.
+- ~flake.nix~ ~devPackages~ and ~devShells~ — keep the Nix shell intact.
+- ~.cargo-husky/~ — keep the pre-commit hook.
+- ~ERROR_HANDLING.org~ — keep or adapt; the philosophy applies everywhere.
+
+** What to remove
+
+- ~GETTING_STARTED.md~ and ~CUSTOMIZING.md~ — these are template meta-docs,
+  not relevant once the template is applied.
+
+** Verification
+
+After applying the template, run:
+
+#+begin_src sh :exports code
+nix develop --command cargo build --workspace
+nix develop --command cargo test --workspace
+#+end_src
+
+Both must succeed with no errors before declaring the template applied.
