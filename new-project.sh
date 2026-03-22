@@ -49,13 +49,18 @@ done
 [[ -z "$OUTPUT" ]]       && { echo "Error: --output is required." >&2; usage; }
 
 if [[ -e "$OUTPUT" ]]; then
-    echo "Error: output path already exists: $OUTPUT" >&2
-    exit 1
+    if [[ -d "$OUTPUT" ]] && [[ -z "$(ls -A "$OUTPUT")" ]]; then
+        : # Empty directory — fine to proceed
+    else
+        echo "Error: output path already exists and is not empty: $OUTPUT" >&2
+        exit 1
+    fi
 fi
 
 echo "Creating $PROJECT_NAME in $OUTPUT ..."
 
-cp -r "$TEMPLATE_DIR" "$OUTPUT"
+mkdir -p "$OUTPUT"
+cp -r "$TEMPLATE_DIR/." "$OUTPUT/"
 
 # Substitute the placeholder project name throughout all text files.
 grep -rl 'rust-template' "$OUTPUT" | while IFS= read -r f; do
