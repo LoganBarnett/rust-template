@@ -67,6 +67,14 @@ grep -rl 'rust-template' "$OUTPUT" | while IFS= read -r f; do
     sed_inplace "s/rust-template/$PROJECT_NAME/g" "$f"
 done
 
+# Substitute the underscore form used in Rust lib names and `use` statements
+# (e.g. `rust_template_web` → `my_project_web`).  Must run after the hyphen
+# pass so any hyphen→underscore collisions are already resolved.
+PROJECT_NAME_UNDERSCORE="${PROJECT_NAME//-/_}"
+grep -rl 'rust_template' "$OUTPUT" | while IFS= read -r f; do
+    sed_inplace "s/rust_template/$PROJECT_NAME_UNDERSCORE/g" "$f"
+done
+
 # Substitute the placeholder description if one was provided.
 if [[ -n "$DESCRIPTION" ]]; then
     grep -rl 'Rust Template - Best-in-class Rust project setup' "$OUTPUT" | while IFS= read -r f; do
