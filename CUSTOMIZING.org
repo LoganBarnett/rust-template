@@ -1,45 +1,45 @@
-# Customizing the Template for Your Project
+#+title: Customizing the Template for Your Project
 
 This guide explains how to adapt this template for your specific project.
 
-## Quick Rename Guide
+* Quick Rename Guide
 
-### 1. Update Project Names
+** 1. Update Project Names
 
-Replace `rust-template` with your project name throughout:
+Replace ~rust-template~ with your project name throughout:
 
-```bash
+#+begin_src sh :exports code
 # Example: renaming to "my-app"
 PROJECT_NAME="my-app"
 
 # Update Rust code and configs
-find . -type f \( -name "*.toml" -o -name "*.rs" -o -name "*.md" \) \
+find . -type f \( -name "*.toml" -o -name "*.rs" -o -name "*.org" \) \
   -not -path "*/target/*" \
   -exec sed -i '' "s/rust-template/${PROJECT_NAME}/g" {} +
 
-find . -type f \( -name "*.toml" -o -name "*.rs" -o -name "*.md" \) \
+find . -type f \( -name "*.toml" -o -name "*.rs" -o -name "*.org" \) \
   -not -path "*/target/*" \
   -exec sed -i '' "s/rust_template/${PROJECT_NAME//-/_}/g" {} +
-```
+#+end_src
 
-### 2. Update Cargo.toml Metadata
+** 2. Update Cargo.toml Metadata
 
-Edit the workspace `Cargo.toml`:
+Edit the workspace ~Cargo.toml~:
 
-```toml
+#+begin_src toml :exports code
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
 authors = ["Your Name <your.email@example.com>"]
 license = "MIT OR Apache-2.0"  # or your preferred license
 repository = "https://github.com/yourusername/your-project"
-```
+#+end_src
 
-### 3. Update flake.nix Workspace Crates
+** 3. Update flake.nix Workspace Crates
 
-Edit `flake.nix` and update the `workspaceCrates` section:
+Edit ~flake.nix~ and update the ~workspaceCrates~ section:
 
-```nix
+#+begin_src nix :exports code
 workspaceCrates = {
   # CLI application
   cli = {
@@ -62,42 +62,42 @@ workspaceCrates = {
   #   description = "Background worker";
   # };
 };
-```
+#+end_src
 
-**Why maintain this list?**
-
-The `workspaceCrates` configuration in `flake.nix` is the **single source of truth** for:
+The ~workspaceCrates~ configuration in ~flake.nix~ is the *single source of
+truth* for:
 - Nix package generation (when uncommented)
-- App generation (`nix run .#cli`, `nix run .#web`)
+- App generation (~nix run .#cli~, ~nix run .#web~)
 - Overlay generation for NixOS modules
 - Consistent naming across the flake
 
-This prevents repetitive boilerplate and makes it easy to add/remove workspace members.
+This prevents repetitive boilerplate and makes it easy to add/remove workspace
+members.
 
-### 4. Rename Directories
+** 4. Rename Directories
 
-```bash
+#+begin_src sh :exports code
 # If you want to rename the crate directories too:
 mv crates/cli "crates/${PROJECT_NAME}-cli"
 mv crates/web "crates/${PROJECT_NAME}-web"
 mv crates/lib "crates/${PROJECT_NAME}-lib"
 
 # Update Cargo.toml workspace members accordingly
-```
+#+end_src
 
-## Adding New Workspace Crates
+* Adding New Workspace Crates
 
-### Example: Adding a Background Worker
+** Example: Adding a Background Worker
 
-1. **Create the crate:**
+1. Create the crate:
 
-```bash
+#+begin_src sh :exports code
 cargo new --bin crates/worker
-```
+#+end_src
 
-2. **Add to workspace `Cargo.toml`:**
+2. Add to workspace ~Cargo.toml~:
 
-```toml
+#+begin_src toml :exports code
 [workspace]
 members = [
     "crates/cli",
@@ -105,11 +105,11 @@ members = [
     "crates/web",
     "crates/worker",  # New!
 ]
-```
+#+end_src
 
-3. **Update package Cargo.toml:**
+3. Update package ~Cargo.toml~:
 
-```toml
+#+begin_src toml :exports code
 # crates/worker/Cargo.toml
 [package]
 name = "my-app-worker"
@@ -126,11 +126,11 @@ path = "src/main.rs"
 [dependencies]
 my-app-lib = { workspace = true }
 # ... other dependencies
-```
+#+end_src
 
-4. **Add to `flake.nix` workspaceCrates:**
+4. Add to ~flake.nix~ workspaceCrates:
 
-```nix
+#+begin_src nix :exports code
 workspaceCrates = {
   cli = { ... };
   web = { ... };
@@ -142,20 +142,20 @@ workspaceCrates = {
     description = "Background worker";
   };
 };
-```
+#+end_src
 
-5. **Implement with the same patterns:**
-   - Create `config.rs` with staged configuration types
-   - Use semantic error types with `thiserror`
+5. Implement with the same patterns:
+   - Create ~config.rs~ with staged configuration types
+   - Use semantic error types with ~thiserror~
    - Add integration tests
 
-## Removing Crates You Don't Need
+* Removing Crates You Don't Need
 
-### Example: Removing the Web Crate
+** Example: Removing the Web Crate
 
-1. **Remove from workspace:**
+1. Remove from workspace:
 
-```toml
+#+begin_src toml :exports code
 # Cargo.toml
 [workspace]
 members = [
@@ -163,11 +163,11 @@ members = [
     "crates/lib",
     # "crates/web",  # Commented out or removed
 ]
-```
+#+end_src
 
-2. **Remove from flake.nix:**
+2. Remove from ~flake.nix~:
 
-```nix
+#+begin_src nix :exports code
 workspaceCrates = {
   cli = {
     name = "my-app-cli";
@@ -177,32 +177,32 @@ workspaceCrates = {
 
   # web = { ... };  # Removed
 };
-```
+#+end_src
 
-3. **Delete the directory:**
+3. Delete the directory:
 
-```bash
+#+begin_src sh :exports code
 rm -rf crates/web
-```
+#+end_src
 
-## Customizing Logging
+* Customizing Logging
 
-### Adding Custom Log Fields
+** Adding Custom Log Fields
 
-Edit `crates/lib/src/logging.rs` to add project-specific logging configuration:
+Edit ~crates/lib/src/logging.rs~ to add project-specific logging configuration:
 
-```rust
+#+begin_src rustic :results none :exports code
 pub struct LoggingConfig {
     pub level: LogLevel,
     pub format: LogFormat,
     pub service_name: String,      // Add custom fields
     pub environment: Environment,  // Add custom fields
 }
-```
+#+end_src
 
-### Adding More Log Formats
+** Adding More Log Formats
 
-```rust
+#+begin_src rustic :results none :exports code
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum LogFormat {
@@ -210,15 +210,16 @@ pub enum LogFormat {
     Json,
     Logfmt,  // Add new format
 }
-```
+#+end_src
 
-## Customizing Configuration
+* Customizing Configuration
 
-### Adding Application-Specific Config
+** Adding Application-Specific Config
 
-Each application (`cli`, `web`) has its own `config.rs`. Add your settings there:
+Each application (~cli~, ~web~) has its own ~config.rs~.  Add your settings
+there:
 
-```rust
+#+begin_src rustic :results none :exports code
 // In crates/cli/src/config.rs
 
 #[derive(Debug)]
@@ -238,29 +239,29 @@ impl Config {
         // Validate and construct final Config
     }
 }
-
-```
+#+end_src
 
 Remember to update:
-- `CliRaw` (for command-line arguments)
-- `ConfigFileRaw` (for file-based config)
-- `from_cli_and_file()` merge logic
+- ~CliRaw~ (for command-line arguments)
+- ~ConfigFileRaw~ (for file-based config)
+- ~from_cli_and_file()~ merge logic
 - Semantic error types if validation fails
 
-## Enabling Nix Package Building
+* Enabling Nix Package Building
 
-When you're ready to build Nix packages, uncomment the packages section in `flake.nix`:
+When you're ready to build Nix packages, uncomment the packages section in
+~flake.nix~:
 
-```nix
+#+begin_src nix :exports code
 # Remove the # comments from the packages section
 packages = forAllSystems (system: let
   pkgs = pkgsFor system;
   # ... rest of the configuration
-```
+#+end_src
 
 Then build with:
 
-```bash
+#+begin_src sh :exports code
 # Build specific package
 nix build .#cli
 nix build .#web
@@ -271,13 +272,15 @@ nix build .#default
 # Run directly
 nix run .#cli -- --help
 nix run .#web -- --host 0.0.0.0 --port 8080
-```
+#+end_src
 
-## Creating NixOS Modules
+* Creating NixOS Modules
 
-The web application uses separate `--host` and `--port` arguments (rather than a combined bind address) specifically to make it easier to create NixOS module options:
+The web application uses separate ~--host~ and ~--port~ arguments (rather than
+a combined bind address) specifically to make it easier to create NixOS module
+options:
 
-```nix
+#+begin_src nix :exports code
 # Example NixOS module options
 options.services.my-app = {
   enable = mkEnableOption "My App";
@@ -297,69 +300,70 @@ options.services.my-app = {
 
 # These map directly to CLI args
 ExecStart = "${cfg.package}/bin/my-app-web --host ${cfg.host} --port ${toString cfg.port}";
-```
+#+end_src
 
-This is cleaner than trying to parse or construct a combined address string in Nix.
+This is cleaner than trying to parse or construct a combined address string in
+Nix.
 
-## Adding Additional Dependencies
+* Adding Additional Dependencies
 
-### Workspace-Level Dependencies
+** Workspace-Level Dependencies
 
-Add to workspace `Cargo.toml`:
+Add to workspace ~Cargo.toml~:
 
-```toml
+#+begin_src toml :exports code
 [workspace.dependencies]
 # Your new dependency
 sqlx = { version = "0.7", features = ["postgres", "runtime-tokio-native-tls"] }
-```
+#+end_src
 
 Then use in any package:
 
-```toml
+#+begin_src toml :exports code
 # crates/cli/Cargo.toml
 [dependencies]
 sqlx = { workspace = true }
-```
+#+end_src
 
-### Package-Specific Dependencies
+** Package-Specific Dependencies
 
 If only one crate needs it:
 
-```toml
+#+begin_src toml :exports code
 # crates/web/Cargo.toml
 [dependencies]
 specific-crate = "1.0"  # Not in workspace dependencies
-```
+#+end_src
 
-## Next Steps
+* Next Steps
 
-- Review `ERROR_HANDLING.org` for error handling patterns
-- Review `GETTING_STARTED.md` for development workflow
+- Review ~ERROR_HANDLING.org~ for error handling patterns
+- Review ~GETTING_STARTED.org~ for development workflow
 - Set up your CI/CD pipeline
-- Customize the README.org with your project details
+- Customize the ~README.org~ with your project details
 - Add your business logic!
 
-## Template Maintenance
+* Template Maintenance
 
 If you want to pull updates from the template into your customized project:
 
 1. Add the template as a remote:
-   ```bash
+   #+begin_src sh :exports code
    git remote add template <template-repo-url>
-   ```
+   #+end_src
 
 2. Fetch changes:
-   ```bash
+   #+begin_src sh :exports code
    git fetch template
-   ```
+   #+end_src
 
 3. Cherry-pick specific improvements:
-   ```bash
+   #+begin_src sh :exports code
    git cherry-pick <commit-hash>
-   ```
+   #+end_src
 
 4. Or merge carefully:
-   ```bash
+   #+begin_src sh :exports code
    git merge template/main --no-commit
    # Resolve conflicts, keeping your customizations
-   ```
+   #+end_src

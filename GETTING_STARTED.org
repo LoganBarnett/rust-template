@@ -1,0 +1,259 @@
+#+title: Getting Started with Rust Template
+
+This guide will help you get started using this Rust template for your new project.
+
+* Prerequisites
+
+- [[https://nixos.org/download.html][Nix]] with flakes enabled
+- Git
+
+* Using This Template
+
+** 1. Create a new repository from this template
+
+#+begin_src sh :exports code
+# Clone this repository
+git clone <your-template-repo-url> my-new-project
+cd my-new-project
+
+# Remove the old git history
+rm -rf .git
+git init
+git add .
+git commit -m "Initial commit from rust-template"
+#+end_src
+
+** 2. Customize the project
+
+*Important:* See [[file:CUSTOMIZING.org][CUSTOMIZING.org]] for detailed customization instructions.
+
+Quick rename example:
+
+#+begin_src sh :exports code
+# Example: rename to "my-app"
+PROJECT_NAME="my-app"
+
+find . -type f \( -name "*.toml" -o -name "*.rs" -o -name "*.org" \) \
+  -not -path "*/target/*" \
+  -exec sed -i '' "s/rust-template/${PROJECT_NAME}/g" {} +
+
+find . -type f \( -name "*.toml" -o -name "*.rs" -o -name "*.org" \) \
+  -not -path "*/target/*" \
+  -exec sed -i '' "s/rust_template/${PROJECT_NAME//-/_}/g" {} +
+#+end_src
+
+Don't forget to update:
+1. ~Cargo.toml~ — workspace metadata (authors, repository, license)
+2. ~flake.nix~ — the ~workspaceCrates~ section (see CUSTOMIZING.org)
+3. ~README.org~ — project description
+
+** 3. Enter the development environment
+
+#+begin_src sh :exports code
+nix develop
+#+end_src
+
+This will set up all necessary dependencies including Rust, cargo, and other tools.
+
+** 4. Build the project
+
+#+begin_src sh :exports code
+# Build all packages
+cargo build --workspace
+
+# Build specific package
+cargo build -p my-app-cli
+cargo build -p my-app-web
+#+end_src
+
+** 5. Run the applications
+
+*** CLI Application
+
+#+begin_src sh :exports code
+# Run with default settings
+./target/debug/my-app-cli
+
+# Show help
+./target/debug/my-app-cli --help
+
+# Run with custom options
+./target/debug/my-app-cli --name "Alice" --log-level debug --log-format json
+#+end_src
+
+*** Web Application
+
+#+begin_src sh :exports code
+# Run with default settings (http://127.0.0.1:3000)
+./target/debug/my-app-web
+
+# Run on custom port
+./target/debug/my-app-web --port 8080
+
+# Run with custom host and port
+./target/debug/my-app-web --host 0.0.0.0 --port 8080
+#+end_src
+
+Once running, the web application provides:
+- Health check: ~http://127.0.0.1:3000/healthz~
+- Metrics: ~http://127.0.0.1:3000/metrics~
+- API documentation: ~http://127.0.0.1:3000/swagger-ui~
+
+** 6. Run tests
+
+#+begin_src sh :exports code
+# Run all tests
+cargo test --workspace
+
+# Run tests for specific package
+cargo test -p my-app-cli
+cargo test -p my-app-web
+#+end_src
+
+* Configuration
+
+Both CLI and web applications support configuration from multiple sources (in
+order of precedence):
+
+1. Command-line arguments
+2. Environment variables
+3. Configuration file (~config.toml~)
+4. Defaults
+
+** Configuration File
+
+Create a ~config.toml~ file (see ~config.example.toml~ for reference):
+
+#+begin_src toml :exports code
+log_level = "info"
+log_format = "text"
+
+# CLI-specific
+name = "World"
+
+# Web-specific
+host = "127.0.0.1"
+port = 3000
+#+end_src
+
+** Environment Variables
+
+#+begin_src sh :exports code
+# Set log level
+export LOG_LEVEL=debug
+
+# Set log format
+export LOG_FORMAT=json
+
+# Web: set host and port
+export HOST=0.0.0.0
+export PORT=8080
+#+end_src
+
+* Development Workflow
+
+** Code Formatting
+
+Code is automatically formatted on commit via cargo-husky.  The pre-commit hook
+is installed automatically when you first build the project.
+
+#+begin_src sh :exports code
+# Manually format code
+cargo fmt
+
+# Check formatting
+cargo fmt -- --check
+#+end_src
+
+The hook will:
+1. Check if code is formatted before allowing a commit
+2. Automatically format the code if it's not formatted
+3. Ask you to re-add the formatted files to your commit
+
+To install the hooks manually (if needed):
+
+#+begin_src sh :exports code
+cargo test -p rust-template-lib
+#+end_src
+
+** Adding New Dependencies
+
+Add dependencies to the workspace ~Cargo.toml~:
+
+#+begin_src toml :exports code
+[workspace.dependencies]
+my-new-dep = "1.0"
+#+end_src
+
+Then reference in package ~Cargo.toml~:
+
+#+begin_src toml :exports code
+[dependencies]
+my-new-dep = { workspace = true }
+#+end_src
+
+** Adding New Endpoints (Web)
+
+1. Create a new module in ~crates/web/src/~
+2. Add endpoints using axum handlers
+3. Update ~web_base.rs~ or create a new router
+4. Add integration tests in ~crates/web/tests/~
+
+Example:
+
+#+begin_src rustic :results none :exports code
+// In crates/web/src/my_endpoint.rs
+use axum::{Json, response::IntoResponse};
+use serde::Serialize;
+
+#[derive(Serialize)]
+pub struct MyResponse {
+    message: String,
+}
+
+pub async fn my_handler() -> impl IntoResponse {
+    Json(MyResponse {
+        message: "Hello!".to_string(),
+    })
+}
+#+end_src
+
+* Next Steps
+
+- Review and customize the example code in each package
+- Add your business logic
+- Update the tests
+- Configure CI/CD (see README.org for planned features)
+- Set up your deployment pipeline
+
+* Troubleshooting
+
+** Nix issues
+
+If you encounter issues with the Nix environment:
+
+#+begin_src sh :exports code
+# Rebuild the environment
+nix develop --rebuild
+
+# Clear direnv cache
+rm -rf .direnv
+direnv allow
+#+end_src
+
+** Build issues
+
+#+begin_src sh :exports code
+# Clean build artifacts
+cargo clean
+
+# Update dependencies
+cargo update
+#+end_src
+
+* Additional Resources
+
+- [[https://doc.rust-lang.org/book/][The Rust Book]]
+- [[https://docs.rs/axum/][Axum Documentation]]
+- [[https://docs.rs/clap/][Clap Documentation]]
+- [[https://docs.rs/tracing/][Tracing Documentation]]
