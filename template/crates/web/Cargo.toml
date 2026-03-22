@@ -31,8 +31,8 @@ tokio-listener = { workspace = true }
 tower = { workspace = true }
 tower-http = { workspace = true }
 prometheus = { workspace = true }
-utoipa = { workspace = true }
-utoipa-swagger-ui = { workspace = true }
+aide = { workspace = true }
+schemars = { workspace = true }
 sd-notify = { workspace = true }
 
 # tracing-journald connects to the systemd journal socket; unix-only.

@@ -1,3 +1,9 @@
+use aide::{
+  axum::{routing::get_with, ApiRouter},
+  openapi::OpenApi,
+  scalar::Scalar,
+  transform::TransformOperation,
+};
 use axum::{
   http::StatusCode,
   response::{IntoResponse, Response},
@@ -5,10 +11,10 @@ use axum::{
   Json, Router,
 };
 use prometheus::{Encoder, IntCounter, Registry, TextEncoder};
+use schemars::JsonSchema;
+use serde::Serialize;
 use serde_json::json;
 use std::sync::Arc;
-use utoipa::OpenApi;
-use utoipa_swagger_ui::SwaggerUi;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -34,53 +40,58 @@ impl AppState {
   }
 }
 
-#[derive(OpenApi)]
-#[openapi(
-    paths(healthz, metrics_endpoint),
-    tags(
-        (name = "health", description = "Health check endpoints"),
-        (name = "metrics", description = "Metrics endpoints")
-    )
-)]
-pub struct ApiDoc;
-
-pub fn base_router(state: AppState) -> Router {
-  let openapi = ApiDoc::openapi();
-
-  Router::new()
-    .route("/healthz", get(healthz))
-    .route("/metrics", get(metrics_endpoint))
-    .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", openapi))
-    .with_state(state)
+#[derive(Serialize, JsonSchema)]
+pub struct HealthResponse {
+  status: String,
 }
 
-#[utoipa::path(
-    get,
-    path = "/healthz",
-    tag = "health",
-    responses(
-        (status = 200, description = "Service is healthy", body = HealthResponse)
-    )
-)]
 async fn healthz() -> Json<HealthResponse> {
   Json(HealthResponse {
     status: "healthy".to_string(),
   })
 }
 
-#[derive(serde::Serialize, utoipa::ToSchema)]
-pub struct HealthResponse {
-  status: String,
+pub fn base_router(state: AppState) -> Router {
+  aide::generate::extract_schemas(true);
+  let mut api = OpenApi::default();
+
+  let app_router = ApiRouter::new()
+    .api_route(
+      "/healthz",
+      get_with(healthz, |op: TransformOperation| {
+        op.description("Health check.")
+      }),
+    )
+    .api_route(
+      "/metrics",
+      get_with(metrics_endpoint, |op: TransformOperation| {
+        op.description("Prometheus metrics in text/plain format.")
+      }),
+    )
+    .with_state(state)
+    .finish_api_with(&mut api, |a| a.title("rust-template"));
+
+  let api = Arc::new(api);
+
+  Router::new()
+    .merge(app_router)
+    .route(
+      "/api-docs/openapi.json",
+      get({
+        let api = api.clone();
+        move || async move { Json((*api).clone()) }
+      }),
+    )
+    .route(
+      "/scalar",
+      get(
+        Scalar::new("/api-docs/openapi.json")
+          .with_title("rust-template")
+          .axum_handler(),
+      ),
+    )
 }
 
-#[utoipa::path(
-    get,
-    path = "/metrics",
-    tag = "metrics",
-    responses(
-        (status = 200, description = "Prometheus metrics", content_type = "text/plain")
-    )
-)]
 async fn metrics_endpoint(
   axum::extract::State(state): axum::extract::State<AppState>,
 ) -> Response {

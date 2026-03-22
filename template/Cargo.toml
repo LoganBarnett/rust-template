@@ -40,9 +40,9 @@ toml = "0.8"
 thiserror = "2.0"
 
 # Web framework
-axum = "0.7"
+axum = "0.8"
 tokio = { version = "1.41", features = ["full"] }
-tokio-listener = { version = "0.5", features = ["axum07"] }
+tokio-listener = { version = "0.5", features = ["axum08"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["trace", "cors"] }
 
@@ -50,8 +50,8 @@ tower-http = { version = "0.6", features = ["trace", "cors"] }
 prometheus = "0.13"
 
 # OpenAPI
-utoipa = { version = "5.3", features = ["axum_extras"] }
-utoipa-swagger-ui = { version = "8.0", features = ["axum"] }
+aide = { version = "0.15", features = ["axum", "axum-json", "axum-query", "scalar", "macros"] }
+schemars = "0.9"
 
 # Shared library
 rust-template-lib = { path = "crates/lib" }

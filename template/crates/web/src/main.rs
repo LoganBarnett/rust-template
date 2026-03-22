@@ -18,7 +18,7 @@ mod systemd;
 
 use rust_template_web::web_base;
 
-use axum::Router;
+use axum::{serve, Router};
 use clap::Parser;
 use config::{CliRaw, Config, ConfigError};
 use logging::init_logging;
@@ -81,7 +81,7 @@ async fn main() -> Result<(), ApplicationError> {
   systemd::notify_ready();
   systemd::spawn_watchdog();
 
-  tokio_listener::axum07::serve(listener, app.into_make_service())
+  serve(listener, app.into_make_service())
     .with_graceful_shutdown(shutdown_signal())
     .await
     .map_err(|e| {

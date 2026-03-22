@@ -59,7 +59,7 @@ async fn test_metrics_endpoint() {
 }
 
 #[tokio::test]
-async fn test_openapi_endpoint() {
+async fn test_openapi_json_endpoint() {
   let state = AppState::new();
   let app = base_router(state);
 
@@ -80,43 +80,35 @@ async fn test_openapi_endpoint() {
     .unwrap();
   let body_str = String::from_utf8(body.to_vec()).unwrap();
 
-  assert!(
-    body_str.contains("openapi"),
-    "OpenAPI spec should contain 'openapi' field"
-  );
-  assert!(
-    body_str.contains("/healthz"),
-    "OpenAPI spec should document /healthz endpoint"
-  );
-  assert!(
-    body_str.contains("/metrics"),
-    "OpenAPI spec should document /metrics endpoint"
-  );
+  assert!(body_str.contains("openapi"), "Response should be an OpenAPI spec");
+  assert!(body_str.contains("/healthz"), "Spec should document /healthz");
+  assert!(body_str.contains("/metrics"), "Spec should document /metrics");
 }
 
 #[tokio::test]
-async fn test_swagger_ui_redirect() {
+async fn test_scalar_ui_endpoint() {
   let state = AppState::new();
   let app = base_router(state);
 
   let response = app
     .oneshot(
       Request::builder()
-        .uri("/swagger-ui")
+        .uri("/scalar")
         .body(Body::empty())
         .unwrap(),
     )
     .await
     .unwrap();
 
-  // The swagger UI endpoint should redirect (or be accessible)
+  assert_eq!(response.status(), StatusCode::OK);
+
+  let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+    .await
+    .unwrap();
+
   assert!(
-    response.status() == StatusCode::MOVED_PERMANENTLY
-      || response.status() == StatusCode::PERMANENT_REDIRECT
-      || response.status() == StatusCode::TEMPORARY_REDIRECT
-      || response.status() == StatusCode::SEE_OTHER
-      || response.status() == StatusCode::OK,
-    "Swagger UI should be accessible at /swagger-ui, got status: {:?}",
-    response.status()
+    body.starts_with(b"<!doctype html>")
+      || body.starts_with(b"<!DOCTYPE html>"),
+    "Scalar endpoint should return HTML"
   );
 }
