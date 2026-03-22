@@ -8,6 +8,7 @@ PROJECT_NAME=""
 DESCRIPTION=""
 CRATES="cli,web"
 OUTPUT=""
+PUBLIC=false
 
 usage() {
     cat <<EOF
@@ -18,10 +19,14 @@ Usage: $(basename "$0") --name <project-name> --output <path> [options]
   --description  One-line project description (optional).
   --crates       Comma-separated binary crates to include (default: cli,web).
                  Available: cli, web.  lib is always included.
+  --public       Mark the lib crate as publishable and include the crates.io
+                 publish workflow.  Without this flag the lib crate has
+                 publish = false and no publish workflow is emitted.
 
 Examples:
   $(basename "$0") --name my-app --output ~/dev/my-app
   $(basename "$0") --name my-svc --output ~/dev/my-svc --crates web --description "HTTP microservice"
+  $(basename "$0") --name my-lib --output ~/dev/my-lib --public
 EOF
     exit 1
 }
@@ -40,6 +45,7 @@ while [[ $# -gt 0 ]]; do
         --output)      OUTPUT="$2";       shift 2 ;;
         --description) DESCRIPTION="$2"; shift 2 ;;
         --crates)      CRATES="$2";       shift 2 ;;
+        --public)      PUBLIC=true;       shift ;;
         -h|--help)     usage ;;
         *) echo "Unknown option: $1" >&2; usage ;;
     esac
@@ -106,6 +112,15 @@ for crate in "${ALL_BINARY_CRATES[@]}"; do
         mv "$OUTPUT/flake.nix.tmp" "$OUTPUT/flake.nix"
     fi
 done
+
+if [[ "$PUBLIC" == true ]]; then
+    # Remove the publish = false guard from the lib crate so it can be
+    # published to crates.io.
+    sed_inplace '/^publish = false$/d' "$OUTPUT/crates/lib/Cargo.toml"
+else
+    # Remove the crates.io publish workflow; it has no use in a private project.
+    rm -rf "$OUTPUT/.github"
+fi
 
 echo "Done.  Next steps:"
 echo "  cd $OUTPUT"
