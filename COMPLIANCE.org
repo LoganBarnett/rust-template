@@ -1,0 +1,148 @@
+#+title:     Template Compliance
+#+language:  en
+
+A derived repository is *compliant* when its structure and infrastructure match
+what this template would have emitted for that project's configuration.
+Compliance is not about business logic — it is about plumbing.  A repo with no
+=/healthz= route in its web crate is out of compliance; a repo whose web crate
+serves a different domain than the template's placeholder is simply a real
+application.
+
+* Purpose
+
+Compliance work arises in two situations:
+
+1. *Retroactive adoption* — an existing project predates the template (or was
+   never generated from it) and needs to be reshaped so that future template
+   updates can roll in cleanly.
+
+2. *Rolling out a template update* — a new feature was added to the template and
+   needs to be propagated to repositories that were generated from an older
+   version.
+
+In both cases the work is purely additive or structural: bring in missing
+infrastructure, align file layout, and clean up the crate-to-role mapping.  It
+is never about removing the project's own business logic.
+
+* LLM role during compliance work
+
+An LLM performing compliance work must follow this discipline:
+
+- *Map, do not judge.* Decide which target crate corresponds to which template
+  role (see [[*Crate mapping]]).  Do not decide whether business features should
+  move, merge, or be removed — that is for the human.
+- *Enumerate gaps, then act.* Identify every compliance item that is absent from
+  the mapped crate before changing anything.  Summarize the gaps to the user
+  before proceeding, unless the user has explicitly asked the LLM to apply
+  changes autonomously.
+- *Apply infrastructure, not opinions.* Bring in the missing plumbing verbatim
+  from the template.  Do not redesign the feature to suit the target codebase.
+- *Leave business logic alone.* Existing route handlers, domain types, error
+  variants, and application-specific configuration are not compliance items and
+  must not be touched unless the user asks.
+- *Preserve the project's crate names.* Compliance does not require renaming
+  crates to match the template's =cli= / =web= / =lib= names.  The mapping is
+  conceptual.
+
+* Crate mapping
+
+Each target repo has crates that play the roles the template names =cli=, =web=,
+and =lib=.  The names in the target repo will differ; the roles are what matter.
+
+| Template role | Identifying signals |
+|---------------+-----------------------------------------------------|
+| =lib=         | A library crate (=lib.rs= at crate root, no =main.rs=) used by the other crates.  Every compliant repo must have at least one crate in this role. |
+| =cli=         | A binary crate that parses command-line arguments with Clap and exits after completing work. |
+| =web=         | A binary crate that binds a listener, serves HTTP, and runs indefinitely. |
+
+A target repo may have more crates than the template (workers, daemons, etc.).
+Extra crates are not non-compliant; they simply do not have a direct template
+counterpart.  Apply the general [[*Cross-role compliance items]] to them.
+
+* Compliance items by role
+
+Items marked *required* must be present in every compliant crate of that role.
+Items marked *conditional* apply only when the target crate uses the related
+feature.
+
+** Cross-role compliance items
+
+These apply to every crate regardless of role.
+
+| Item | Required | Description |
+|------+----------+-------------|
+| Workspace metadata inheritance | Required | =Cargo.toml= uses =.workspace = true= for =version=, =edition=, =authors=, =license=, =repository=. |
+| Semantic error types | Required | Errors are defined with =thiserror=.  Variants name the operation, not just the underlying OS error.  See =ERROR_HANDLING.org=. |
+| Staged configuration | Required (binaries) | Configuration flows =CliRaw= → =ConfigFileRaw= → =Config=.  =Config= is fully validated before use. |
+| =config.rs= module | Required (binaries) | Configuration logic lives in its own file, not in =main.rs=. |
+| =logging.rs= module | Required (binaries) | Logging initialization lives in its own file and delegates to the lib crate's logging infrastructure. |
+| Integration tests | Required | At least one integration test under =crates/<name>/tests/=. |
+| =rustfmt.toml= | Required (workspace) | The workspace =rustfmt.toml= is present and unmodified. |
+| Pre-commit hook | Required (workspace) | =.cargo-husky/= is present and enforces =rustfmt= before commits. |
+| Nix dev shell | Required (workspace) | =flake.nix= is present with a working =devShells.default=. |
+
+** =lib= crate compliance items
+
+| Item | Required | Description |
+|------+----------+-------------|
+| Logging infrastructure | Required | =crates/lib/src/logging.rs= (or equivalent) exports =LogLevel=, =LogFormat=, and an =init_logging= function.  Binary crates delegate to this. |
+| No =main.rs= | Required | The lib crate must not contain a =main.rs=. |
+
+** =web= crate compliance items
+
+| Item | Required | Description |
+|------+----------+-------------|
+| =/healthz= endpoint | Required | =GET /healthz= returns ={"status":"healthy"}= (or equivalent JSON).  Must be part of the =base_router=, not mixed into application routes. |
+| =/metrics= endpoint | Required | =GET /metrics= returns Prometheus text-format metrics via the =prometheus= crate. |
+| OpenAPI / Swagger UI | Required | =/swagger-ui= and =/api-docs/openapi.json= are served via =utoipa= + =utoipa-swagger-ui=.  The =ApiDoc= struct annotates at minimum the health and metrics paths. |
+| =AppState= with Prometheus registry | Required | An =AppState= struct holds an =Arc<Registry>= and at minimum an =http_requests_total= counter.  State is passed through Axum's =with_state=. |
+| =web_base= module | Required | Health, metrics, OpenAPI setup, and =AppState= live in a =web_base= module (lib crate or inline module), separate from application routes and from =main.rs=. |
+| =TraceLayer= | Required | =tower_http::trace::TraceLayer::new_for_http()= is applied to the router. |
+| Graceful shutdown | Required | The server calls =.with_graceful_shutdown(shutdown_signal())= where =shutdown_signal= awaits both SIGINT and SIGTERM. |
+| =tokio-listener= binding | Required | The listener is created via =tokio_listener::Listener::bind= and served via =tokio_listener::axum07::serve=.  This enables Unix domain socket and systemd socket-activation support. |
+| Systemd notifications | Required | =systemd::notify_ready()= and =systemd::spawn_watchdog()= are called after the listener binds, before the server starts serving. |
+| Separate =host= and =port= args | Required | The bind address is specified as two separate CLI arguments, not a single combined string.  This makes NixOS module options cleaner. |
+
+** =cli= crate compliance items
+
+| Item | Required | Description |
+|------+----------+-------------|
+| Clap for argument parsing | Required | =CliRaw= derives =clap::Parser=. |
+| Exits after work | Required | The binary returns from =main= (or calls =process::exit=) after completing its task.  It does not run an event loop. |
+
+* Compliance process
+
+1. *Identify the crate mapping.* List each target crate and decide its template
+   role.  Record any crates without a direct template counterpart.
+
+2. *Audit each mapped crate.* For each compliance item in the relevant role
+   table, note whether it is present, absent, or partially present.  Produce a
+   gap list.
+
+3. *Report gaps to the user.* Present the gap list.  Call out any gaps that
+   require non-trivial restructuring (e.g., a web crate with no separation
+   between application routes and infrastructure).  Wait for confirmation before
+   proceeding, unless operating autonomously.
+
+4. *Apply compliance items.* Bring in missing items one crate at a time.  Copy
+   infrastructure from the template verbatim where possible; adapt only where
+   the target codebase makes verbatim copying impossible (e.g., different Axum
+   state type).
+
+5. *Verify.* Run the full build and test suite:
+   #+begin_src sh :exports code
+   nix develop --command cargo build --workspace
+   nix develop --command cargo test --workspace
+   #+end_src
+   Both must succeed with no errors before declaring compliance work done.
+
+* What compliance does not cover
+
+- Business logic, domain types, route handlers, or application-specific
+  configuration fields.
+- Crate names or directory layout (=crates/web= vs =crates/my-app-web= etc.).
+- Whether to keep or remove a crate that has no template counterpart.
+- The content of =README.org= or other project documentation.
+- Any decision that requires understanding the project's domain.
+
+These are for the human.

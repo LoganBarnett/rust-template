@@ -218,7 +218,9 @@ Or merge selectively and resolve conflicts, preserving your customizations.
 * LLM instructions
 
 This section describes what an LLM agent should do when asked to apply this
-template to a new project.
+template to a new project.  For bringing an existing project into alignment
+with the template (retroactive adoption or rolling out a template update), see
+=COMPLIANCE.org=.
 
 ** Read the project brief first
 
