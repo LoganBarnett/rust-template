@@ -20,7 +20,7 @@ An opinionated Rust workspace template.  Clone this repository once; use
 | Option          | Required | Description                                              |
 |-----------------+----------+----------------------------------------------------------|
 | =--name=        | yes      | Project name — used for package names and identifiers.   |
-| =--output=      | yes      | Destination directory (must not already exist).          |
+| =--output=      | yes      | Destination directory (must be empty or not yet exist).  |
 | =--description= | no       | One-line description substituted into project metadata.  |
 | =--crates=      | no       | Comma-separated binary crates to include (default: cli,web). =lib= is always included. |
 | =--public=      | no       | Mark the lib crate for publishing to crates.io.  Includes CI, automated version bumping, and a publish workflow.  Without this flag =publish = false= is set on the lib crate and no GitHub workflows are emitted. |

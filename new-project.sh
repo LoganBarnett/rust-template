@@ -15,7 +15,7 @@ usage() {
 Usage: $(basename "$0") --name <project-name> --output <path> [options]
 
   --name         Project name, used for directory and package names.
-  --output       Destination directory (must not already exist).
+  --output       Destination directory (must be empty or not yet exist).
   --description  One-line project description (optional).
   --crates       Comma-separated binary crates to include (default: cli,web).
                  Available: cli, web.  lib is always included.
