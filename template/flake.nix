@@ -74,9 +74,11 @@
     ];
   in {
 
-    devShells = forAllSystems (system: {
-      default = (pkgsFor system).mkShell {
-        buildInputs = devPackages (pkgsFor system);
+    devShells = forAllSystems (system: let
+      pkgs = pkgsFor system;
+    in {
+      default = pkgs.mkShell {
+        buildInputs = devPackages pkgs;
         shellHook = ''
           echo "Rust Template development environment"
           echo ""
@@ -85,6 +87,22 @@
             jq -r '.packages[].name' | \
             sort | \
             sed 's/^/  • /' || echo "  Run 'cargo init' to get started"
+
+          # Symlink cargo-husky hooks into .git/hooks/ using paths relative
+          # to .git/hooks/ so the repo stays valid after moves or copies.
+          _git_root=$(git rev-parse --show-toplevel 2>/dev/null)
+          if [ -n "$_git_root" ] && [ -d ".cargo-husky/hooks" ]; then
+            for _hook in .cargo-husky/hooks/*; do
+              [ -x "$_hook" ] || continue
+              _name=$(basename "$_hook")
+              _dest="$_git_root/.git/hooks/$_name"
+              _target=$(${pkgs.coreutils}/bin/realpath --relative-to="$_git_root/.git/hooks" "$(pwd)/$_hook")
+              if [ ! -L "$_dest" ] || [ "$(readlink "$_dest")" != "$_target" ]; then
+                ln -sf "$_target" "$_dest"
+                echo "Installed git hook: $_name -> $_target"
+              fi
+            done
+          fi
         '';
       };
     });
