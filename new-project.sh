@@ -122,6 +122,15 @@ else
     rm -rf "$OUTPUT/.github"
 fi
 
+# Write template provenance so forward-porting can scope diffs precisely
+# (see COMPLIANCE.org § "Forward-porting template updates").
+TEMPLATE_HASH="$(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")"
+cat > "$OUTPUT/rust-template.json" <<EOF
+{
+  "template_sync_hashes": ["$TEMPLATE_HASH"]
+}
+EOF
+
 echo "Done.  Next steps:"
 echo "  cd $OUTPUT"
 echo "  git init && git add . && git commit -m 'Initial commit'"

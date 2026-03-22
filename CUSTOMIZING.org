@@ -343,27 +343,50 @@ specific-crate = "1.0"  # Not in workspace dependencies
 - Customize the ~README.org~ with your project details
 - Add your business logic!
 
-* Template Maintenance
+* Forward-porting template updates
 
-If you want to pull updates from the template into your customized project:
+When the template is updated after your project was emitted, use
+=rust-template.json= at the project root to determine exactly what has changed
+rather than guessing from a structural comparison.
 
-1. Add the template as a remote:
-   #+begin_src sh :exports code
-   git remote add template <template-repo-url>
-   #+end_src
+** 1. Find the base hash
 
-2. Fetch changes:
-   #+begin_src sh :exports code
-   git fetch template
-   #+end_src
+Open =rust-template.json= and take the last entry in =template_sync_hashes=.
+That is your diff base.  If the list is empty (project predates this file),
+skip to step 3 and do a full structural audit instead.
 
-3. Cherry-pick specific improvements:
-   #+begin_src sh :exports code
-   git cherry-pick <commit-hash>
-   #+end_src
+** 2. Diff the template
 
-4. Or merge carefully:
-   #+begin_src sh :exports code
-   git merge template/main --no-commit
-   # Resolve conflicts, keeping your customizations
-   #+end_src
+In the template repository:
+
+#+begin_src sh :exports code
+git diff <last-hash>..HEAD
+#+end_src
+
+This gives a precise list of what changed in the template since the last sync.
+
+** 3. Apply the changes
+
+Follow the compliance discipline in =COMPLIANCE.org=: enumerate gaps, confirm
+with the user, apply infrastructure changes only.  Leave business logic alone.
+
+** 4. Update rust-template.json
+
+After porting, append the current template HEAD to =template_sync_hashes= so
+the next port starts from the correct position:
+
+#+begin_src sh :exports code
+# Get the current template HEAD
+git -C <path-to-template-repo> rev-parse HEAD
+#+end_src
+
+#+begin_src json :exports code
+{
+  "template_sync_hashes": [
+    "<previous hashes unchanged>",
+    "<paste the new hash here>"
+  ]
+}
+#+end_src
+
+Commit =rust-template.json= together with the ported changes.

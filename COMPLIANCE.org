@@ -80,6 +80,7 @@ These apply to every crate regardless of role.
 | =rustfmt.toml= | Required (workspace) | The workspace =rustfmt.toml= is present and unmodified. |
 | Pre-commit hook | Required (workspace) | =.cargo-husky/= is present and enforces =rustfmt= before commits. |
 | Nix dev shell | Required (workspace) | =flake.nix= is present with a working =devShells.default=. |
+| Template provenance | Required (workspace) | =rust-template.json= is present at the project root and committed.  Contains a =template_sync_hashes= list of template commit hashes, one per sync event (emission or forward port), oldest first.  The last entry is the base for the next forward-port diff.  Projects predating this file may start with an empty list.  See [[*Forward-porting template updates]]. |
 
 ** =lib= crate compliance items
 
@@ -135,6 +136,35 @@ These apply to every crate regardless of role.
    nix develop --command cargo test --workspace
    #+end_src
    Both must succeed with no errors before declaring compliance work done.
+
+* Forward-porting template updates
+
+When the template changes after a project was emitted, use =rust-template.json=
+to scope exactly which template changes need porting rather than doing a full
+structural diff.
+
+1. *Determine the base hash.*  Open =rust-template.json= in the derived repo
+   and take the last entry in =template_sync_hashes=.  If the list is empty
+   (project predates this file), no scoped diff is possible — fall back to a
+   full structural audit.
+
+2. *Diff the template.*  In the template repository, run:
+   #+begin_src sh :exports code
+   git diff <last-hash>..HEAD
+   #+end_src
+   This shows exactly what has changed in the template since the last sync.
+   Ignore changes that are clearly project-name substitutions or business logic
+   unrelated to the derived project's crates.
+
+3. *Apply the relevant changes.*  Follow the [[*Compliance process]] discipline:
+   enumerate gaps, report to the user, apply infrastructure changes only.
+
+4. *Update the record.*  After porting, append the current template HEAD to
+   =template_sync_hashes= in =rust-template.json= and commit the file together
+   with the ported changes:
+   #+begin_src sh :exports code
+   git -C <path-to-template-repo> rev-parse HEAD
+   #+end_src
 
 * What compliance does not cover
 
