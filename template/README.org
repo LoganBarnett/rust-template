@@ -1,0 +1,64 @@
+#+title:     <project-name>
+#+language:  en
+
+* Introduction
+
+Briefly describe the problem this project solves and how it solves it.
+Cover:
+
+- What pain point or workflow does this address?
+- How does this project fit into a user's existing toolchain?
+- What are the two or three things a reader should know immediately?
+
+Keep this section short — two or three paragraphs at most.
+
+* Installation
+
+Explain how to install the project.  Cover at minimum:
+
+- Installing from source (include any toolchain or system prerequisites).
+- Installing a pre-built release artifact, if applicable.
+- Installing the library crate via ~Cargo.toml~, if the project ships
+  one.
+
+* Usage
+
+Show the most common invocations with concrete, copy-pasteable
+examples.  Prefer real-looking inputs and outputs over abstract
+placeholders.
+
+Organize sub-sections around the features a user is most likely to
+reach for first.  Avoid exhaustively listing every flag here — the
+~--help~ output covers that.
+
+* Gotchas and Tradeoffs
+
+Document the non-obvious behaviors and design decisions that a user
+is likely to trip over:
+
+- Default behaviors that differ from what users might expect.
+- Known limitations (finite color palette, heuristic detection, etc.).
+- Performance or correctness tradeoffs made deliberately.
+- Anything where "it depends" or "by design" is the honest answer.
+
+* How to Exercise Various Features
+
+Provide a brief tour of less-obvious knobs:
+
+- Environment variables that mirror CLI flags.
+- Flags that interact non-trivially with each other.
+- Edge cases worth demonstrating (empty input, special characters,
+  large input, etc.).
+
+This section can be more terse than the main Usage section — its
+purpose is discoverability, not a tutorial.
+
+* Contributing
+
+Summarize the contribution workflow and link to the full guide:
+
+- How to run the test suite.
+- Code formatting and lint requirements.
+- Where to open issues or send patches.
+
+See [[file:CONTRIBUTING.org][CONTRIBUTING.org]] for details.
