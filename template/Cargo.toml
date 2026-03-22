@@ -17,6 +17,10 @@ repository = "https://github.com/yourusername/rust-template"
 # Logging and tracing
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"] }
+tracing-journald = "0.3"
+
+# Systemd integration
+sd-notify = "0.4"
 
 # Utilities
 # tap - Enables method chaining and reduces superfluous local variables

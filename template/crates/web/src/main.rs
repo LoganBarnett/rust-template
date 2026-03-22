@@ -10,9 +10,11 @@
 //! - Add context at each error site explaining WHAT failed and WHY
 //! - Preserve graceful shutdown handling (SIGTERM/SIGINT)
 //! - Keep logging structured and consistent
+//! - Preserve systemd::notify_ready() and systemd::spawn_watchdog() after bind
 
 mod config;
 mod logging;
+mod systemd;
 
 use rust_template_web::web_base;
 
@@ -78,6 +80,9 @@ async fn main() -> Result<(), ApplicationError> {
     "API documentation available at http://{}/swagger-ui",
     config.bind_address
   );
+
+  systemd::notify_ready();
+  systemd::spawn_watchdog();
 
   axum::serve(listener, app)
     .with_graceful_shutdown(shutdown_signal())

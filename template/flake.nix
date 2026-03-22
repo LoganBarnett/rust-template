@@ -51,7 +51,8 @@
       };
       # CRATE:web:end
 
-      # Note: The 'lib' crate is not included here as it doesn't produce a binary
+      # Note: The 'lib' crate is not included here as it doesn't produce a
+      # binary.
     };
 
     # Development shell packages.
