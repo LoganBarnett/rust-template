@@ -84,9 +84,13 @@ After running =new-project.sh=, a few things still need manual attention.
 If you passed =--public=, three things need to be done on GitHub before the
 workflows are fully operational:
 
-1. *Add the =CARGO_REGISTRY_TOKEN= secret* under Settings → Secrets and
-   variables → Actions.  Generate a token at [[https://crates.io/settings/tokens][crates.io/settings/tokens]] scoped
-   to =publish-new= and =publish-update=.
+1. *Add the =CARGO_REGISTRY_TOKEN= secret.*  Generate a token at
+   [[https://crates.io/settings/tokens][crates.io/settings/tokens]] scoped to =publish-new= and =publish-update=,
+   then:
+   #+begin_src sh :exports code
+   echo "<token>" | gh secret set CARGO_REGISTRY_TOKEN
+   #+end_src
+   (Alternatively: Settings → Secrets and variables → Actions.)
 
 2. *Enable branch protection on =main=* (Settings → Branches → Add rule).
    Require the =Test= status check to pass before merging.  This enforces the
