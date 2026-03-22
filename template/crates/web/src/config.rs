@@ -1,9 +1,9 @@
 use clap::Parser;
 use rust_template_lib::{LogFormat, LogLevel};
 use serde::Deserialize;
-use std::net::SocketAddr;
 use std::path::PathBuf;
 use thiserror::Error;
+use tokio_listener::ListenerAddress;
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
@@ -26,11 +26,10 @@ pub enum ConfigError {
   #[error("Configuration validation failed: {0}")]
   Validation(String),
 
-  #[error("Failed to parse bind address '{address}': {source}")]
-  AddressParse {
+  #[error("Invalid listen address '{address}': {reason}")]
+  InvalidListenAddress {
     address: String,
-    #[source]
-    source: std::net::AddrParseError,
+    reason: &'static str,
   },
 }
 
@@ -49,21 +48,17 @@ pub struct CliRaw {
   #[arg(short, long, env = "CONFIG_FILE")]
   pub config: Option<PathBuf>,
 
-  /// Host/IP address to bind to
-  #[arg(long, env = "HOST")]
-  pub host: Option<String>,
-
-  /// Port to bind to
-  #[arg(long, env = "PORT")]
-  pub port: Option<u16>,
+  /// Address to listen on: host:port for TCP, /path/to.sock for Unix socket,
+  /// or sd-listen to inherit a socket from systemd
+  #[arg(long, env = "LISTEN")]
+  pub listen: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Default)]
 pub struct ConfigFileRaw {
   pub log_level: Option<String>,
   pub log_format: Option<String>,
-  pub host: Option<String>,
-  pub port: Option<u16>,
+  pub listen: Option<String>,
 }
 
 impl ConfigFileRaw {
@@ -89,7 +84,7 @@ impl ConfigFileRaw {
 pub struct Config {
   pub log_level: LogLevel,
   pub log_format: LogFormat,
-  pub bind_address: SocketAddr,
+  pub listen_address: ListenerAddress,
 }
 
 impl Config {
@@ -123,26 +118,23 @@ impl Config {
       .parse::<LogFormat>()
       .map_err(|e| ConfigError::Validation(e.to_string()))?;
 
-    let host = cli
-      .host
-      .or(config_file.host)
-      .unwrap_or_else(|| "127.0.0.1".to_string());
+    let listen_str = cli
+      .listen
+      .or(config_file.listen)
+      .unwrap_or_else(|| "127.0.0.1:3000".to_string());
 
-    let port = cli.port.or(config_file.port).unwrap_or(3000);
-
-    let address_string = format!("{}:{}", host, port);
-    let bind_address =
-      address_string
-        .parse()
-        .map_err(|source| ConfigError::AddressParse {
-          address: address_string.clone(),
-          source,
-        })?;
+    let listen_address =
+      listen_str.parse::<ListenerAddress>().map_err(|reason| {
+        ConfigError::InvalidListenAddress {
+          address: listen_str.clone(),
+          reason,
+        }
+      })?;
 
     Ok(Config {
       log_level,
       log_format,
-      bind_address,
+      listen_address,
     })
   }
 }

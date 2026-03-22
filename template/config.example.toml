@@ -9,5 +9,6 @@ log_format = "text"  # Options: text, json
 # name = "World"
 
 # Web-specific options
-# host = "127.0.0.1"  # Host/IP address to bind to
-# port = 3000         # Port to bind to
+# listen = "127.0.0.1:3000"  # TCP: host:port
+# listen = "/run/myapp/myapp.sock"  # Unix domain socket path
+# listen = "sd-listen"  # Inherit socket from systemd (socket activation)

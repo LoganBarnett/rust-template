@@ -27,6 +27,7 @@ thiserror = { workspace = true }
 tap = { workspace = true }  # For method chaining, reduces superfluous locals
 axum = { workspace = true }
 tokio = { workspace = true }
+tokio-listener = { workspace = true }
 tower = { workspace = true }
 tower-http = { workspace = true }
 prometheus = { workspace = true }

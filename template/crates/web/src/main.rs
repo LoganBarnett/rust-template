@@ -22,7 +22,6 @@ use axum::Router;
 use clap::Parser;
 use config::{CliRaw, Config, ConfigError};
 use logging::init_logging;
-use std::net::SocketAddr;
 use thiserror::Error;
 use tokio::signal;
 use tower_http::trace::TraceLayer;
@@ -34,9 +33,9 @@ enum ApplicationError {
   #[error("Failed to load configuration during startup: {0}")]
   ConfigurationLoad(#[from] ConfigError),
 
-  #[error("Failed to bind server to address {address}: {source}")]
-  ServerBind {
-    address: SocketAddr,
+  #[error("Failed to bind listener to {address}: {source}")]
+  ListenerBind {
+    address: String,
     source: std::io::Error,
   },
 
@@ -57,34 +56,32 @@ async fn main() -> Result<(), ApplicationError> {
 
   info!("Starting rust-template-web");
   info!("Configuration loaded successfully");
-  info!("Binding to {}", config.bind_address);
+  info!("Binding to {}", config.listen_address);
 
   let state = AppState::new();
 
   let app = create_app(state);
 
-  let listener = tokio::net::TcpListener::bind(&config.bind_address)
-    .await
-    .map_err(|e| {
-      error!("Failed to bind to {}: {}", config.bind_address, e);
-      ApplicationError::ServerBind {
-        address: config.bind_address,
-        source: e,
-      }
-    })?;
+  let listener = tokio_listener::Listener::bind(
+    &config.listen_address,
+    &tokio_listener::SystemOptions::default(),
+    &tokio_listener::UserOptions::default(),
+  )
+  .await
+  .map_err(|source| {
+    error!("Failed to bind to {}: {}", config.listen_address, source);
+    ApplicationError::ListenerBind {
+      address: config.listen_address.to_string(),
+      source,
+    }
+  })?;
 
-  info!("Server listening on {}", config.bind_address);
-  info!("Health check available at http://{}/healthz", config.bind_address);
-  info!("Metrics available at http://{}/metrics", config.bind_address);
-  info!(
-    "API documentation available at http://{}/swagger-ui",
-    config.bind_address
-  );
+  info!("Server listening on {}", config.listen_address);
 
   systemd::notify_ready();
   systemd::spawn_watchdog();
 
-  axum::serve(listener, app)
+  tokio_listener::axum07::serve(listener, app.into_make_service())
     .with_graceful_shutdown(shutdown_signal())
     .await
     .map_err(|e| {
