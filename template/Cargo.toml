@@ -58,3 +58,30 @@ schemars = "0.9"
 
 # Shared library
 rust-template-lib = { path = "crates/lib" }
+
+# ============================================================================
+# BUILD PROFILES
+# ============================================================================
+# Without these settings, target/debug can easily reach 20-40 GB on
+# non-trivial projects.  Dependencies are the primary culprit.
+#
+# See https://doc.rust-lang.org/cargo/reference/profiles.html
+
+[profile.dev]
+# Retain debug symbols for first-party code so backtraces name our
+# own functions correctly.
+debug = true
+
+[profile.dev.package."*"]
+# Strip debug symbols from all dependency crates.  This is the single
+# biggest disk savings available and has no effect on debugging our
+# own code.
+debug = false
+# Optimize dependencies even in dev builds.  Libraries like tokio and
+# axum are bottlenecks when unoptimized; this makes the program run at
+# near-release speed during development with minimal extra compile time
+# on subsequent incremental builds.
+opt-level = 3
+
+[profile.release]
+debug = false
