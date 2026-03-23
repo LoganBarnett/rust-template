@@ -115,7 +115,7 @@
           # Symlink cargo-husky hooks into .git/hooks/ using paths relative
           # to .git/hooks/ so the repo stays valid after moves or copies.
           _git_root=$(git rev-parse --show-toplevel 2>/dev/null)
-          if [ -n "$_git_root" ] && [ -d ".cargo-husky/hooks" ]; then
+          if [ -n "$_git_root" ] && [ "$(pwd)" = "$_git_root" ] && [ -d ".cargo-husky/hooks" ]; then
             for _hook in .cargo-husky/hooks/*; do
               [ -x "$_hook" ] || continue
               _name=$(basename "$_hook")
