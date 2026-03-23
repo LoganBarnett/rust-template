@@ -44,7 +44,10 @@ axum = "0.8"
 tokio = { version = "1.41", features = ["full"] }
 tokio-listener = { version = "0.5", features = ["axum08"] }
 tower = "0.5"
-tower-http = { version = "0.6", features = ["trace", "cors"] }
+tower-http = { version = "0.6", features = ["trace", "cors", "fs", "set-header"] }
+
+# Testing
+tempfile = "3"
 
 # OpenMetrics/Prometheus
 prometheus = "0.13"

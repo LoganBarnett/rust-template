@@ -5,7 +5,7 @@ use aide::{
   transform::TransformOperation,
 };
 use axum::{
-  http::StatusCode,
+  http::{header, HeaderValue, StatusCode},
   response::{IntoResponse, Response},
   routing::get,
   Json, Router,
@@ -14,16 +14,22 @@ use prometheus::{Encoder, IntCounter, Registry, TextEncoder};
 use schemars::JsonSchema;
 use serde::Serialize;
 use serde_json::json;
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
+use tower::ServiceBuilder;
+use tower_http::{
+  services::{ServeDir, ServeFile},
+  set_header::SetResponseHeaderLayer,
+};
 
 #[derive(Clone)]
 pub struct AppState {
   pub registry: Arc<Registry>,
   pub request_counter: IntCounter,
+  pub frontend_path: PathBuf,
 }
 
 impl AppState {
-  pub fn new() -> Self {
+  pub fn new(frontend_path: PathBuf) -> Self {
     let registry = Registry::new();
     let request_counter =
       IntCounter::new("http_requests_total", "Total HTTP requests")
@@ -36,6 +42,7 @@ impl AppState {
     Self {
       registry: Arc::new(registry),
       request_counter,
+      frontend_path,
     }
   }
 }
@@ -53,6 +60,7 @@ async fn healthz() -> Json<HealthResponse> {
 
 pub fn base_router(state: AppState) -> Router {
   aide::generate::extract_schemas(true);
+  let frontend_path = state.frontend_path.clone();
   let mut api = OpenApi::default();
 
   let app_router = ApiRouter::new()
@@ -89,6 +97,17 @@ pub fn base_router(state: AppState) -> Router {
           .with_title("rust-template")
           .axum_handler(),
       ),
+    )
+    .fallback_service(
+      ServiceBuilder::new()
+        .layer(SetResponseHeaderLayer::overriding(
+          header::CACHE_CONTROL,
+          HeaderValue::from_static("no-store"),
+        ))
+        .service(
+          ServeDir::new(&frontend_path)
+            .fallback(ServeFile::new(frontend_path.join("index.html"))),
+        ),
     )
 }
 

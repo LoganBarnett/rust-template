@@ -24,12 +24,14 @@
 #
 # Note: when using socket mode the reverse proxy user must be a member of
 # the service group (cfg.group) so it can connect to the socket.
-{ self }:
-{ config, lib, pkgs, ... }:
-let
+{self}: {
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
   cfg = config.services.rust-template-web;
-in
-{
+in {
   options.services.rust-template-web = {
     enable = lib.mkEnableOption "rust-template-web web service";
 
@@ -66,18 +68,27 @@ in
     };
 
     logLevel = lib.mkOption {
-      type = lib.types.enum [ "trace" "debug" "info" "warn" "error" ];
+      type = lib.types.enum ["trace" "debug" "info" "warn" "error"];
       default = "info";
       description = "Tracing log verbosity level.";
     };
 
     logFormat = lib.mkOption {
-      type = lib.types.enum [ "text" "json" ];
+      type = lib.types.enum ["text" "json"];
       default = "json";
       description = ''
         Log output format.  Use "text" for human-readable local logs and
         "json" for structured logs consumed by a log aggregator.
       '';
+    };
+
+    frontendPath = lib.mkOption {
+      type = lib.types.str;
+      default = "${cfg.package}/share/rust-template-web/frontend";
+      defaultText =
+        lib.literalExpression
+        ''"''${cfg.package}/share/rust-template-web/frontend"'';
+      description = "Path to compiled frontend static assets.";
     };
 
     user = lib.mkOption {
@@ -100,7 +111,7 @@ in
       description = "rust-template-web service user";
     };
 
-    users.groups.${cfg.group} = { };
+    users.groups.${cfg.group} = {};
 
     # Create the socket directory before the socket unit tries to bind.
     systemd.tmpfiles.rules = lib.mkIf (cfg.socket != null) [
@@ -111,7 +122,7 @@ in
     # passes the open file descriptor to the service on first activation.
     systemd.sockets.rust-template-web = lib.mkIf (cfg.socket != null) {
       description = "rust-template-web Unix domain socket";
-      wantedBy = [ "sockets.target" ];
+      wantedBy = ["sockets.target"];
       socketConfig = {
         ListenStream = cfg.socket;
         SocketUser = cfg.user;
@@ -125,8 +136,9 @@ in
 
     systemd.services.rust-template-web = {
       description = "rust-template-web web service";
-      wantedBy = [ "multi-user.target" ];
-      after = [ "network.target" ]
+      wantedBy = ["multi-user.target"];
+      after =
+        ["network.target"]
         ++ lib.optional (cfg.socket != null) "rust-template-web.socket";
       requires =
         lib.optional (cfg.socket != null) "rust-template-web.socket";
@@ -150,10 +162,14 @@ in
         # Override via systemd.services.rust-template-web.serviceConfig.WatchdogSec.
         WatchdogSec = lib.mkDefault "30s";
 
-        ExecStart = "${cfg.package}/bin/rust-template-web"
-          + (if cfg.socket != null
-             then " --listen sd-listen"
-             else " --listen ${cfg.host}:${toString cfg.port}");
+        ExecStart =
+          "${cfg.package}/bin/rust-template-web"
+          + (
+            if cfg.socket != null
+            then " --listen sd-listen"
+            else " --listen ${cfg.host}:${toString cfg.port}"
+          )
+          + " --frontend-path ${cfg.frontendPath}";
 
         User = cfg.user;
         Group = cfg.group;

@@ -12,3 +12,4 @@ log_format = "text"  # Options: text, json
 # listen = "127.0.0.1:3000"  # TCP: host:port
 # listen = "/run/myapp/myapp.sock"  # Unix domain socket path
 # listen = "sd-listen"  # Inherit socket from systemd (socket activation)
+# frontend_path = "frontend/public"  # Path to compiled Elm frontend assets

@@ -1,30 +1,25 @@
 #!/bin/sh
-#
-# This hook was set by cargo-husky v1.5.0: https://github.com/rhysd/cargo-husky#readme
-# Pre-commit hook for Rust projects
-# Automatically formats staged Rust files before committing.
+# Pre-commit hook: format all staged files using treefmt.
 
 set -e
 
-# Get list of staged Rust files
-# --staged: only files in the staging area
-# --name-only: show only filenames, not diffs
-# --diff-filter=ACM: only Added, Copied, or Modified files (not Deleted)
-STAGED_RS_FILES=$(git diff --staged --name-only --diff-filter=ACM | grep '\.rs$' || true)
+# Collect staged filenames (Added, Copied, or Modified only).
+STAGED_FILES=$(git diff --staged --name-only --diff-filter=ACM || true)
 
-if [ -z "$STAGED_RS_FILES" ]; then
-  echo "No Rust files staged for commit."
+if [ -z "$STAGED_FILES" ]; then
   exit 0
 fi
 
-echo "Formatting staged Rust files..."
+echo "Formatting staged files..."
 
-# Format each staged file and re-add it to staging area
-for file in $STAGED_RS_FILES; do
-  echo "  - $file"
-  rustfmt "$file"
-  # Re-stage the file after formatting
-  git add "$file"
+# Run treefmt on each staged file.  Word-splitting is intentional here;
+# filenames with spaces are not expected in this repository.
+# shellcheck disable=SC2086
+treefmt $STAGED_FILES
+
+# Re-stage the files after formatting.
+for f in $STAGED_FILES; do
+  git add "$f"
 done
 
-echo "✓ Staged files formatted and re-staged successfully."
+echo "Staged files formatted and re-staged."

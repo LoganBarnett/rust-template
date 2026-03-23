@@ -52,6 +52,10 @@ pub struct CliRaw {
   /// or sd-listen to inherit a socket from systemd
   #[arg(long, env = "LISTEN")]
   pub listen: Option<String>,
+
+  /// Path to compiled frontend static assets
+  #[arg(long, env = "FRONTEND_PATH")]
+  pub frontend_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -59,6 +63,7 @@ pub struct ConfigFileRaw {
   pub log_level: Option<String>,
   pub log_format: Option<String>,
   pub listen: Option<String>,
+  pub frontend_path: Option<PathBuf>,
 }
 
 impl ConfigFileRaw {
@@ -85,6 +90,7 @@ pub struct Config {
   pub log_level: LogLevel,
   pub log_format: LogFormat,
   pub listen_address: ListenerAddress,
+  pub frontend_path: PathBuf,
 }
 
 impl Config {
@@ -131,10 +137,16 @@ impl Config {
         }
       })?;
 
+    let frontend_path = cli
+      .frontend_path
+      .or(config_file.frontend_path)
+      .unwrap_or_else(|| PathBuf::from("frontend/public"));
+
     Ok(Config {
       log_level,
       log_format,
       listen_address,
+      frontend_path,
     })
   }
 }

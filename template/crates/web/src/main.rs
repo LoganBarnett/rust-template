@@ -58,7 +58,7 @@ async fn main() -> Result<(), ApplicationError> {
   info!("Configuration loaded successfully");
   info!("Binding to {}", config.listen_address);
 
-  let state = AppState::new();
+  let state = AppState::new(config.frontend_path.clone());
 
   let app = create_app(state);
 

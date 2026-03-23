@@ -8,15 +8,21 @@
     crane.url = "github:ipetkov/crane";
   };
 
-  outputs = { self, nixpkgs, rust-overlay, crane }@inputs: let
+  outputs = {
+    self,
+    nixpkgs,
+    rust-overlay,
+    crane,
+  } @ inputs: let
     forAllSystems = nixpkgs.lib.genAttrs nixpkgs.lib.systems.flakeExposed;
     overlays = [
       (import rust-overlay)
     ];
-    pkgsFor = system: import nixpkgs {
-      inherit system;
-      overlays = overlays;
-    };
+    pkgsFor = system:
+      import nixpkgs {
+        inherit system;
+        overlays = overlays;
+      };
 
     # ============================================================================
     # WORKSPACE CRATES CONFIGURATION
@@ -72,9 +78,16 @@
       pkgs.pkg-config
       pkgs.openssl
       pkgs.jq
+      # Elm toolchain
+      pkgs.elmPackages.elm
+      pkgs.elmPackages.elm-format
+      pkgs.elm2nix
+      # Unified formatter
+      pkgs.treefmt
+      pkgs.alejandra
+      pkgs.prettier
     ];
   in {
-
     devShells = forAllSystems (system: let
       pkgs = pkgsFor system;
     in {
@@ -88,6 +101,16 @@
             jq -r '.packages[].name' | \
             sort | \
             sed 's/^/  • /' || echo "  Run 'cargo init' to get started"
+
+          echo ""
+          echo "Elm frontend (frontend/):"
+          echo "  Build:   cd frontend && elm make src/Main.elm --output public/elm.js"
+          echo "  Format:  treefmt"
+          echo "  After changing elm.json dependency versions, regenerate Nix files:"
+          echo "    cd frontend"
+          echo "    elm2nix convert 2>/dev/null > elm-srcs.nix"
+          echo "    elm2nix snapshot"
+          echo "    git add elm-srcs.nix registry.dat && git commit"
 
           # Symlink cargo-husky hooks into .git/hooks/ using paths relative
           # to .git/hooks/ so the repo stays valid after moves or copies.
@@ -120,11 +143,13 @@
         src = craneLib.cleanCargoSource ./.;
         # LLM: Do NOT add darwin.apple_sdk.frameworks here - they were removed
         # in nixpkgs 25.11+. Use libiconv for Darwin builds instead.
-        buildInputs = with pkgs; [
-          openssl
-        ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin (with pkgs.darwin; [
-          libiconv
-        ]);
+        buildInputs = with pkgs;
+          [
+            openssl
+          ]
+          ++ pkgs.lib.optionals pkgs.stdenv.isDarwin (with pkgs.darwin; [
+            libiconv
+          ]);
         nativeBuildInputs = with pkgs; [
           pkg-config
         ];
@@ -138,37 +163,46 @@
       # per-crate file exists under nix/packages/, it is used instead of
       # the generic crane build; this lets individual crates carry custom
       # build options without cluttering the top-level flake.
-      cratePackages = pkgs.lib.mapAttrs (key: crate:
-        let pkgFile = ./. + "/nix/packages/${key}.nix";
-        in if builtins.pathExists pkgFile
-          then import pkgFile { inherit craneLib commonArgs; }
-          else craneLib.buildPackage (commonArgs // {
-            pname = crate.name;
-            cargoExtraArgs = "-p ${crate.name}";
-          })
-      ) workspaceCrates;
-
-    in cratePackages // {
-      # Build all workspace binaries together.
-      # Update pname to match your project name.
-      default = craneLib.buildPackage (commonArgs // { pname = "rust-template"; });
-    });
+      cratePackages =
+        pkgs.lib.mapAttrs (
+          key: crate: let
+            pkgFile = ./. + "/nix/packages/${key}.nix";
+          in
+            if builtins.pathExists pkgFile
+            then import pkgFile {inherit craneLib commonArgs pkgs;}
+            else
+              craneLib.buildPackage (commonArgs
+                // {
+                  pname = crate.name;
+                  cargoExtraArgs = "-p ${crate.name}";
+                })
+        )
+        workspaceCrates;
+    in
+      cratePackages
+      // {
+        # Build all workspace binaries together.
+        # Update pname to match your project name.
+        default = craneLib.buildPackage (commonArgs // {pname = "rust-template";});
+      });
 
     # ============================================================================
     # APPS
     # ============================================================================
     apps = forAllSystems (system: let
       pkgs = pkgsFor system;
-    in pkgs.lib.mapAttrs (key: crate: {
-      type = "app";
-      program = "${self.packages.${system}.${key}}/bin/${crate.binary}";
-    }) workspaceCrates);
+    in
+      pkgs.lib.mapAttrs (key: crate: {
+        type = "app";
+        program = "${self.packages.${system}.${key}}/bin/${crate.binary}";
+      })
+      workspaceCrates);
 
     # ============================================================================
     # NIXOS MODULES
     # ============================================================================
     nixosModules = {
-      web = import ./nix/modules/web.nix { inherit self; };
+      web = import ./nix/modules/web.nix {inherit self;};
       default = self.nixosModules.web;
     };
 
@@ -181,7 +215,5 @@
     #   pkgs.lib.mapAttrs' (key: crate:
     #     pkgs.lib.nameValuePair crate.name self.packages.${final.stdenv.hostPlatform.system}.${key}
     #   ) workspaceCrates;
-
   };
-
 }

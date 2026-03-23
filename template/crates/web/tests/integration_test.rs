@@ -3,12 +3,18 @@ use axum::{
   http::{Request, StatusCode},
 };
 use rust_template_web::web_base::{base_router, AppState};
+use std::path::PathBuf;
 use tower::ServiceExt;
+
+// Tests that don't exercise the SPA fallback use a non-existent path since
+// the registered API routes never touch the filesystem.
+fn state_without_frontend() -> AppState {
+  AppState::new(PathBuf::from("/nonexistent"))
+}
 
 #[tokio::test]
 async fn test_healthz_endpoint() {
-  let state = AppState::new();
-  let app = base_router(state);
+  let app = base_router(state_without_frontend());
 
   let response = app
     .oneshot(
@@ -32,8 +38,7 @@ async fn test_healthz_endpoint() {
 
 #[tokio::test]
 async fn test_metrics_endpoint() {
-  let state = AppState::new();
-  let app = base_router(state);
+  let app = base_router(state_without_frontend());
 
   let response = app
     .oneshot(
@@ -60,8 +65,7 @@ async fn test_metrics_endpoint() {
 
 #[tokio::test]
 async fn test_openapi_json_endpoint() {
-  let state = AppState::new();
-  let app = base_router(state);
+  let app = base_router(state_without_frontend());
 
   let response = app
     .oneshot(
@@ -87,8 +91,7 @@ async fn test_openapi_json_endpoint() {
 
 #[tokio::test]
 async fn test_scalar_ui_endpoint() {
-  let state = AppState::new();
-  let app = base_router(state);
+  let app = base_router(state_without_frontend());
 
   let response = app
     .oneshot(
@@ -111,4 +114,32 @@ async fn test_scalar_ui_endpoint() {
       || body.starts_with(b"<!DOCTYPE html>"),
     "Scalar endpoint should return HTML"
   );
+}
+
+#[tokio::test]
+async fn test_spa_fallback_serves_index_html() {
+  // Any path not matched by a registered route must return 200 with the SPA
+  // index.html, not 404.  This covers direct navigation and page refresh at
+  // client-side routes like /dashboard or /settings/profile.
+  let frontend_dir = tempfile::tempdir().unwrap();
+  std::fs::write(
+    frontend_dir.path().join("index.html"),
+    b"<!doctype html><title>rust-template</title>",
+  )
+  .unwrap();
+
+  let app = base_router(AppState::new(frontend_dir.path().to_path_buf()));
+
+  for path in ["/some-page", "/nested/route", "/unknown"] {
+    let response = app
+      .clone()
+      .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+      .await
+      .unwrap();
+    assert_eq!(
+      response.status(),
+      StatusCode::OK,
+      "expected 200 for SPA path {path}"
+    );
+  }
 }
