@@ -56,6 +56,10 @@ prometheus = "0.13"
 aide = { version = "0.15", features = ["axum", "axum-json", "axum-query", "scalar", "macros"] }
 schemars = "0.9"
 
+# Authentication
+openidconnect = { version = "3", features = ["reqwest"] }
+tower-sessions = { version = "0.15", features = ["memory-store"] }
+
 # Shared library
 rust-template-lib = { path = "crates/lib" }
 

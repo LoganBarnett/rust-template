@@ -56,6 +56,23 @@ pub struct CliRaw {
   /// Path to compiled frontend static assets
   #[arg(long, env = "FRONTEND_PATH")]
   pub frontend_path: Option<PathBuf>,
+
+  /// Base URL of the service (e.g. https://example.com), used to construct
+  /// the OIDC redirect URI
+  #[arg(long, env = "BASE_URL")]
+  pub base_url: Option<String>,
+
+  /// OIDC issuer URL (e.g. https://sso.example.com/application/o/myapp)
+  #[arg(long, env = "OIDC_ISSUER")]
+  pub oidc_issuer: Option<String>,
+
+  /// OIDC client ID
+  #[arg(long, env = "OIDC_CLIENT_ID")]
+  pub oidc_client_id: Option<String>,
+
+  /// Path to a file containing the OIDC client secret
+  #[arg(long, env = "OIDC_CLIENT_SECRET_FILE")]
+  pub oidc_client_secret_file: Option<PathBuf>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -64,6 +81,10 @@ pub struct ConfigFileRaw {
   pub log_format: Option<String>,
   pub listen: Option<String>,
   pub frontend_path: Option<PathBuf>,
+  pub base_url: Option<String>,
+  pub oidc_issuer: Option<String>,
+  pub oidc_client_id: Option<String>,
+  pub oidc_client_secret_file: Option<PathBuf>,
 }
 
 impl ConfigFileRaw {
@@ -91,6 +112,10 @@ pub struct Config {
   pub log_format: LogFormat,
   pub listen_address: ListenerAddress,
   pub frontend_path: PathBuf,
+  pub base_url: String,
+  pub oidc_issuer: String,
+  pub oidc_client_id: String,
+  pub oidc_client_secret: String,
 }
 
 impl Config {
@@ -142,11 +167,47 @@ impl Config {
       .or(config_file.frontend_path)
       .unwrap_or_else(|| PathBuf::from("frontend/public"));
 
+    let base_url = cli.base_url.or(config_file.base_url).ok_or_else(|| {
+      ConfigError::Validation("base_url is required".to_string())
+    })?;
+
+    let oidc_issuer =
+      cli.oidc_issuer.or(config_file.oidc_issuer).ok_or_else(|| {
+        ConfigError::Validation("oidc_issuer is required".to_string())
+      })?;
+
+    let oidc_client_id = cli
+      .oidc_client_id
+      .or(config_file.oidc_client_id)
+      .ok_or_else(|| {
+        ConfigError::Validation("oidc_client_id is required".to_string())
+      })?;
+
+    let secret_file = cli
+      .oidc_client_secret_file
+      .or(config_file.oidc_client_secret_file)
+      .ok_or_else(|| {
+        ConfigError::Validation(
+          "oidc_client_secret_file is required".to_string(),
+        )
+      })?;
+
+    let oidc_client_secret = std::fs::read_to_string(&secret_file)
+      .map(|s| s.trim().to_string())
+      .map_err(|source| ConfigError::FileRead {
+        path: secret_file,
+        source,
+      })?;
+
     Ok(Config {
       log_level,
       log_format,
       listen_address,
       frontend_path,
+      base_url,
+      oidc_issuer,
+      oidc_client_id,
+      oidc_client_secret,
     })
   }
 }

@@ -10,42 +10,98 @@ use axum::{
   routing::get,
   Json, Router,
 };
+use openidconnect::core::CoreClient;
 use prometheus::{Encoder, IntCounter, Registry, TextEncoder};
 use schemars::JsonSchema;
 use serde::Serialize;
 use serde_json::json;
 use std::{path::PathBuf, sync::Arc};
+use thiserror::Error;
 use tower::ServiceBuilder;
 use tower_http::{
   services::{ServeDir, ServeFile},
   set_header::SetResponseHeaderLayer,
 };
+use tracing::info;
+
+use crate::config::Config;
+
+// ── AppState ──────────────────────────────────────────────────────────────────
 
 #[derive(Clone)]
 pub struct AppState {
   pub registry: Arc<Registry>,
   pub request_counter: IntCounter,
   pub frontend_path: PathBuf,
+  pub oidc_client: Arc<CoreClient>,
+}
+
+#[derive(Debug, Error)]
+pub enum AppStateError {
+  #[error("Invalid OIDC issuer URL: {0}")]
+  InvalidIssuer(String),
+
+  #[error("OIDC provider discovery failed: {0}")]
+  OidcDiscovery(String),
+
+  #[error("Invalid OIDC redirect URI: {0}")]
+  InvalidRedirectUri(String),
 }
 
 impl AppState {
-  pub fn new(frontend_path: PathBuf) -> Self {
+  /// Construct `AppState` from a validated `Config`.
+  ///
+  /// Performs OIDC discovery (an async HTTP call).
+  pub async fn init(config: &Config) -> Result<Self, AppStateError> {
     let registry = Registry::new();
     let request_counter =
       IntCounter::new("http_requests_total", "Total HTTP requests")
         .expect("Failed to create counter");
-
     registry
       .register(Box::new(request_counter.clone()))
       .expect("Failed to register counter");
 
-    Self {
+    // ── OIDC client ───────────────────────────────────────────────────────
+    let issuer = openidconnect::IssuerUrl::new(config.oidc_issuer.clone())
+      .map_err(|e| AppStateError::InvalidIssuer(e.to_string()))?;
+
+    let provider_metadata =
+      openidconnect::core::CoreProviderMetadata::discover_async(
+        issuer,
+        openidconnect::reqwest::async_http_client,
+      )
+      .await
+      .map_err(|e| AppStateError::OidcDiscovery(e.to_string()))?;
+
+    info!(issuer = %config.oidc_issuer, "OIDC discovery complete");
+
+    let redirect_url = openidconnect::RedirectUrl::new(format!(
+      "{}/auth/callback",
+      config.base_url.trim_end_matches('/')
+    ))
+    .map_err(|e| AppStateError::InvalidRedirectUri(e.to_string()))?;
+
+    // RequestBody sends client credentials in the POST body
+    // (client_secret_post).  Some providers (e.g. Authelia) require this
+    // instead of the HTTP Basic Auth default.
+    let oidc_client = openidconnect::core::CoreClient::from_provider_metadata(
+      provider_metadata,
+      openidconnect::ClientId::new(config.oidc_client_id.clone()),
+      Some(openidconnect::ClientSecret::new(config.oidc_client_secret.clone())),
+    )
+    .set_redirect_uri(redirect_url)
+    .set_auth_type(openidconnect::AuthType::RequestBody);
+
+    Ok(Self {
       registry: Arc::new(registry),
       request_counter,
-      frontend_path,
-    }
+      frontend_path: config.frontend_path.clone(),
+      oidc_client: Arc::new(oidc_client),
+    })
   }
 }
+
+// ── base router ───────────────────────────────────────────────────────────────
 
 #[derive(Serialize, JsonSchema)]
 pub struct HealthResponse {

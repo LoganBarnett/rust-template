@@ -91,6 +91,35 @@ in {
       description = "Path to compiled frontend static assets.";
     };
 
+    baseUrl = lib.mkOption {
+      type = lib.types.str;
+      example = "https://example.com";
+      description = ''
+        Public base URL of the service, used to construct the OIDC redirect
+        URI ("<baseUrl>/auth/callback").
+      '';
+    };
+
+    oidcIssuer = lib.mkOption {
+      type = lib.types.str;
+      example = "https://sso.example.com/application/o/my-app";
+      description = "OIDC issuer URL used for provider discovery.";
+    };
+
+    oidcClientId = lib.mkOption {
+      type = lib.types.str;
+      description = "OIDC client ID.";
+    };
+
+    oidcClientSecretFile = lib.mkOption {
+      type = lib.types.path;
+      description = ''
+        Path to a file containing the OIDC client secret.  Use
+        <literal>LoadCredential</literal> to supply an agenix secret without
+        granting the service user ownership of the age file.
+      '';
+    };
+
     user = lib.mkOption {
       type = lib.types.str;
       default = "rust-template-web";
@@ -146,6 +175,10 @@ in {
       environment = {
         LOG_LEVEL = cfg.logLevel;
         LOG_FORMAT = cfg.logFormat;
+        BASE_URL = cfg.baseUrl;
+        OIDC_ISSUER = cfg.oidcIssuer;
+        OIDC_CLIENT_ID = cfg.oidcClientId;
+        OIDC_CLIENT_SECRET_FILE = cfg.oidcClientSecretFile;
       };
 
       serviceConfig = {

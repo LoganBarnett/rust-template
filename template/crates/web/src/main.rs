@@ -12,26 +12,29 @@
 //! - Keep logging structured and consistent
 //! - Preserve systemd::notify_ready() and systemd::spawn_watchdog() after bind
 
-mod config;
 mod logging;
 mod systemd;
 
-use rust_template_web::web_base;
+use rust_template_web::{auth, config, web_base};
 
-use axum::{serve, Router};
+use axum::{routing::get, serve, Router};
 use clap::Parser;
 use config::{CliRaw, Config, ConfigError};
 use logging::init_logging;
 use thiserror::Error;
 use tokio::signal;
 use tower_http::trace::TraceLayer;
+use tower_sessions::{cookie::SameSite, MemoryStore, SessionManagerLayer};
 use tracing::{error, info};
-use web_base::AppState;
+use web_base::{AppState, AppStateError};
 
 #[derive(Debug, Error)]
 enum ApplicationError {
   #[error("Failed to load configuration during startup: {0}")]
   ConfigurationLoad(#[from] ConfigError),
+
+  #[error("Failed to initialize application state: {0}")]
+  StateInit(#[from] AppStateError),
 
   #[error("Failed to bind listener to {address}: {source}")]
   ListenerBind {
@@ -58,7 +61,10 @@ async fn main() -> Result<(), ApplicationError> {
   info!("Configuration loaded successfully");
   info!("Binding to {}", config.listen_address);
 
-  let state = AppState::new(config.frontend_path.clone());
+  let state = AppState::init(&config).await.map_err(|e| {
+    error!("Failed to initialize application state: {}", e);
+    ApplicationError::StateInit(e)
+  })?;
 
   let app = create_app(state);
 
@@ -94,7 +100,23 @@ async fn main() -> Result<(), ApplicationError> {
 }
 
 fn create_app(state: AppState) -> Router {
-  web_base::base_router(state).layer(TraceLayer::new_for_http())
+  let session_store = MemoryStore::default();
+  // SameSite::Lax is required: Strict suppresses the session cookie on the
+  // cross-site redirect back from the OIDC provider.
+  let session_layer = SessionManagerLayer::new(session_store)
+    .with_secure(true)
+    .with_same_site(SameSite::Lax);
+
+  let auth_router = Router::new()
+    .route("/auth/login", get(auth::login_handler))
+    .route("/auth/callback", get(auth::callback_handler))
+    .route("/auth/logout", get(auth::logout_handler))
+    .with_state(state.clone());
+
+  web_base::base_router(state)
+    .merge(auth_router)
+    .layer(session_layer)
+    .layer(TraceLayer::new_for_http())
 }
 
 async fn shutdown_signal() {
