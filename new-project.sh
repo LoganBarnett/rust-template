@@ -55,10 +55,26 @@ done
 [[ -z "$OUTPUT" ]]       && { echo "Error: --output is required." >&2; usage; }
 
 if [[ -e "$OUTPUT" ]]; then
-    if [[ -d "$OUTPUT" ]] && [[ -z "$(ls -A "$OUTPUT")" ]]; then
-        : # Empty directory — fine to proceed
-    else
-        echo "Error: output path already exists and is not empty: $OUTPUT" >&2
+    if [[ ! -d "$OUTPUT" ]]; then
+        echo "Error: output path exists and is not a directory: $OUTPUT" >&2
+        exit 1
+    fi
+    # Allow a pre-populated directory as long as no template file would
+    # overwrite an existing file.  This supports workflows where a project
+    # directory is seeded with artifacts (e.g. overview.org) before the
+    # template is applied.
+    conflicts=()
+    while IFS= read -r -d '' template_file; do
+        relative="${template_file#"$TEMPLATE_DIR"/}"
+        if [[ -e "$OUTPUT/$relative" ]]; then
+            conflicts+=("$relative")
+        fi
+    done < <(find "$TEMPLATE_DIR" -type f -print0)
+    if [[ ${#conflicts[@]} -gt 0 ]]; then
+        echo "Error: template files conflict with existing files in $OUTPUT:" >&2
+        for f in "${conflicts[@]}"; do
+            echo "  $f" >&2
+        done
         exit 1
     fi
 fi
