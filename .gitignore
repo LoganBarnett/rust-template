@@ -9,3 +9,6 @@
 
 # Ignore cargo generated build artifacts from the template.
 template/target/
+
+# Local manifest of spawned projects (see config.template.json).
+config.json

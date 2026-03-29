@@ -147,6 +147,30 @@ cat > "$OUTPUT/rust-template.json" <<EOF
 }
 EOF
 
+# ---------------------------------------------------------------------------
+# Register this spawn in config.json so forward-porting can discover it.
+# ---------------------------------------------------------------------------
+CONFIG="$SCRIPT_DIR/config.json"
+if [[ ! -f "$CONFIG" ]]; then
+    cp "$SCRIPT_DIR/config.template.json" "$CONFIG"
+fi
+
+RESOLVED_OUTPUT="$(cd "$OUTPUT" && pwd)"
+
+jq --arg repo "$PROJECT_NAME" \
+   --arg dir  "$RESOLVED_OUTPUT" \
+   --arg crates "$CRATES" \
+   --arg desc "$DESCRIPTION" \
+   --argjson public "$PUBLIC" \
+   '.templateSpawns[$repo] = {
+       dir: $dir,
+       args: {
+           crates: $crates,
+           description: $desc,
+           public: $public
+       }
+   }' "$CONFIG" > "$CONFIG.tmp" && mv "$CONFIG.tmp" "$CONFIG"
+
 echo "Done.  Next steps:"
 echo "  cd $OUTPUT"
 echo "  git init && git add . && git commit -m 'Initial commit'"
