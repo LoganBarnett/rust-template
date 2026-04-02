@@ -164,6 +164,7 @@ jq --arg repo "$PROJECT_NAME" \
    --argjson public "$PUBLIC" \
    '.templateSpawns[$repo] = {
        dir: $dir,
+       archived: false,
        args: {
            crates: $crates,
            description: $desc,

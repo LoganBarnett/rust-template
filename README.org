@@ -111,7 +111,7 @@ so it does not re-trigger itself, then publishes the lib crate to crates.io.
 version = "0.1.0"
 edition = "2021"
 authors = ["Your Name <your.email@example.com>"]
-license = "MIT OR Apache-2.0"
+license = "AGPL-3.0-or-later"
 repository = "https://github.com/yourusername/your-project"
 #+end_src
 
@@ -161,6 +161,43 @@ Both must succeed before the project is ready.
 ** Update README.org
 
 Replace the generated README content with text describing your project.
+
+* Spawn manifest (=config.json=)
+
+Every invocation of =new-project.sh= registers the emitted project in a local
+=config.json= file so that forward-porting work can discover all downstream
+repos.  The file is *gitignored* — it contains absolute paths specific to the
+host machine.  A committed =config.template.json= provides the empty skeleton;
+the script copies it on first use.
+
+** Schema
+
+#+begin_src json :exports code
+{
+  "templateSpawns": {
+    "<project-name>": {
+      "dir": "/absolute/path/to/project",
+      "archived": false,
+      "args": {
+        "crates": "cli,web",
+        "description": "One-line description",
+        "public": true
+      }
+    }
+  }
+}
+#+end_src
+
+| Field               | Type    | Description |
+|---------------------+---------+-------------|
+| =dir=               | string  | Absolute path to the emitted project directory. |
+| =archived=          | boolean | =true= if the project's remote repositories are archived and no longer accept pushes.  Set manually; =new-project.sh= always writes =false=. |
+| =args.crates=       | string  | Comma-separated binary crates passed to =--crates= at generation time. |
+| =args.description=  | string  | Description passed to =--description=, or empty. |
+| =args.public=       | boolean | Whether =--public= was passed. |
+
+The object key under =templateSpawns= is the project name (=--name=).  Running
+=new-project.sh= a second time with the same =--name= overwrites the entry.
 
 * What's in the template
 
