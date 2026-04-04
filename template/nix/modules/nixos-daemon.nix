@@ -1,5 +1,6 @@
-# NixOS module for the rust-template-daemon service.
+# NixOS (Linux/systemd) module for the rust-template-daemon service.
 # Exported from the flake as nixosModules.daemon.
+# See darwin-daemon.nix for the macOS/launchd equivalent.
 #
 # Minimal usage (defaults to Unix domain socket):
 #
