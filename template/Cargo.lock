@@ -1931,7 +1931,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rust-template-web"
+name = "rust-template-daemon"
 version = "0.1.0"
 dependencies = [
  "aide",

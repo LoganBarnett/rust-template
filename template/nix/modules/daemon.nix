@@ -1,17 +1,17 @@
-# NixOS module for the rust-template-web service.
-# Exported from the flake as nixosModules.web.
+# NixOS module for the rust-template-daemon service.
+# Exported from the flake as nixosModules.daemon.
 #
 # Minimal usage (defaults to Unix domain socket):
 #
-#   inputs.rust-template.nixosModules.web
+#   inputs.rust-template.nixosModules.daemon
 #
-#   services.rust-template-web = {
+#   services.rust-template-daemon = {
 #     enable = true;
 #   };
 #
 # To use TCP instead:
 #
-#   services.rust-template-web = {
+#   services.rust-template-daemon = {
 #     enable = true;
 #     socket = null;
 #     port   = 8080;
@@ -20,7 +20,7 @@
 # To reference the socket from a reverse proxy (e.g. nginx):
 #
 #   locations."/".proxyPass =
-#     "http://unix:${config.services.rust-template-web.socket}";
+#     "http://unix:${config.services.rust-template-daemon.socket}";
 #
 # Note: when using socket mode the reverse proxy user must be a member of
 # the service group (cfg.group) so it can connect to the socket.
@@ -30,21 +30,21 @@
   pkgs,
   ...
 }: let
-  cfg = config.services.rust-template-web;
+  cfg = config.services.rust-template-daemon;
 in {
-  options.services.rust-template-web = {
-    enable = lib.mkEnableOption "rust-template-web web service";
+  options.services.rust-template-daemon = {
+    enable = lib.mkEnableOption "rust-template-daemon service";
 
     package = lib.mkOption {
       type = lib.types.package;
-      default = self.packages.${pkgs.stdenv.hostPlatform.system}.web;
-      defaultText = lib.literalExpression "self.packages.\${system}.web";
+      default = self.packages.${pkgs.stdenv.hostPlatform.system}.daemon;
+      defaultText = lib.literalExpression "self.packages.\${system}.daemon";
       description = "Package providing the service binary.";
     };
 
     socket = lib.mkOption {
       type = lib.types.nullOr lib.types.path;
-      default = "/run/rust-template-web/rust-template-web.sock";
+      default = "/run/rust-template-daemon/rust-template-daemon.sock";
       description = ''
         Path for the Unix domain socket used by the service.  When set,
         systemd socket activation is used and the host/port options are
@@ -84,10 +84,10 @@ in {
 
     frontendPath = lib.mkOption {
       type = lib.types.str;
-      default = "${cfg.package}/share/rust-template-web/frontend";
+      default = "${cfg.package}/share/rust-template-daemon/frontend";
       defaultText =
         lib.literalExpression
-        ''"''${cfg.package}/share/rust-template-web/frontend"'';
+        ''"''${cfg.package}/share/rust-template-daemon/frontend"'';
       description = "Path to compiled frontend static assets.";
     };
 
@@ -122,13 +122,13 @@ in {
 
     user = lib.mkOption {
       type = lib.types.str;
-      default = "rust-template-web";
+      default = "rust-template-daemon";
       description = "System user account the service runs as.";
     };
 
     group = lib.mkOption {
       type = lib.types.str;
-      default = "rust-template-web";
+      default = "rust-template-daemon";
       description = "System group the service runs as.";
     };
   };
@@ -137,7 +137,7 @@ in {
     users.users.${cfg.user} = {
       isSystemUser = true;
       group = cfg.group;
-      description = "rust-template-web service user";
+      description = "rust-template-daemon service user";
     };
 
     users.groups.${cfg.group} = {};
@@ -149,8 +149,8 @@ in {
 
     # Socket unit: systemd creates and holds the Unix domain socket, then
     # passes the open file descriptor to the service on first activation.
-    systemd.sockets.rust-template-web = lib.mkIf (cfg.socket != null) {
-      description = "rust-template-web Unix domain socket";
+    systemd.sockets.rust-template-daemon = lib.mkIf (cfg.socket != null) {
+      description = "rust-template-daemon Unix domain socket";
       wantedBy = ["sockets.target"];
       socketConfig = {
         ListenStream = cfg.socket;
@@ -163,14 +163,14 @@ in {
       };
     };
 
-    systemd.services.rust-template-web = {
-      description = "rust-template-web web service";
+    systemd.services.rust-template-daemon = {
+      description = "rust-template-daemon service";
       wantedBy = ["multi-user.target"];
       after =
         ["network.target"]
-        ++ lib.optional (cfg.socket != null) "rust-template-web.socket";
+        ++ lib.optional (cfg.socket != null) "rust-template-daemon.socket";
       requires =
-        lib.optional (cfg.socket != null) "rust-template-web.socket";
+        lib.optional (cfg.socket != null) "rust-template-daemon.socket";
 
       environment = {
         LOG_LEVEL = cfg.logLevel;
@@ -192,11 +192,11 @@ in {
 
         # Restart if no WATCHDOG=1 heartbeat arrives within 30 s.  The
         # binary reads WATCHDOG_USEC and pings at half this interval (15 s).
-        # Override via systemd.services.rust-template-web.serviceConfig.WatchdogSec.
+        # Override via systemd.services.rust-template-daemon.serviceConfig.WatchdogSec.
         WatchdogSec = lib.mkDefault "30s";
 
         ExecStart =
-          "${cfg.package}/bin/rust-template-web"
+          "${cfg.package}/bin/rust-template-daemon"
           + (
             if cfg.socket != null
             then " --listen sd-listen"

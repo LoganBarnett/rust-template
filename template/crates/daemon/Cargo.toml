@@ -1,5 +1,5 @@
 [package]
-name = "rust-template-web"
+name = "rust-template-daemon"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -8,11 +8,11 @@ repository.workspace = true
 publish = false
 
 [lib]
-name = "rust_template_web"
+name = "rust_template_daemon"
 path = "src/lib.rs"
 
 [[bin]]
-name = "rust-template-web"
+name = "rust-template-daemon"
 path = "src/main.rs"
 
 [dependencies]

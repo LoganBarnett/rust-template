@@ -4,8 +4,8 @@
 A derived repository is *compliant* when its structure and infrastructure match
 what this template would have emitted for that project's configuration.
 Compliance is not about business logic — it is about plumbing.  A repo with no
-=/healthz= route in its web crate is out of compliance; a repo whose web crate
-serves a different domain than the template's placeholder is simply a real
+=/healthz= route in its daemon crate is out of compliance; a repo whose daemon
+crate serves a different domain than the template's placeholder is simply a real
 application.
 
 * Purpose
@@ -41,21 +41,21 @@ An LLM performing compliance work must follow this discipline:
   variants, and application-specific configuration are not compliance items and
   must not be touched unless the user asks.
 - *Preserve the project's crate names.* Compliance does not require renaming
-  crates to match the template's =cli= / =web= / =lib= names.  The mapping is
+  crates to match the template's =cli= / =daemon= / =lib= names.  The mapping is
   conceptual.
 
 * Crate mapping
 
-Each target repo has crates that play the roles the template names =cli=, =web=,
+Each target repo has crates that play the roles the template names =cli=, =daemon=,
 and =lib=.  The names in the target repo will differ; the roles are what matter.
 
 | Template role | Identifying signals |
 |---------------+-----------------------------------------------------|
 | =lib=         | A library crate (=lib.rs= at crate root, no =main.rs=) used by the other crates.  Every compliant repo must have at least one crate in this role. |
 | =cli=         | A binary crate that parses command-line arguments with Clap and exits after completing work. |
-| =web=         | A binary crate that binds a listener, serves HTTP, and runs indefinitely. |
+| =daemon=      | A binary crate that binds a listener, serves HTTP, and runs indefinitely. |
 
-A target repo may have more crates than the template (workers, daemons, etc.).
+A target repo may have more crates than the template (workers, etc.).
 Extra crates are not non-compliant; they simply do not have a direct template
 counterpart.  Apply the general [[*Cross-role compliance items]] to them.
 
@@ -89,7 +89,7 @@ These apply to every crate regardless of role.
 | Logging infrastructure | Required | =crates/lib/src/logging.rs= (or equivalent) exports =LogLevel=, =LogFormat=, and an =init_logging= function.  Binary crates delegate to this. |
 | No =main.rs= | Required | The lib crate must not contain a =main.rs=. |
 
-** =web= crate compliance items
+** =daemon= crate compliance items
 
 | Item | Required | Description |
 |------+----------+-------------|
@@ -121,7 +121,7 @@ These apply to every crate regardless of role.
    gap list.
 
 3. *Report gaps to the user.* Present the gap list.  Call out any gaps that
-   require non-trivial restructuring (e.g., a web crate with no separation
+   require non-trivial restructuring (e.g., a daemon crate with no separation
    between application routes and infrastructure).  Wait for confirmation before
    proceeding, unless operating autonomously.
 
@@ -170,7 +170,7 @@ structural diff.
 
 - Business logic, domain types, route handlers, or application-specific
   configuration fields.
-- Crate names or directory layout (=crates/web= vs =crates/my-app-web= etc.).
+- Crate names or directory layout (=crates/daemon= vs =crates/my-app-daemon= etc.).
 - Whether to keep or remove a crate that has no template counterpart.
 - The content of =README.org= or other project documentation.
 - Any decision that requires understanding the project's domain.

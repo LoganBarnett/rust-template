@@ -3,7 +3,7 @@ resolver = "2"
 members = [
     "crates/cli",
     "crates/lib",
-    "crates/web",
+    "crates/daemon",
 ]
 
 [workspace.package]

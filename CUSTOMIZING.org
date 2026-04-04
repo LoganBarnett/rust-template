@@ -48,11 +48,11 @@ workspaceCrates = {
     description = "CLI application";
   };
 
-  # Web service
-  web = {
-    name = "my-app-web";
-    binary = "my-app-web";
-    description = "Web service";
+  # Daemon process
+  daemon = {
+    name = "my-app-daemon";
+    binary = "my-app-daemon";
+    description = "Daemon process";
   };
 
   # Add more crates as needed
@@ -67,7 +67,7 @@ workspaceCrates = {
 The ~workspaceCrates~ configuration in ~flake.nix~ is the *single source of
 truth* for:
 - Nix package generation (when uncommented)
-- App generation (~nix run .#cli~, ~nix run .#web~)
+- App generation (~nix run .#cli~, ~nix run .#daemon~)
 - Overlay generation for NixOS modules
 - Consistent naming across the flake
 
@@ -79,7 +79,7 @@ members.
 #+begin_src sh :exports code
 # If you want to rename the crate directories too:
 mv crates/cli "crates/${PROJECT_NAME}-cli"
-mv crates/web "crates/${PROJECT_NAME}-web"
+mv crates/daemon "crates/${PROJECT_NAME}-daemon"
 mv crates/lib "crates/${PROJECT_NAME}-lib"
 
 # Update Cargo.toml workspace members accordingly
@@ -102,7 +102,7 @@ cargo new --bin crates/worker
 members = [
     "crates/cli",
     "crates/lib",
-    "crates/web",
+    "crates/daemon",
     "crates/worker",  # New!
 ]
 #+end_src
@@ -133,7 +133,7 @@ my-app-lib = { workspace = true }
 #+begin_src nix :exports code
 workspaceCrates = {
   cli = { ... };
-  web = { ... };
+  daemon = { ... };
 
   # Add the new worker
   worker = {
@@ -151,7 +151,7 @@ workspaceCrates = {
 
 * Removing Crates You Don't Need
 
-** Example: Removing the Web Crate
+** Example: Removing the Daemon Crate
 
 1. Remove from workspace:
 
@@ -161,7 +161,7 @@ workspaceCrates = {
 members = [
     "crates/cli",
     "crates/lib",
-    # "crates/web",  # Commented out or removed
+    # "crates/daemon",  # Commented out or removed
 ]
 #+end_src
 
@@ -175,14 +175,14 @@ workspaceCrates = {
     description = "CLI application";
   };
 
-  # web = { ... };  # Removed
+  # daemon = { ... };  # Removed
 };
 #+end_src
 
 3. Delete the directory:
 
 #+begin_src sh :exports code
-rm -rf crates/web
+rm -rf crates/daemon
 #+end_src
 
 * Customizing Logging
@@ -216,7 +216,7 @@ pub enum LogFormat {
 
 ** Adding Application-Specific Config
 
-Each application (~cli~, ~web~) has its own ~config.rs~.  Add your settings
+Each application (~cli~, ~daemon~) has its own ~config.rs~.  Add your settings
 there:
 
 #+begin_src rustic :results none :exports code
@@ -264,19 +264,19 @@ Then build with:
 #+begin_src sh :exports code
 # Build specific package
 nix build .#cli
-nix build .#web
+nix build .#daemon
 
 # Build all packages
 nix build .#default
 
 # Run directly
 nix run .#cli -- --help
-nix run .#web -- --host 0.0.0.0 --port 8080
+nix run .#daemon -- --host 0.0.0.0 --port 8080
 #+end_src
 
 * Creating NixOS Modules
 
-The web application uses separate ~--host~ and ~--port~ arguments (rather than
+The daemon uses separate ~--host~ and ~--port~ arguments (rather than
 a combined bind address) specifically to make it easier to create NixOS module
 options:
 
@@ -299,7 +299,7 @@ options.services.my-app = {
 };
 
 # These map directly to CLI args
-ExecStart = "${cfg.package}/bin/my-app-web --host ${cfg.host} --port ${toString cfg.port}";
+ExecStart = "${cfg.package}/bin/my-app-daemon --host ${cfg.host} --port ${toString cfg.port}";
 #+end_src
 
 This is cleaner than trying to parse or construct a combined address string in
@@ -330,7 +330,7 @@ sqlx = { workspace = true }
 If only one crate needs it:
 
 #+begin_src toml :exports code
-# crates/web/Cargo.toml
+# crates/daemon/Cargo.toml
 [dependencies]
 specific-crate = "1.0"  # Not in workspace dependencies
 #+end_src

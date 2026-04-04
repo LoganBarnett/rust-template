@@ -2,7 +2,7 @@ use axum::{
   body::Body,
   http::{Request, StatusCode},
 };
-use rust_template_web::web_base::{base_router, AppState};
+use rust_template_daemon::web_base::{base_router, AppState};
 use std::path::PathBuf;
 use tower::ServiceExt;
 

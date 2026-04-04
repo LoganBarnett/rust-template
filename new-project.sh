@@ -6,7 +6,7 @@ TEMPLATE_DIR="$SCRIPT_DIR/template"
 
 PROJECT_NAME=""
 DESCRIPTION=""
-CRATES="cli,web"
+CRATES="cli,daemon"
 OUTPUT=""
 PUBLIC=false
 
@@ -17,15 +17,15 @@ Usage: $(basename "$0") --name <project-name> --output <path> [options]
   --name         Project name, used for directory and package names.
   --output       Destination directory (must be empty or not yet exist).
   --description  One-line project description (optional).
-  --crates       Comma-separated binary crates to include (default: cli,web).
-                 Available: cli, web.  lib is always included.
+  --crates       Comma-separated binary crates to include (default: cli,daemon).
+                 Available: cli, daemon.  lib is always included.
   --public       Mark the lib crate as publishable and include the crates.io
                  publish workflow.  Without this flag the lib crate has
                  publish = false and no publish workflow is emitted.
 
 Examples:
   $(basename "$0") --name my-app --output ~/dev/my-app
-  $(basename "$0") --name my-svc --output ~/dev/my-svc --crates web --description "HTTP microservice"
+  $(basename "$0") --name my-svc --output ~/dev/my-svc --crates daemon --description "HTTP microservice"
   $(basename "$0") --name my-lib --output ~/dev/my-lib --public
 EOF
     exit 1
@@ -90,8 +90,8 @@ grep -rl 'rust-template' "$OUTPUT" | while IFS= read -r f; do
 done
 
 # Substitute the underscore form used in Rust lib names and `use` statements
-# (e.g. `rust_template_web` → `my_project_web`).  Must run after the hyphen
-# pass so any hyphen→underscore collisions are already resolved.
+# (e.g. `rust_template_daemon` → `my_project_daemon`).  Must run after the
+# hyphen pass so any hyphen→underscore collisions are already resolved.
 PROJECT_NAME_UNDERSCORE="${PROJECT_NAME//-/_}"
 grep -rl 'rust_template' "$OUTPUT" | while IFS= read -r f; do
     sed_inplace "s/rust_template/$PROJECT_NAME_UNDERSCORE/g" "$f"
@@ -106,7 +106,7 @@ fi
 
 # Prune binary crates that were not requested, removing their directories and
 # scrubbing their entries from Cargo.toml and flake.nix.
-ALL_BINARY_CRATES=(cli web)
+ALL_BINARY_CRATES=(cli daemon)
 IFS=',' read -ra REQUESTED <<< "$CRATES"
 
 for crate in "${ALL_BINARY_CRATES[@]}"; do

@@ -48,14 +48,14 @@
       };
       # CRATE:cli:end
 
-      # CRATE:web:begin
-      # Web service
-      web = {
-        name = "rust-template-web";
-        binary = "rust-template-web";
-        description = "Web service";
+      # CRATE:daemon:begin
+      # Daemon process
+      daemon = {
+        name = "rust-template-daemon";
+        binary = "rust-template-daemon";
+        description = "Daemon process";
       };
-      # CRATE:web:end
+      # CRATE:daemon:end
 
       # Note: The 'lib' crate is not included here as it doesn't produce a
       # binary.
@@ -202,8 +202,8 @@
     # NIXOS MODULES
     # ============================================================================
     nixosModules = {
-      web = import ./nix/modules/web.nix {inherit self;};
-      default = self.nixosModules.web;
+      daemon = import ./nix/modules/daemon.nix {inherit self;};
+      default = self.nixosModules.daemon;
     };
 
     # ============================================================================
