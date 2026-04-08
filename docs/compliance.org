@@ -72,7 +72,7 @@ These apply to every crate regardless of role.
 | Item | Required | Description |
 |------+----------+-------------|
 | Workspace metadata inheritance | Required | =Cargo.toml= uses =.workspace = true= for =version=, =edition=, =authors=, =license=, =repository=. |
-| Semantic error types | Required | Errors are defined with =thiserror=.  Variants name the operation, not just the underlying OS error.  See =ERROR_HANDLING.org=. |
+| Semantic error types | Required | Errors are defined with =thiserror=.  Variants name the operation, not just the underlying OS error. |
 | Staged configuration | Required (binaries) | Configuration flows =CliRaw= → =ConfigFileRaw= → =Config=.  =Config= is fully validated before use. |
 | =config.rs= module | Required (binaries) | Configuration logic lives in its own file, not in =main.rs=. |
 | =logging.rs= module | Required (binaries) | Logging initialization lives in its own file and delegates to the lib crate's logging infrastructure. |

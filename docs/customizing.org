@@ -337,8 +337,7 @@ specific-crate = "1.0"  # Not in workspace dependencies
 
 * Next Steps
 
-- Review ~ERROR_HANDLING.org~ for error handling patterns
-- Review ~GETTING_STARTED.org~ for development workflow
+- Review [[file:getting-started.org][getting-started.org]] for development workflow
 - Set up your CI/CD pipeline
 - Customize the ~README.org~ with your project details
 - Add your business logic!
@@ -367,7 +366,7 @@ This gives a precise list of what changed in the template since the last sync.
 
 ** 3. Apply the changes
 
-Follow the compliance discipline in =COMPLIANCE.org=: enumerate gaps, confirm
+Follow the compliance discipline in =compliance.org=: enumerate gaps, confirm
 with the user, apply infrastructure changes only.  Leave business logic alone.
 
 ** 4. Update rust-template.json

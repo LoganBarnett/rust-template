@@ -199,6 +199,16 @@ the script copies it on first use.
 The object key under =templateSpawns= is the project name (=--name=).  Running
 =new-project.sh= a second time with the same =--name= overwrites the entry.
 
+* Documentation
+
+| Document                          | Description                                        |
+|-----------------------------------+----------------------------------------------------|
+| [[file:docs/getting-started.org][docs/getting-started.org]]          | Development workflow and first steps.              |
+| [[file:docs/customizing.org][docs/customizing.org]]              | Adapting the template for your project.            |
+| [[file:docs/compliance.org][docs/compliance.org]]               | Compliance audits and forward-porting updates.     |
+| [[file:CONTRIBUTING.org][CONTRIBUTING.org]]                  | Contributing to this template repository.          |
+| [[file:template/README.org][template/README.org]]               | Full feature list and architecture of emitted projects. |
+
 * What's in the template
 
 See =template/README.org= for the full feature list and architecture notes.
@@ -257,7 +267,7 @@ Or merge selectively and resolve conflicts, preserving your customizations.
 This section describes what an LLM agent should do when asked to apply this
 template to a new project.  For bringing an existing project into alignment
 with the template (retroactive adoption or rolling out a template update), see
-=COMPLIANCE.org=.
+=docs/compliance.org=.
 
 ** Read the project brief first
 
@@ -293,12 +303,10 @@ steps assume the names are already correct.
 - ~crates/lib/src/logging.rs~ — the logging infrastructure is reusable as-is.
 - ~flake.nix~ ~devPackages~ and ~devShells~ — keep the Nix shell intact.
 - ~.cargo-husky/~ — keep the pre-commit hook.
-- ~ERROR_HANDLING.org~ — keep or adapt; the philosophy applies everywhere.
-
 ** What to remove
 
-- ~GETTING_STARTED.md~ and ~CUSTOMIZING.md~ — these are template meta-docs,
-  not relevant once the template is applied.
+- ~docs/getting-started.org~ and ~docs/customizing.org~ — these are template
+  meta-docs, not relevant once the template is applied.
 
 ** Verification
 

@@ -56,6 +56,11 @@ in {
       '';
     };
 
+    # host and port are separate options (rather than a single "listen"
+    # string) so that other Nix expressions can reference them
+    # individually — e.g. firewall rules need the port, reverse proxy
+    # configs need host:port, and health-check URLs need both.  The
+    # module combines them into the --listen flag internally.
     host = lib.mkOption {
       type = lib.types.str;
       default = "127.0.0.1";

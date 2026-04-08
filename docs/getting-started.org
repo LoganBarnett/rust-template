@@ -25,7 +25,7 @@ git commit -m "Initial commit from rust-template"
 
 ** 2. Customize the project
 
-*Important:* See [[file:CUSTOMIZING.org][CUSTOMIZING.org]] for detailed customization instructions.
+*Important:* See [[file:customizing.org][customizing.org]] for detailed customization instructions.
 
 Quick rename example:
 
@@ -44,7 +44,7 @@ find . -type f \( -name "*.toml" -o -name "*.rs" -o -name "*.org" \) \
 
 Don't forget to update:
 1. ~Cargo.toml~ — workspace metadata (authors, repository, license)
-2. ~flake.nix~ — the ~workspaceCrates~ section (see CUSTOMIZING.org)
+2. ~flake.nix~ — the ~workspaceCrates~ section (see [[file:customizing.org][customizing.org]])
 3. ~README.org~ — project description
 
 ** 3. Enter the development environment

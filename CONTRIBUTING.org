@@ -1,0 +1,50 @@
+#+title:     Contributing to rust-template
+#+language:  en
+
+Guidelines for contributing to the template repository itself.  Derived
+projects have their own =CONTRIBUTING.org= with project-specific conventions.
+
+* Document conventions
+
+- *Root-level UPPER_CASE names* are reserved for the standard set: =README=,
+  =CONTRIBUTING=, =LICENSE=.  All other documentation lives in =docs/= with
+  lower-kebab-case file names (e.g. =docs/getting-started.org=).
+- Every document must be reachable — directly or indirectly — from =README.org=.
+- Use org-mode for all new documents.
+
+* Development environment
+
+Enter the Nix dev shell before running any commands:
+
+#+begin_src sh :results none :exports code
+nix develop
+#+end_src
+
+Or, if you use direnv:
+
+#+begin_src sh :results none :exports code
+direnv allow
+#+end_src
+
+* Formatting
+
+Run =cargo fmt= before committing.  The pre-commit hook enforces this
+automatically, so commits made outside the Nix shell may be rejected if
+=rustfmt= is not on =PATH=.
+
+* Testing
+
+Run the full test suite after every change:
+
+#+begin_src sh :results none :exports code
+nix develop --command cargo test --workspace
+#+end_src
+
+Tests must exit with a proper error code.
+
+* Commit workflow
+
+1. Make your changes on a feature branch.
+2. Ensure =cargo fmt= and =cargo clippy --workspace= produce no warnings.
+3. Run =cargo test --workspace= and confirm all tests pass.
+4. Open a pull request against =main=.

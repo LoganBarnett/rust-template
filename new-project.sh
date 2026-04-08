@@ -139,7 +139,7 @@ else
 fi
 
 # Write template provenance so forward-porting can scope diffs precisely
-# (see COMPLIANCE.org § "Forward-porting template updates").
+# (see docs/compliance.org § "Forward-porting template updates").
 TEMPLATE_HASH="$(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")"
 cat > "$OUTPUT/rust-template.json" <<EOF
 {
