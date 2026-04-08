@@ -115,9 +115,9 @@ in {
     oidcClientSecretFile = lib.mkOption {
       type = lib.types.path;
       description = ''
-        Path to a file containing the OIDC client secret.  Use
-        <literal>LoadCredential</literal> to supply an agenix secret without
-        granting the service user ownership of the age file.
+        Path to a file containing the OIDC client secret.  The module
+        loads this via systemd's LoadCredential, so the service user
+        does not need direct read access to the file.
       '';
     };
 
@@ -179,7 +179,6 @@ in {
         BASE_URL = cfg.baseUrl;
         OIDC_ISSUER = cfg.oidcIssuer;
         OIDC_CLIENT_ID = cfg.oidcClientId;
-        OIDC_CLIENT_SECRET_FILE = cfg.oidcClientSecretFile;
       };
 
       serviceConfig = {
@@ -204,6 +203,8 @@ in {
             else " --listen ${cfg.host}:${toString cfg.port}"
           )
           + " --frontend-path ${cfg.frontendPath}";
+
+        LoadCredential = "oidc-client-secret:${cfg.oidcClientSecretFile}";
 
         User = cfg.user;
         Group = cfg.group;

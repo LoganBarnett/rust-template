@@ -186,9 +186,12 @@ impl Config {
     let secret_file = cli
       .oidc_client_secret_file
       .or(config_file.oidc_client_secret_file)
+      .or_else(credential_secret_path)
       .ok_or_else(|| {
         ConfigError::Validation(
-          "oidc_client_secret_file is required".to_string(),
+          "oidc_client_secret_file is required (set it explicitly or \
+           run under systemd with LoadCredential)"
+            .to_string(),
         )
       })?;
 
@@ -210,4 +213,13 @@ impl Config {
       oidc_client_secret,
     })
   }
+}
+
+/// Returns the path to the `oidc-client-secret` credential file inside
+/// systemd's `CREDENTIALS_DIRECTORY`, if the directory is set and the
+/// file exists.
+fn credential_secret_path() -> Option<PathBuf> {
+  let dir = std::env::var("CREDENTIALS_DIRECTORY").ok()?;
+  let path = PathBuf::from(dir).join("oidc-client-secret");
+  path.exists().then_some(path)
 }

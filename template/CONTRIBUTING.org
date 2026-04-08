@@ -1,0 +1,108 @@
+#+title:     Contributing
+#+language:  en
+
+* Code style
+
+** Formatting
+
+Run ~cargo fmt~ before committing.  The pre-commit hook enforces this
+automatically.
+
+** Linting
+
+Run ~cargo clippy --workspace~ and resolve any warnings before opening
+a pull request.
+
+** Testing
+
+Run the full test suite after every change:
+
+#+begin_src sh :results none :exports code
+cargo test --workspace
+#+end_src
+
+Tests and test scripts must exit with a proper error code.
+
+* Error handling
+
+This project uses *semantic error types* with ~thiserror~ rather than
+generic error wrapping with ~anyhow~.
+
+** Why not ~anyhow~?
+
+While ~anyhow~ is convenient, it encourages lazy error handling that
+loses important context.  When an error occurs in production you often
+only have logs to work with.  A bare "No such file or directory"
+message with no indication of /which/ file or /what/ operation failed
+is not actionable.
+
+** Core principle: always add context
+
+All errors must include sufficient context to diagnose the problem
+without access to the source code or the running environment.
+
+Use semantic error types that explain what went wrong and why:
+
+#+begin_src rust :results none :exports code
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum ConfigError {
+    #[error("Failed to read configuration file at {path:?} \
+             during startup: {source}")]
+    FileRead {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+
+    #[error("Failed to parse configuration file at {path:?}: \
+             {source}")]
+    Parse {
+        path: PathBuf,
+        #[source]
+        source: toml::de::Error,
+    },
+
+    #[error("Configuration validation failed: {0}")]
+    Validation(String),
+}
+#+end_src
+
+** Guidelines
+
+- Every error variant should explain what operation failed and include
+  relevant data (file paths, addresses, etc.).
+- Use ~#[source]~ to preserve the full error chain.
+- For file operations, include the path and (where useful) the current
+  working directory.
+- Never log sensitive data (passwords, tokens, connection strings with
+  credentials).
+- ~anyhow~ is acceptable only in throwaway prototypes.  Once you know
+  what errors can occur, convert to semantic types.
+
+** Error type hierarchy
+
+Structure error types in layers:
+
+1. *Low-level* (libraries/modules) — specific to that component.
+2. *Mid-level* (business logic) — domain-specific.
+3. *Top-level* (main.rs) — application lifecycle.
+
+Each layer adds context about what the application was trying to do.
+
+* Systemd secrets
+
+The NixOS module passes secrets via systemd's ~LoadCredential~.  The
+Rust binary automatically discovers credentials at runtime without
+extra configuration.
+
+See [[file:docs/systemd.org][docs/systemd.org]] for the full pattern and how to add new secrets.
+
+* Logging levels
+
+- ~error!~ — errors that prevent normal operation.
+- ~warn!~ — recoverable issues or degraded functionality.
+- ~info!~ — important state changes.
+- ~debug!~ — detailed diagnostic information.
+- ~trace!~ — very verbose debugging.

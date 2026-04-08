@@ -1920,17 +1920,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rust-template-lib"
-version = "0.1.0"
-dependencies = [
- "cargo-husky",
- "serde",
- "tap",
- "thiserror 2.0.18",
- "tracing",
-]
-
-[[package]]
 name = "rust-template-daemon"
 version = "0.1.0"
 dependencies = [
@@ -1956,6 +1945,17 @@ dependencies = [
  "tracing",
  "tracing-journald",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "rust-template-lib"
+version = "0.1.0"
+dependencies = [
+ "cargo-husky",
+ "serde",
+ "tap",
+ "thiserror 2.0.18",
+ "tracing",
 ]
 
 [[package]]

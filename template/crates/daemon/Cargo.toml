@@ -42,4 +42,6 @@ tower-sessions = { workspace = true }
 tracing-journald = { workspace = true }
 
 [dev-dependencies]
+openidconnect = { workspace = true }
+prometheus = { workspace = true }
 tempfile = { workspace = true }

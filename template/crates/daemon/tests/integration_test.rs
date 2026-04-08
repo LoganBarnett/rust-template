@@ -2,14 +2,58 @@ use axum::{
   body::Body,
   http::{Request, StatusCode},
 };
+use openidconnect::{
+  core::{
+    CoreClient, CoreJwsSigningAlgorithm, CoreProviderMetadata,
+    CoreResponseType, CoreSubjectIdentifierType,
+  },
+  AuthUrl, ClientId, EmptyAdditionalProviderMetadata, IssuerUrl,
+  JsonWebKeySetUrl, ResponseTypes,
+};
+use prometheus::{IntCounter, Registry};
 use rust_template_daemon::web_base::{base_router, AppState};
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 use tower::ServiceExt;
+
+/// Builds a minimal `AppState` whose OIDC client is a stub.  Sufficient
+/// for testing routes that never touch the OIDC flow.
+fn stub_state(frontend_path: PathBuf) -> AppState {
+  let registry = Registry::new();
+  let request_counter =
+    IntCounter::new("http_requests_total", "Total HTTP requests")
+      .expect("counter creation");
+  registry
+    .register(Box::new(request_counter.clone()))
+    .expect("counter registration");
+
+  let issuer = IssuerUrl::new("https://stub.invalid".to_string()).unwrap();
+  let metadata = CoreProviderMetadata::new(
+    issuer,
+    AuthUrl::new("https://stub.invalid/authorize".to_string()).unwrap(),
+    JsonWebKeySetUrl::new("https://stub.invalid/jwks".to_string()).unwrap(),
+    vec![ResponseTypes::new(vec![CoreResponseType::Code])],
+    vec![CoreSubjectIdentifierType::Public],
+    vec![CoreJwsSigningAlgorithm::RsaSsaPkcs1V15Sha256],
+    EmptyAdditionalProviderMetadata {},
+  );
+  let oidc_client = CoreClient::from_provider_metadata(
+    metadata,
+    ClientId::new("stub-client".to_string()),
+    None,
+  );
+
+  AppState {
+    registry: Arc::new(registry),
+    request_counter,
+    frontend_path,
+    oidc_client: Arc::new(oidc_client),
+  }
+}
 
 // Tests that don't exercise the SPA fallback use a non-existent path since
 // the registered API routes never touch the filesystem.
 fn state_without_frontend() -> AppState {
-  AppState::new(PathBuf::from("/nonexistent"))
+  stub_state(PathBuf::from("/nonexistent"))
 }
 
 #[tokio::test]
@@ -128,7 +172,7 @@ async fn test_spa_fallback_serves_index_html() {
   )
   .unwrap();
 
-  let app = base_router(AppState::new(frontend_dir.path().to_path_buf()));
+  let app = base_router(stub_state(frontend_dir.path().to_path_buf()));
 
   for path in ["/some-page", "/nested/route", "/unknown"] {
     let response = app
