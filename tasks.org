@@ -1,0 +1,45 @@
+#+title:     rust-template Tasks
+#+language:  en
+
+* TODO Flat CSS with light/dark mode support
+CSS must be flat — one selector per element.  Use CSS variables to share
+settings between selectors.  Support both light and dark mode via
+~prefers-color-scheme~ and CSS custom properties.
+
+* TODO Landing page links to =/me=
+The hello world / landing page should link to ~/me~ for displaying details
+about the current user.  The template doesn't expose much user data yet, but
+the route and page should exist as a starting point.
+
+* TODO Incorporate changelog-roller
+Integrate [[https://github.com/LoganBarnett/changelog-roller][changelog-roller]]
+from =~/dev/changelog-roller=.  This may require adding GitHub Actions to the
+changelog-roller repo itself.  The template should consume changelog-roller to
+automate changelog generation.
+
+changelog-roller is a Rust crate providing an executable that rolls the
+changelog.  It should have no external dependencies.
+
+- In GitHub Actions: use ~cargo install~ to grab the crate.
+- In =flake.nix=: include changelog-roller in the devshell so it's available
+  locally via direnv.
+
+* TODO Publish crates for public projects
+For projects marked as public, add mechanisms to publish crates via GitHub
+Actions.  Use a =0.x.0= versioning pattern, incrementing =x= by 1 on every
+push to the main branch, at which point a release is cut.
+
+The =public= flag already lives in the spawn manifest (=config.json=) under
+each project's =args.public=.  The publishing workflow in spawned projects
+should key off this value.  Document how this flag is used.
+
+* TODO Auto-merge dependabot PRs
+Auto-merge Dependabot changes that pass all tests and other checks.
+Dependabot gets a free pass only for dependency bumping — it is subjected to
+all other rigors of a feature branch (tests, formatting, etc.).  This implies
+adding a Dependabot configuration file to the template.
+
+* TODO Require tests and formatting checks on PRs
+GitHub PRs require tests to pass before merging, and that formatting runs
+without changes (to catch cases where someone bypassed the pre-commit hook).
+Configure branch protection rules and/or GitHub Actions to enforce this.
