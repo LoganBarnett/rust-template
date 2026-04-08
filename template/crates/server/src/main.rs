@@ -1,4 +1,4 @@
-//! rust-template-daemon - Long-running daemon process
+//! rust-template-server - Long-running server process
 //!
 //! # LLM Development Guidelines
 //! When modifying this code:
@@ -15,7 +15,7 @@
 mod logging;
 mod systemd;
 
-use rust_template_daemon::{auth, config, web_base};
+use rust_template_server::{auth, config, web_base};
 
 use axum::{routing::get, serve, Router};
 use clap::Parser;
@@ -57,7 +57,7 @@ async fn main() -> Result<(), ApplicationError> {
 
   init_logging(config.log_level, config.log_format);
 
-  info!("Starting rust-template-daemon");
+  info!("Starting rust-template-server");
   info!("Configuration loaded successfully");
   info!("Binding to {}", config.listen_address);
 
@@ -95,7 +95,7 @@ async fn main() -> Result<(), ApplicationError> {
       ApplicationError::ServerRuntime(e)
     })?;
 
-  info!("Shutting down rust-template-daemon");
+  info!("Shutting down rust-template-server");
   Ok(())
 }
 

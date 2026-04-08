@@ -12,7 +12,7 @@ use openidconnect::{
   JsonWebKeySetUrl, ResponseTypes,
 };
 use prometheus::{IntCounter, Registry};
-use rust_template_daemon::web_base::{base_router, AppState};
+use rust_template_server::web_base::{base_router, AppState};
 use std::{path::PathBuf, sync::Arc};
 use tower::ServiceExt;
 use tower_sessions::{cookie::SameSite, MemoryStore, SessionManagerLayer};
@@ -77,7 +77,7 @@ fn state_without_frontend() -> AppState {
 /// the production `create_app` structure.
 fn app_with_session(state: AppState) -> Router {
   use axum::routing::get;
-  use rust_template_daemon::auth;
+  use rust_template_server::auth;
 
   let session_store = MemoryStore::default();
   let session_layer = SessionManagerLayer::new(session_store)
@@ -335,7 +335,7 @@ async fn test_auth_login_redirects_with_oidc() {
 
 #[tokio::test]
 async fn test_config_no_oidc() {
-  use rust_template_daemon::config::{CliRaw, Config};
+  use rust_template_server::config::{CliRaw, Config};
 
   let cli = CliRaw {
     log_level: None,
@@ -355,7 +355,7 @@ async fn test_config_no_oidc() {
 
 #[tokio::test]
 async fn test_config_full_oidc() {
-  use rust_template_daemon::config::{CliRaw, Config};
+  use rust_template_server::config::{CliRaw, Config};
 
   let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
     .join("tests/fixtures/oidc-client-secret");
@@ -381,7 +381,7 @@ async fn test_config_full_oidc() {
 
 #[tokio::test]
 async fn test_config_partial_oidc_errors() {
-  use rust_template_daemon::config::{CliRaw, Config};
+  use rust_template_server::config::{CliRaw, Config};
 
   let cli = CliRaw {
     log_level: None,

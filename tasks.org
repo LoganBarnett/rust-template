@@ -39,7 +39,7 @@ Dependabot gets a free pass only for dependency bumping — it is subjected to
 all other rigors of a feature branch (tests, formatting, etc.).  This implies
 adding a Dependabot configuration file to the template.
 
-* TODO Rename "daemon" to "server"
+* DONE Rename "daemon" to "server"
 The template uses "daemon" to describe the long-running service, but "server"
 is more accurate.  "Daemon" describes /how/ a process is run (backgrounded,
 detached from a terminal), whereas "server" describes /what/ it does (listens

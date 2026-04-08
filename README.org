@@ -22,7 +22,7 @@ An opinionated Rust workspace template.  Clone this repository once; use
 | =--name=        | yes      | Project name — used for package names and identifiers.   |
 | =--output=      | yes      | Destination directory (must be empty or not yet exist).  |
 | =--description= | no       | One-line description substituted into project metadata.  |
-| =--crates=      | no       | Comma-separated binary crates to include (default: cli,daemon). =lib= is always included. |
+| =--crates=      | no       | Comma-separated binary crates to include (default: cli,server). =lib= is always included. |
 | =--public=      | no       | Mark the lib crate for publishing to crates.io.  Includes CI, automated version bumping, and a publish workflow.  Without this flag =publish = false= is set on the lib crate and no GitHub workflows are emitted. |
 
 ** Examples
@@ -33,13 +33,13 @@ Start with both binary crates:
 ./new-project.sh --name my-app --output ~/dev/my-app
 #+end_src
 
-Daemon only, with a description:
+Server only, with a description:
 
 #+begin_src sh :exports code
 ./new-project.sh \
   --name my-svc \
   --output ~/dev/my-svc \
-  --crates daemon \
+  --crates server \
   --description "HTTP microservice for billing"
 #+end_src
 
@@ -128,22 +128,22 @@ workspaceCrates = {
     binary = "my-app-cli";
     description = "Description of your CLI tool";
   };
-  daemon = {
-    name = "my-app-daemon";
-    binary = "my-app-daemon";
-    description = "Description of your daemon process";
+  server = {
+    name = "my-app-server";
+    binary = "my-app-server";
+    description = "Description of your server process";
   };
 };
 #+end_src
 
 ** Rename crate directories (optional)
 
-The script preserves the original directory names (=crates/cli=, =crates/daemon=,
+The script preserves the original directory names (=crates/cli=, =crates/server=,
 =crates/lib=).  If you prefer project-namespaced directories:
 
 #+begin_src sh :exports code
 mv crates/cli "crates/my-app-cli"
-mv crates/daemon "crates/my-app-daemon"
+mv crates/server "crates/my-app-server"
 mv crates/lib "crates/my-app-lib"
 #+end_src
 
@@ -179,7 +179,7 @@ the script copies it on first use.
       "dir": "/absolute/path/to/project",
       "archived": false,
       "args": {
-        "crates": "cli,daemon",
+        "crates": "cli,server",
         "description": "One-line description",
         "public": true
       }
@@ -214,7 +214,7 @@ The object key under =templateSpawns= is the project name (=--name=).  Running
 See =template/README.org= for the full feature list and architecture notes.
 
 The short version: structured logging, staged configuration, semantic error
-types, integration tests, a Nix dev shell, and optional daemon scaffolding
+types, integration tests, a Nix dev shell, and optional server scaffolding
 (health check, metrics, OpenAPI/Swagger).
 
 * Adding a new workspace crate
@@ -239,7 +239,7 @@ types, integration tests, a Nix dev shell, and optional daemon scaffolding
 2. Remove its entry from ~workspaceCrates~ in ~flake.nix~.
 3. Delete the crate directory:
    #+begin_src sh :exports code
-   rm -rf crates/daemon
+   rm -rf crates/server
    #+end_src
 
 * Enabling Nix package builds
@@ -290,7 +290,7 @@ steps assume the names are already correct.
 - ~README.org~ :: Replace this file's content with a README that describes the
   /new/ project.
 - ~crates/*/src/main.rs~ :: Replace the placeholder business logic (~run()~
-  function in the CLI, route handlers in the daemon crate) with the actual
+  function in the CLI, route handlers in the server crate) with the actual
   application.
 - ~crates/*/src/config.rs~ :: Add application-specific configuration fields to
   ~CliRaw~, ~ConfigFileRaw~, and ~Config~; add semantic error variants for any

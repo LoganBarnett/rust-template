@@ -1,18 +1,18 @@
-# Darwin (macOS/launchd) module for the rust-template-daemon service.
-# Exported from the flake as darwinModules.daemon.
-# See nixos-daemon.nix for the Linux/systemd equivalent.
+# Darwin (macOS/launchd) module for the rust-template-server service.
+# Exported from the flake as darwinModules.server.
+# See nixos-server.nix for the Linux/systemd equivalent.
 #
 # Minimal usage (defaults to Unix domain socket):
 #
-#   inputs.rust-template.darwinModules.daemon
+#   inputs.rust-template.darwinModules.server
 #
-#   services.rust-template-daemon = {
+#   services.rust-template-server = {
 #     enable = true;
 #   };
 #
 # To use TCP instead:
 #
-#   services.rust-template-daemon = {
+#   services.rust-template-server = {
 #     enable = true;
 #     socket = null;
 #     port   = 8080;
@@ -20,7 +20,7 @@
 #
 # To enable health checking (requires a reachable health endpoint):
 #
-#   services.rust-template-daemon = {
+#   services.rust-template-server = {
 #     enable = true;
 #     healthCheck.enable = true;
 #     healthCheck.url = "http://127.0.0.1:3000/health";
@@ -31,7 +31,7 @@
   pkgs,
   ...
 }: let
-  cfg = config.services.rust-template-daemon;
+  cfg = config.services.rust-template-server;
 
   listenArg =
     if cfg.socket != null
@@ -39,26 +39,26 @@
     else "--listen ${cfg.host}:${toString cfg.port}";
 
   execLine =
-    "${cfg.package}/bin/rust-template-daemon"
+    "${cfg.package}/bin/rust-template-server"
     + " ${listenArg}"
     + " --frontend-path ${cfg.frontendPath}";
 in {
-  options.services.rust-template-daemon = {
-    enable = lib.mkEnableOption "rust-template-daemon service";
+  options.services.rust-template-server = {
+    enable = lib.mkEnableOption "rust-template-server service";
 
     package = lib.mkOption {
       type = lib.types.package;
-      default = self.packages.${pkgs.stdenv.hostPlatform.system}.daemon;
-      defaultText = lib.literalExpression "self.packages.\${system}.daemon";
+      default = self.packages.${pkgs.stdenv.hostPlatform.system}.server;
+      defaultText = lib.literalExpression "self.packages.\${system}.server";
       description = "Package providing the service binary.";
     };
 
     socket = lib.mkOption {
       type = lib.types.nullOr lib.types.path;
-      default = "/var/run/rust-template-daemon/rust-template-daemon.sock";
+      default = "/var/run/rust-template-server/rust-template-server.sock";
       description = ''
         Path for the Unix domain socket used by the service.  When set,
-        the daemon binds its own socket (no launchd socket activation) and
+        the server binds its own socket (no launchd socket activation) and
         the host/port options are ignored.  Set to null to use TCP instead.
       '';
     };
@@ -97,10 +97,10 @@ in {
 
     frontendPath = lib.mkOption {
       type = lib.types.str;
-      default = "${cfg.package}/share/rust-template-daemon/frontend";
+      default = "${cfg.package}/share/rust-template-server/frontend";
       defaultText =
         lib.literalExpression
-        ''"''${cfg.package}/share/rust-template-daemon/frontend"'';
+        ''"''${cfg.package}/share/rust-template-server/frontend"'';
       description = "Path to compiled frontend static assets.";
     };
 
@@ -144,7 +144,7 @@ in {
 
     user = lib.mkOption {
       type = lib.types.str;
-      default = "_rust-template-daemon";
+      default = "_rust-template-server";
       description = ''
         System user account the service runs as.  The leading underscore
         follows the macOS convention for daemon accounts.
@@ -153,7 +153,7 @@ in {
 
     group = lib.mkOption {
       type = lib.types.str;
-      default = "_rust-template-daemon";
+      default = "_rust-template-server";
       description = ''
         System group the service runs as.  The leading underscore follows
         the macOS convention for daemon groups.
@@ -180,7 +180,7 @@ in {
     };
 
     healthCheck = {
-      enable = lib.mkEnableOption "periodic health-check agent for the daemon";
+      enable = lib.mkEnableOption "periodic health-check agent for the server";
 
       url = lib.mkOption {
         type = lib.types.str;
@@ -189,7 +189,7 @@ in {
         example = "http://127.0.0.1:3000/health";
         description = ''
           URL to probe for health.  The agent runs curl against this
-          endpoint every 30 seconds and kills the daemon if it fails,
+          endpoint every 30 seconds and kills the server if it fails,
           letting launchd's KeepAlive restart it.
         '';
       };
@@ -205,7 +205,7 @@ in {
         in
           setCount == 0 || setCount == 3;
       message = ''
-        services.rust-template-daemon: OIDC configuration is partial.
+        services.rust-template-server: OIDC configuration is partial.
         Set all three of oidcIssuer, oidcClientId, and oidcClientSecretFile,
         or leave all three null for unauthenticated admin mode.
       '';
@@ -216,7 +216,7 @@ in {
       gid = cfg.gid;
       home = "/var/empty";
       shell = "/usr/bin/false";
-      description = "rust-template-daemon service user";
+      description = "rust-template-server service user";
       isHidden = true;
     };
 
@@ -231,7 +231,7 @@ in {
     # Create log and socket directories.  macOS has no tmpfiles equivalent,
     # so we use nix-darwin activation scripts.
     system.activationScripts.postActivation.text = let
-      logDir = "/var/log/rust-template-daemon";
+      logDir = "/var/log/rust-template-server";
       sockDir =
         if cfg.socket != null
         then dirOf cfg.socket
@@ -248,7 +248,7 @@ in {
         chmod 0750 ${sockDir}
       '';
 
-    launchd.daemons.rust-template-daemon = {
+    launchd.servers.rust-template-server = {
       serviceConfig = {
         ProgramArguments = [
           "/bin/sh"
@@ -273,26 +273,26 @@ in {
           OIDC_CLIENT_ID = cfg.oidcClientId;
           OIDC_CLIENT_SECRET_FILE = cfg.oidcClientSecretFile;
         };
-        StandardOutPath = "/var/log/rust-template-daemon/stdout.log";
-        StandardErrorPath = "/var/log/rust-template-daemon/stderr.log";
+        StandardOutPath = "/var/log/rust-template-server/stdout.log";
+        StandardErrorPath = "/var/log/rust-template-server/stderr.log";
       };
     };
 
-    # Optional health-check agent.  Probes the daemon's health endpoint
-    # every 30 seconds and kills the daemon process on failure, letting
+    # Optional health-check agent.  Probes the server's health endpoint
+    # every 30 seconds and kills the server process on failure, letting
     # launchd's KeepAlive trigger a restart.
-    launchd.daemons.rust-template-daemon-healthcheck = lib.mkIf cfg.healthCheck.enable {
+    launchd.servers.rust-template-server-healthcheck = lib.mkIf cfg.healthCheck.enable {
       serviceConfig = {
         ProgramArguments = [
           "/bin/sh"
           "-c"
-          ''/usr/bin/curl -sf ${cfg.healthCheck.url} || /bin/kill $(/bin/cat /var/run/rust-template-daemon/pid) 2>/dev/null''
+          ''/usr/bin/curl -sf ${cfg.healthCheck.url} || /bin/kill $(/bin/cat /var/run/rust-template-server/pid) 2>/dev/null''
         ];
         StartInterval = 30;
         RunAtLoad = false;
         ProcessType = "Background";
-        StandardOutPath = "/var/log/rust-template-daemon/healthcheck-stdout.log";
-        StandardErrorPath = "/var/log/rust-template-daemon/healthcheck-stderr.log";
+        StandardOutPath = "/var/log/rust-template-server/healthcheck-stdout.log";
+        StandardErrorPath = "/var/log/rust-template-server/healthcheck-stderr.log";
       };
     };
   };

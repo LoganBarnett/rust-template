@@ -50,14 +50,14 @@
       };
       # CRATE:cli:end
 
-      # CRATE:daemon:begin
-      # Daemon process
-      daemon = {
-        name = "rust-template-daemon";
-        binary = "rust-template-daemon";
-        description = "Daemon process";
+      # CRATE:server:begin
+      # Server process
+      server = {
+        name = "rust-template-server";
+        binary = "rust-template-server";
+        description = "Server process";
       };
-      # CRATE:daemon:end
+      # CRATE:server:end
 
       # Note: The 'lib' crate is not included here as it doesn't produce a
       # binary.
@@ -207,16 +207,16 @@
     # NIXOS MODULES
     # ============================================================================
     nixosModules = {
-      daemon = import ./nix/modules/nixos-daemon.nix {inherit self;};
-      default = self.nixosModules.daemon;
+      server = import ./nix/modules/nixos-server.nix {inherit self;};
+      default = self.nixosModules.server;
     };
 
     # ============================================================================
     # DARWIN MODULES
     # ============================================================================
     darwinModules = {
-      daemon = import ./nix/modules/darwin-daemon.nix {inherit self;};
-      default = self.darwinModules.daemon;
+      server = import ./nix/modules/darwin-server.nix {inherit self;};
+      default = self.darwinModules.server;
     };
 
     # ============================================================================

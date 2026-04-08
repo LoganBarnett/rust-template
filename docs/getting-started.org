@@ -63,7 +63,7 @@ cargo build --workspace
 
 # Build specific package
 cargo build -p my-app-cli
-cargo build -p my-app-daemon
+cargo build -p my-app-server
 #+end_src
 
 ** 5. Run the applications
@@ -81,20 +81,20 @@ cargo build -p my-app-daemon
 ./target/debug/my-app-cli --name "Alice" --log-level debug --log-format json
 #+end_src
 
-*** Daemon
+*** Server
 
 #+begin_src sh :exports code
 # Run with default settings (http://127.0.0.1:3000)
-./target/debug/my-app-daemon
+./target/debug/my-app-server
 
 # Run on custom port
-./target/debug/my-app-daemon --port 8080
+./target/debug/my-app-server --port 8080
 
 # Run with custom host and port
-./target/debug/my-app-daemon --host 0.0.0.0 --port 8080
+./target/debug/my-app-server --host 0.0.0.0 --port 8080
 #+end_src
 
-Once running, the daemon provides:
+Once running, the server provides:
 - Health check: ~http://127.0.0.1:3000/healthz~
 - Metrics: ~http://127.0.0.1:3000/metrics~
 - API documentation: ~http://127.0.0.1:3000/swagger-ui~
@@ -107,12 +107,12 @@ cargo test --workspace
 
 # Run tests for specific package
 cargo test -p my-app-cli
-cargo test -p my-app-daemon
+cargo test -p my-app-server
 #+end_src
 
 * Configuration
 
-Both CLI and daemon applications support configuration from multiple sources (in
+Both CLI and server applications support configuration from multiple sources (in
 order of precedence):
 
 1. Command-line arguments
@@ -131,7 +131,7 @@ log_format = "text"
 # CLI-specific
 name = "World"
 
-# Daemon-specific
+# Server-specific
 host = "127.0.0.1"
 port = 3000
 #+end_src
@@ -145,7 +145,7 @@ export LOG_LEVEL=debug
 # Set log format
 export LOG_FORMAT=json
 
-# Daemon: set host and port
+# Server: set host and port
 export HOST=0.0.0.0
 export PORT=8080
 #+end_src
@@ -192,17 +192,17 @@ Then reference in package ~Cargo.toml~:
 my-new-dep = { workspace = true }
 #+end_src
 
-** Adding New Endpoints (Daemon)
+** Adding New Endpoints (Server)
 
-1. Create a new module in ~crates/daemon/src/~
+1. Create a new module in ~crates/server/src/~
 2. Add endpoints using axum handlers
 3. Update ~web_base.rs~ or create a new router
-4. Add integration tests in ~crates/daemon/tests/~
+4. Add integration tests in ~crates/server/tests/~
 
 Example:
 
 #+begin_src rustic :results none :exports code
-// In crates/daemon/src/my_endpoint.rs
+// In crates/server/src/my_endpoint.rs
 use axum::{Json, response::IntoResponse};
 use serde::Serialize;
 

@@ -33,10 +33,10 @@ unit-scoped credential directory before the process starts.
 
 * Adding a new secret
 
-1. Add a ~LoadCredential~ entry in ~nix/modules/nixos-daemon.nix~.
-2. In ~crates/daemon/src/config.rs~, follow the existing pattern:
+1. Add a ~LoadCredential~ entry in ~nix/modules/nixos-server.nix~.
+2. In ~crates/server/src/config.rs~, follow the existing pattern:
    try the explicit option first, fall back to
    ~credential_secret_path~, then error.
 3. On Darwin, pass the file path via ~OIDC_CLIENT_SECRET_FILE~ (or
-   the equivalent new variable) in ~nix/modules/darwin-daemon.nix~ —
+   the equivalent new variable) in ~nix/modules/darwin-server.nix~ —
    launchd has no ~LoadCredential~ equivalent.

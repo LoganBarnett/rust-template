@@ -1,9 +1,9 @@
-# Crane-based derivation for the rust-template-daemon binary.
-# Called from flake.nix with: import ./daemon.nix { inherit craneLib commonArgs pkgs; }
+# Crane-based derivation for the rust-template-server binary.
+# Called from flake.nix with: import ./server.nix { inherit craneLib commonArgs pkgs; }
 #
 # The package output includes:
-#   $out/bin/rust-template-daemon              — the server binary
-#   $out/share/rust-template-daemon/frontend/  — compiled Elm frontend assets
+#   $out/bin/rust-template-server              — the server binary
+#   $out/share/rust-template-server/frontend/  — compiled Elm frontend assets
 #
 # The NixOS module passes --frontend-path pointing at the share directory.
 #
@@ -51,15 +51,15 @@
 
   binary = craneLib.buildPackage (commonArgs
     // {
-      pname = "rust-template-daemon";
-      cargoExtraArgs = "-p rust-template-daemon";
+      pname = "rust-template-server";
+      cargoExtraArgs = "-p rust-template-server";
     });
 in
   pkgs.symlinkJoin {
-    name = "rust-template-daemon";
+    name = "rust-template-server";
     paths = [binary];
     postBuild = ''
-      mkdir -p $out/share/rust-template-daemon
-      ln -s ${elmFrontend} $out/share/rust-template-daemon/frontend
+      mkdir -p $out/share/rust-template-server
+      ln -s ${elmFrontend} $out/share/rust-template-server/frontend
     '';
   }
