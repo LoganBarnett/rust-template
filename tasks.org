@@ -103,7 +103,7 @@ chain to just "Request failed", losing the underlying cause (e.g.
 ~InvalidCertificate(UnknownIssuer)~).  Change to ~format!("{e:?}")~ so the full
 error chain is preserved in logs.
 
-* TODO Require tests and formatting checks on PRs
+* DONE Require tests and formatting checks on PRs
 GitHub PRs require tests to pass before merging, and that formatting runs
 without changes (to catch cases where someone bypassed the pre-commit hook).
 Configure branch protection rules and/or GitHub Actions to enforce this.

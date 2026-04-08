@@ -93,8 +93,8 @@ workflows are fully operational:
    (Alternatively: Settings → Secrets and variables → Actions.)
 
 2. *Enable branch protection on =main=* (Settings → Branches → Add rule).
-   Require the =Test= status check to pass before merging.  This enforces the
-   "tests must pass" gate on every PR.
+   Require the =Test= and =Formatting= status checks to pass before merging.
+   This enforces that tests pass and code is formatted on every PR.
 
 3. *Enable auto-merge* (Settings → General → Allow auto-merge).  The
    dependabot workflow calls =gh pr merge --auto=, which only takes effect if

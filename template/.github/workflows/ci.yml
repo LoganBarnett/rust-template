@@ -20,6 +20,19 @@ jobs:
       - name: Run tests
         run: cargo test --workspace
 
+  format:
+    name: Formatting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
   changelog:
     name: Changelog entry required
     runs-on: ubuntu-latest
