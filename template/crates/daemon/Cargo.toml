@@ -35,6 +35,7 @@ aide = { workspace = true }
 schemars = { workspace = true }
 sd-notify = { workspace = true }
 openidconnect = { workspace = true }
+reqwest = { workspace = true }
 tower-sessions = { workspace = true }
 
 # tracing-journald connects to the systemd journal socket; unix-only.

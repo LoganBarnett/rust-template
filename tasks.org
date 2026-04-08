@@ -84,6 +84,25 @@ specific files) so only staged files are reformatted.  If treefmt does not
 support per-file invocation, consider an alternative approach such as
 running the language-specific formatters directly on the staged files.
 
+* DONE Use native CA store for TLS instead of webpki-roots
+The =openidconnect= crate pulls =reqwest= with =rustls-tls=, which uses
+=webpki-roots= (Mozilla's CA list baked in at compile time).  This doesn't
+include private CAs, so OIDC discovery fails with
+~InvalidCertificate(UnknownIssuer)~ when the issuer uses an internal CA.
+
+Fix: add =reqwest= as a direct workspace dependency with the
+=rustls-tls-native-roots= feature.  Cargo's feature unification pulls in
+=rustls-native-certs= so the system CA store (e.g.
+~/etc/ssl/certs/ca-certificates.crt~) is read at runtime.  The crate member
+that uses =openidconnect= must also list =reqwest = { workspace = true }= in its
+own =Cargo.toml= for the unification to take effect.
+
+* TODO Use Debug format for OIDC discovery errors
+The OIDC discovery error handler uses ~e.to_string()~ which flattens the error
+chain to just "Request failed", losing the underlying cause (e.g.
+~InvalidCertificate(UnknownIssuer)~).  Change to ~format!("{e:?}")~ so the full
+error chain is preserved in logs.
+
 * TODO Require tests and formatting checks on PRs
 GitHub PRs require tests to pass before merging, and that formatting runs
 without changes (to catch cases where someone bypassed the pre-commit hook).
