@@ -33,7 +33,7 @@ The =public= flag already lives in the spawn manifest (=config.json=) under
 each project's =args.public=.  The publishing workflow in spawned projects
 should key off this value.  Document how this flag is used.
 
-* TODO Auto-merge dependabot PRs
+* DONE Auto-merge dependabot PRs
 Auto-merge Dependabot changes that pass all tests and other checks.
 Dependabot gets a free pass only for dependency bumping — it is subjected to
 all other rigors of a feature branch (tests, formatting, etc.).  This implies
