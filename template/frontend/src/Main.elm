@@ -7,7 +7,7 @@ import Html.Attributes exposing (..)
 import Http
 import Json.Decode as Decode
 import Url exposing (Url)
-import Url.Parser exposing (Parser, map, oneOf, s, top)
+import Url.Parser exposing (Parser, oneOf, top)
 
 
 type Route
@@ -19,8 +19,8 @@ type Route
 routeParser : Parser (Route -> a) a
 routeParser =
     oneOf
-        [ map Home top
-        , map Me (s "me")
+        [ Url.Parser.map Home top
+        , Url.Parser.map Me (Url.Parser.s "me")
         ]
 
 

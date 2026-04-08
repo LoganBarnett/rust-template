@@ -1,0 +1,21 @@
+# Build both Rust and Elm.
+build: build-elm build-rust
+
+# Build the Elm frontend.
+build-elm:
+    cd frontend && elm make src/Main.elm --output public/elm.js
+
+# Build all Rust workspace crates.
+build-rust:
+    cargo build --workspace
+
+# Run all tests (Elm compile check + Rust test suite).
+test: build-elm test-rust
+
+# Run the Rust test suite.
+test-rust:
+    cargo test --workspace
+
+# Build Elm then run the daemon, forwarding all arguments.
+run *args: build-elm
+    cargo run --release -p rust-template-daemon -- {{args}}
