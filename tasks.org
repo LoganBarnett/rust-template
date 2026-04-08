@@ -39,6 +39,51 @@ Dependabot gets a free pass only for dependency bumping — it is subjected to
 all other rigors of a feature branch (tests, formatting, etc.).  This implies
 adding a Dependabot configuration file to the template.
 
+* TODO Rename "daemon" to "server"
+The template uses "daemon" to describe the long-running service, but "server"
+is more accurate.  "Daemon" describes /how/ a process is run (backgrounded,
+detached from a terminal), whereas "server" describes /what/ it does (listens
+for and responds to inputs).  The service is general-purpose — it may watch
+local files, communicate over a binary protocol, or serve any number of roles.
+HTTP is present only as infrastructure for health checks and observability, not
+as the primary purpose.
+
+This rename touches module names, NixOS/Darwin module files, systemd/launchd
+unit names, documentation, and any references in =flake.nix= or =config.json=.
+
+* TODO Document the server's role and scope
+The documentation should clearly explain what the server template is /for/ vs.
+what it /could/ be used for.  The server is a general-purpose long-running
+service that responds to inputs — it is not specifically an HTTP server.  HTTP
+is present only as infrastructure (health checks, observability, metrics) and
+should be described as such.
+
+The server might primarily watch local files, communicate over a binary
+protocol, bridge between systems, or serve any other role that calls for a
+persistent process responding to stimuli.  Documentation should frame HTTP as a
+supporting capability rather than the defining characteristic, so spawned
+projects don't inherit a misleading "web server" identity.
+
+This is not just a cosmetic concern — LLMs reading the project documentation
+have previously misidentified the server as "just for web stuff" and stood up
+their own server from scratch, bypassing the template's logging, systemd socket
+activation, health checks, and other infrastructure.  Clear documentation that
+the server is /the/ place to build any long-running service logic should prevent
+this.
+
+* TODO Pre-commit hook formats entire tree instead of staged files only
+The =.cargo-husky/hooks/pre-commit= hook passes staged filenames as
+positional arguments to =treefmt=, but treefmt ignores positional arguments
+and uses its own tree walker.  This means =treefmt $STAGED_FILES= formats
+every file in the repository, not just the staged ones.  Unstaged files get
+reformatted on disk but are not re-staged, leaving dirty working tree
+artifacts that have to be committed separately.
+
+Fix: use =treefmt --paths= (or the appropriate flag for limiting treefmt to
+specific files) so only staged files are reformatted.  If treefmt does not
+support per-file invocation, consider an alternative approach such as
+running the language-specific formatters directly on the staged files.
+
 * TODO Require tests and formatting checks on PRs
 GitHub PRs require tests to pass before merging, and that formatting runs
 without changes (to catch cases where someone bypassed the pre-commit hook).
