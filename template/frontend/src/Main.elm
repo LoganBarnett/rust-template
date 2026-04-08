@@ -135,8 +135,8 @@ view : Model -> Browser.Document Msg
 view model =
     { title = "rust-template"
     , body =
-        [ div [ style "padding" "2rem" ]
-            [ nav [ style "margin-bottom" "1rem" ]
+        [ main_ []
+            [ nav []
                 [ a [ href "/" ] [ text "Home" ]
                 , text " | "
                 , a [ href "/me" ] [ text "Me" ]

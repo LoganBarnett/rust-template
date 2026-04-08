@@ -1,7 +1,7 @@
 #+title:     rust-template Tasks
 #+language:  en
 
-* TODO Flat CSS with light/dark mode support
+* DONE Flat CSS with light/dark mode support
 CSS must be flat — one selector per element.  Use CSS variables to share
 settings between selectors.  Support both light and dark mode via
 ~prefers-color-scheme~ and CSS custom properties.

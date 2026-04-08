@@ -91,6 +91,130 @@ Structure error types in layers:
 
 Each layer adds context about what the application was trying to do.
 
+* CSS
+
+** Flat selectors only
+
+Each selector targets exactly one element type.  No nesting, no
+combinators, no ~>~ or ~+~ chains.  If an element needs unique
+styling, use a class or ID — not a compound selector.
+
+Good:
+
+#+begin_src css :results none :exports code
+nav {
+  margin-bottom: 1rem;
+}
+#+end_src
+
+Bad — nested combinator creates implicit coupling between elements:
+
+#+begin_src css :results none :exports code
+.container > nav {
+  margin-bottom: 1rem;
+}
+#+end_src
+
+** CSS variables for shared values
+
+Use CSS custom properties (variables) defined on ~:root~ for any
+value shared between selectors.  Never hard-code colours, spacing
+scales, or font stacks directly in a selector.
+
+Good:
+
+#+begin_src css :results none :exports code
+:root {
+  --color-text: #111111;
+}
+
+p {
+  color: var(--color-text);
+}
+
+h1 {
+  color: var(--color-text);
+}
+#+end_src
+
+Bad — duplicated literal makes updates error-prone:
+
+#+begin_src css :results none :exports code
+p {
+  color: #111111;
+}
+
+h1 {
+  color: #111111;
+}
+#+end_src
+
+** Light and dark mode
+
+Provide light-mode values in ~:root~ and override them inside
+~@media (prefers-color-scheme: dark)~.  Never create separate
+selectors per colour scheme — the variables handle the switch.
+
+Good:
+
+#+begin_src css :results none :exports code
+:root {
+  --color-bg: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #111111;
+  }
+}
+
+body {
+  background: var(--color-bg);
+}
+#+end_src
+
+Bad — duplicated selector with hard-coded colours:
+
+#+begin_src css :results none :exports code
+body {
+  background: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  body {
+    background: #111111;
+  }
+}
+#+end_src
+
+** No inline styles in Elm
+
+All presentation belongs in the stylesheet.  Elm views must not use
+~style~ attributes.  Use semantic HTML elements (~main_~, ~nav~,
+~header~, ~section~) so that element selectors in CSS are sufficient
+and classes are rarely needed.
+
+Good:
+
+#+begin_src elm :results none :exports code
+view model =
+    main_ []
+        [ nav [] [ ... ]
+        , viewPage model
+        ]
+#+end_src
+
+Bad — inline styles bypass the stylesheet and cannot respond to
+dark mode, media queries, or future design changes:
+
+#+begin_src elm :results none :exports code
+view model =
+    div [ style "padding" "2rem" ]
+        [ nav [ style "margin-bottom" "1rem" ] [ ... ]
+        , viewPage model
+        ]
+#+end_src
+
 * Systemd secrets
 
 The NixOS module passes secrets via systemd's ~LoadCredential~.  The

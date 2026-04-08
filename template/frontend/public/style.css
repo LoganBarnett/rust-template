@@ -32,6 +32,23 @@ body {
   color: var(--color-text);
 }
 
+main {
+  padding: 2rem;
+}
+
+nav {
+  margin-bottom: 1rem;
+}
+
+h1 {
+  margin-top: 0;
+  color: var(--color-text);
+}
+
+p {
+  color: var(--color-text);
+}
+
 a {
   color: var(--color-link);
   text-decoration: none;
