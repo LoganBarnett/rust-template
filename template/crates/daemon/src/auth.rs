@@ -6,7 +6,8 @@
 //!   3. `GET /auth/logout`   → clear session, redirect to /
 //!
 //! `require_auth` is an Axum middleware function that enforces an authenticated
-//! session on protected routes.
+//! session on protected routes.  When OIDC is not configured, all requests
+//! pass through as implicit admin.
 
 use axum::{
   extract::{Query, Request, State},
@@ -50,6 +51,16 @@ pub struct CallbackQuery {
   state: String,
 }
 
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+fn oidc_disabled_response() -> Response {
+  (
+    StatusCode::NOT_FOUND,
+    "OIDC authentication is not configured on this instance.",
+  )
+    .into_response()
+}
+
 // ── handlers ──────────────────────────────────────────────────────────────────
 
 /// `GET /auth/login` — redirect the user to the OIDC provider.
@@ -57,8 +68,12 @@ pub async fn login_handler(
   State(state): State<AppState>,
   session: Session,
 ) -> Response {
-  let (auth_url, csrf_token, nonce) = state
-    .oidc_client
+  let oidc_client = match &state.oidc_client {
+    Some(c) => c,
+    None => return oidc_disabled_response(),
+  };
+
+  let (auth_url, csrf_token, nonce) = oidc_client
     .authorize_url(
       CoreAuthenticationFlow::AuthorizationCode,
       CsrfToken::new_random,
@@ -91,6 +106,11 @@ pub async fn callback_handler(
   session: Session,
   Query(params): Query<CallbackQuery>,
 ) -> Response {
+  let oidc_client = match &state.oidc_client {
+    Some(c) => c,
+    None => return oidc_disabled_response(),
+  };
+
   // 1. Verify CSRF state.
   let stored_state: String = match session.get(KEY_OIDC_STATE).await {
     Ok(Some(s)) => s,
@@ -126,8 +146,7 @@ pub async fn callback_handler(
   };
 
   // 2. Exchange authorization code for tokens.
-  let token_response = match state
-    .oidc_client
+  let token_response = match oidc_client
     .exchange_code(AuthorizationCode::new(params.code))
     .request_async(openidconnect::reqwest::async_http_client)
     .await
@@ -157,26 +176,24 @@ pub async fn callback_handler(
   };
 
   let nonce = Nonce::new(nonce_secret);
-  let claims =
-    match id_token.claims(&state.oidc_client.id_token_verifier(), &nonce) {
-      Ok(c) => c,
-      Err(e) => {
-        warn!("ID token verification failed: {e}");
-        return (
-          StatusCode::BAD_GATEWAY,
-          "Authentication failed — ID token invalid.",
-        )
-          .into_response();
-      }
-    };
+  let claims = match id_token.claims(&oidc_client.id_token_verifier(), &nonce) {
+    Ok(c) => c,
+    Err(e) => {
+      warn!("ID token verification failed: {e}");
+      return (
+        StatusCode::BAD_GATEWAY,
+        "Authentication failed — ID token invalid.",
+      )
+        .into_response();
+    }
+  };
 
   // 4. Fetch user attributes from the userinfo endpoint.
   // Some providers place email and name in the userinfo response rather than
   // embedding them in the ID token, so we always query the endpoint after
   // token verification.  ID token claims are kept as a fallback.
   let userinfo: CoreUserInfoClaims = {
-    let req = match state
-      .oidc_client
+    let req = match oidc_client
       .user_info(token_response.access_token().clone(), None)
     {
       Ok(r) => r,
@@ -246,25 +263,36 @@ pub async fn callback_handler(
 }
 
 /// `GET /auth/logout` — clear the session and return to home.
-pub async fn logout_handler(session: Session) -> impl IntoResponse {
+pub async fn logout_handler(
+  State(state): State<AppState>,
+  session: Session,
+) -> Response {
+  if !state.auth_enabled() {
+    return oidc_disabled_response();
+  }
   if let Err(e) = session.flush().await {
     warn!("Failed to flush session on logout: {e}");
   }
-  Redirect::to("/")
+  Redirect::to("/").into_response()
 }
 
 // ── middleware ────────────────────────────────────────────────────────────────
 
 /// Middleware that requires an authenticated session.
 ///
-/// Unauthenticated requests are redirected to `/auth/login`.
-/// The original URI is stored in the session so the user returns
-/// to their intended destination after signing in.
+/// When OIDC is not configured, all requests pass through immediately
+/// (every request is implicitly admin).  When OIDC is configured,
+/// unauthenticated requests are redirected to `/auth/login`.
 pub async fn require_auth(
+  State(state): State<AppState>,
   session: Session,
   req: Request,
   next: Next,
 ) -> Response {
+  if !state.auth_enabled() {
+    return next.run(req).await;
+  }
+
   let user: Option<AuthUser> = session.get(KEY_USER).await.unwrap_or(None);
 
   if user.is_none() {

@@ -107,15 +107,20 @@ impl ConfigFileRaw {
 }
 
 #[derive(Debug, Clone)]
+pub struct OidcConfig {
+  pub issuer: String,
+  pub client_id: String,
+  pub client_secret: String,
+}
+
+#[derive(Debug, Clone)]
 pub struct Config {
   pub log_level: LogLevel,
   pub log_format: LogFormat,
   pub listen_address: ListenerAddress,
   pub frontend_path: PathBuf,
   pub base_url: String,
-  pub oidc_issuer: String,
-  pub oidc_client_id: String,
-  pub oidc_client_secret: String,
+  pub oidc: Option<OidcConfig>,
 }
 
 impl Config {
@@ -171,36 +176,64 @@ impl Config {
       ConfigError::Validation("base_url is required".to_string())
     })?;
 
-    let oidc_issuer =
-      cli.oidc_issuer.or(config_file.oidc_issuer).ok_or_else(|| {
-        ConfigError::Validation("oidc_issuer is required".to_string())
-      })?;
-
-    let oidc_client_id = cli
-      .oidc_client_id
-      .or(config_file.oidc_client_id)
-      .ok_or_else(|| {
-        ConfigError::Validation("oidc_client_id is required".to_string())
-      })?;
-
-    let secret_file = cli
+    let oidc_issuer = cli.oidc_issuer.or(config_file.oidc_issuer);
+    let oidc_client_id = cli.oidc_client_id.or(config_file.oidc_client_id);
+    let oidc_secret_file = cli
       .oidc_client_secret_file
-      .or(config_file.oidc_client_secret_file)
-      .or_else(credential_secret_path)
-      .ok_or_else(|| {
-        ConfigError::Validation(
-          "oidc_client_secret_file is required (set it explicitly or \
-           run under systemd with LoadCredential)"
-            .to_string(),
-        )
-      })?;
+      .or(config_file.oidc_client_secret_file);
 
-    let oidc_client_secret = std::fs::read_to_string(&secret_file)
-      .map(|s| s.trim().to_string())
-      .map_err(|source| ConfigError::FileRead {
-        path: secret_file,
-        source,
-      })?;
+    let oidc = match (&oidc_issuer, &oidc_client_id) {
+      (None, None) if oidc_secret_file.is_none() => None,
+      (Some(issuer), Some(client_id)) => {
+        let secret_file = oidc_secret_file
+          .or_else(credential_secret_path)
+          .ok_or_else(|| {
+            ConfigError::Validation(
+              "oidc_client_secret_file is required when oidc_issuer and \
+               oidc_client_id are set (set it explicitly or run under \
+               systemd with LoadCredential)"
+                .to_string(),
+            )
+          })?;
+
+        let client_secret = std::fs::read_to_string(&secret_file)
+          .map(|s| s.trim().to_string())
+          .map_err(|source| ConfigError::FileRead {
+            path: secret_file,
+            source,
+          })?;
+
+        Some(OidcConfig {
+          issuer: issuer.clone(),
+          client_id: client_id.clone(),
+          client_secret,
+        })
+      }
+      _ => {
+        let mut present = Vec::new();
+        let mut missing = Vec::new();
+        for (name, val) in [
+          ("oidc_issuer", oidc_issuer.is_some()),
+          ("oidc_client_id", oidc_client_id.is_some()),
+          (
+            "oidc_client_secret_file",
+            oidc_secret_file.is_some() || credential_secret_path().is_some(),
+          ),
+        ] {
+          if val {
+            present.push(name);
+          } else {
+            missing.push(name);
+          }
+        }
+        return Err(ConfigError::Validation(format!(
+          "partial OIDC configuration: set all three fields or none. \
+           present: [{}], missing: [{}]",
+          present.join(", "),
+          missing.join(", ")
+        )));
+      }
+    };
 
     Ok(Config {
       log_level,
@@ -208,9 +241,7 @@ impl Config {
       listen_address,
       frontend_path,
       base_url,
-      oidc_issuer,
-      oidc_client_id,
-      oidc_client_secret,
+      oidc,
     })
   }
 }

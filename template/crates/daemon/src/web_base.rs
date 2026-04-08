@@ -24,7 +24,7 @@ use tower_http::{
 };
 use tracing::info;
 
-use crate::config::Config;
+use crate::{auth, config::Config};
 
 // ── AppState ──────────────────────────────────────────────────────────────────
 
@@ -33,7 +33,7 @@ pub struct AppState {
   pub registry: Arc<Registry>,
   pub request_counter: IntCounter,
   pub frontend_path: PathBuf,
-  pub oidc_client: Arc<CoreClient>,
+  pub oidc_client: Option<Arc<CoreClient>>,
 }
 
 #[derive(Debug, Error)]
@@ -49,9 +49,13 @@ pub enum AppStateError {
 }
 
 impl AppState {
+  pub fn auth_enabled(&self) -> bool {
+    self.oidc_client.is_some()
+  }
+
   /// Construct `AppState` from a validated `Config`.
   ///
-  /// Performs OIDC discovery (an async HTTP call).
+  /// Performs OIDC discovery when OIDC is configured (an async HTTP call).
   pub async fn init(config: &Config) -> Result<Self, AppStateError> {
     let registry = Registry::new();
     let request_counter =
@@ -61,42 +65,51 @@ impl AppState {
       .register(Box::new(request_counter.clone()))
       .expect("Failed to register counter");
 
-    // ── OIDC client ───────────────────────────────────────────────────────
-    let issuer = openidconnect::IssuerUrl::new(config.oidc_issuer.clone())
-      .map_err(|e| AppStateError::InvalidIssuer(e.to_string()))?;
+    let oidc_client = match &config.oidc {
+      Some(oidc) => {
+        let issuer = openidconnect::IssuerUrl::new(oidc.issuer.clone())
+          .map_err(|e| AppStateError::InvalidIssuer(e.to_string()))?;
 
-    let provider_metadata =
-      openidconnect::core::CoreProviderMetadata::discover_async(
-        issuer,
-        openidconnect::reqwest::async_http_client,
-      )
-      .await
-      .map_err(|e| AppStateError::OidcDiscovery(e.to_string()))?;
+        let provider_metadata =
+          openidconnect::core::CoreProviderMetadata::discover_async(
+            issuer,
+            openidconnect::reqwest::async_http_client,
+          )
+          .await
+          .map_err(|e| AppStateError::OidcDiscovery(e.to_string()))?;
 
-    info!(issuer = %config.oidc_issuer, "OIDC discovery complete");
+        info!(issuer = %oidc.issuer, "OIDC discovery complete");
 
-    let redirect_url = openidconnect::RedirectUrl::new(format!(
-      "{}/auth/callback",
-      config.base_url.trim_end_matches('/')
-    ))
-    .map_err(|e| AppStateError::InvalidRedirectUri(e.to_string()))?;
+        let redirect_url = openidconnect::RedirectUrl::new(format!(
+          "{}/auth/callback",
+          config.base_url.trim_end_matches('/')
+        ))
+        .map_err(|e| AppStateError::InvalidRedirectUri(e.to_string()))?;
 
-    // RequestBody sends client credentials in the POST body
-    // (client_secret_post).  Some providers (e.g. Authelia) require this
-    // instead of the HTTP Basic Auth default.
-    let oidc_client = openidconnect::core::CoreClient::from_provider_metadata(
-      provider_metadata,
-      openidconnect::ClientId::new(config.oidc_client_id.clone()),
-      Some(openidconnect::ClientSecret::new(config.oidc_client_secret.clone())),
-    )
-    .set_redirect_uri(redirect_url)
-    .set_auth_type(openidconnect::AuthType::RequestBody);
+        // RequestBody sends client credentials in the POST body
+        // (client_secret_post).  Some providers (e.g. Authelia) require this
+        // instead of the HTTP Basic Auth default.
+        let client = openidconnect::core::CoreClient::from_provider_metadata(
+          provider_metadata,
+          openidconnect::ClientId::new(oidc.client_id.clone()),
+          Some(openidconnect::ClientSecret::new(oidc.client_secret.clone())),
+        )
+        .set_redirect_uri(redirect_url)
+        .set_auth_type(openidconnect::AuthType::RequestBody);
+
+        Some(Arc::new(client))
+      }
+      None => {
+        info!("OIDC not configured — running unauthenticated");
+        None
+      }
+    };
 
     Ok(Self {
       registry: Arc::new(registry),
       request_counter,
       frontend_path: config.frontend_path.clone(),
-      oidc_client: Arc::new(oidc_client),
+      oidc_client,
     })
   }
 }
@@ -114,9 +127,38 @@ async fn healthz() -> Json<HealthResponse> {
   })
 }
 
+#[derive(Serialize, JsonSchema)]
+pub struct MeResponse {
+  name: String,
+  auth_enabled: bool,
+}
+
+async fn me_handler(
+  axum::extract::State(state): axum::extract::State<AppState>,
+  session: tower_sessions::Session,
+) -> Json<MeResponse> {
+  if !state.auth_enabled() {
+    return Json(MeResponse {
+      name: "admin".to_string(),
+      auth_enabled: false,
+    });
+  }
+
+  let name = auth::current_user(&session)
+    .await
+    .map(|u| u.name)
+    .unwrap_or_else(|| "anonymous".to_string());
+
+  Json(MeResponse {
+    name,
+    auth_enabled: true,
+  })
+}
+
 pub fn base_router(state: AppState) -> Router {
   aide::generate::extract_schemas(true);
   let frontend_path = state.frontend_path.clone();
+  let me_state = state.clone();
   let mut api = OpenApi::default();
 
   let app_router = ApiRouter::new()
@@ -139,6 +181,7 @@ pub fn base_router(state: AppState) -> Router {
 
   Router::new()
     .merge(app_router)
+    .route("/me", get(me_handler).with_state(me_state))
     .route(
       "/api-docs/openapi.json",
       get({

@@ -109,20 +109,31 @@ in {
     };
 
     oidcIssuer = lib.mkOption {
-      type = lib.types.str;
+      type = lib.types.nullOr lib.types.str;
+      default = null;
       example = "https://sso.example.com/application/o/my-app";
-      description = "OIDC issuer URL used for provider discovery.";
+      description = ''
+        OIDC issuer URL used for provider discovery.  Set all three OIDC
+        options or leave all three null for unauthenticated admin mode.
+      '';
     };
 
     oidcClientId = lib.mkOption {
-      type = lib.types.str;
-      description = "OIDC client ID.";
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = ''
+        OIDC client ID.  Set all three OIDC options or leave all three
+        null for unauthenticated admin mode.
+      '';
     };
 
     oidcClientSecretFile = lib.mkOption {
-      type = lib.types.path;
+      type = lib.types.nullOr lib.types.path;
+      default = null;
       description = ''
-        Path to a file containing the OIDC client secret.
+        Path to a file containing the OIDC client secret.  Set all three
+        OIDC options or leave all three null for unauthenticated admin
+        mode.
       '';
     };
 
@@ -181,6 +192,20 @@ in {
   };
 
   config = lib.mkIf cfg.enable {
+    assertions = [{
+      assertion =
+        let
+          oidcFields = [ cfg.oidcIssuer cfg.oidcClientId cfg.oidcClientSecretFile ];
+          setCount = lib.count (x: x != null) oidcFields;
+        in
+          setCount == 0 || setCount == 3;
+      message = ''
+        services.rust-template-daemon: OIDC configuration is partial.
+        Set all three of oidcIssuer, oidcClientId, and oidcClientSecretFile,
+        or leave all three null for unauthenticated admin mode.
+      '';
+    }];
+
     users.users.${cfg.user} = {
       uid = cfg.uid;
       gid = cfg.gid;
@@ -238,6 +263,7 @@ in {
           LOG_LEVEL = cfg.logLevel;
           LOG_FORMAT = cfg.logFormat;
           BASE_URL = cfg.baseUrl;
+        } // lib.optionalAttrs (cfg.oidcIssuer != null) {
           OIDC_ISSUER = cfg.oidcIssuer;
           OIDC_CLIENT_ID = cfg.oidcClientId;
           OIDC_CLIENT_SECRET_FILE = cfg.oidcClientSecretFile;
