@@ -97,7 +97,7 @@ Fix: add =reqwest= as a direct workspace dependency with the
 that uses =openidconnect= must also list =reqwest = { workspace = true }= in its
 own =Cargo.toml= for the unification to take effect.
 
-* TODO Use Debug format for OIDC discovery errors
+* DONE Use Debug format for OIDC discovery errors
 The OIDC discovery error handler uses ~e.to_string()~ which flattens the error
 chain to just "Request failed", losing the underlying cause (e.g.
 ~InvalidCertificate(UnknownIssuer)~).  Change to ~format!("{e:?}")~ so the full

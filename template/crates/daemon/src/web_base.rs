@@ -76,7 +76,7 @@ impl AppState {
             openidconnect::reqwest::async_http_client,
           )
           .await
-          .map_err(|e| AppStateError::OidcDiscovery(e.to_string()))?;
+          .map_err(|e| AppStateError::OidcDiscovery(format!("{e:?}")))?;
 
         info!(issuer = %oidc.issuer, "OIDC discovery complete");
 
