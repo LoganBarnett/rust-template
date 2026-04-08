@@ -29,12 +29,22 @@ jobs:
           cargo fetch
           echo "version=${NEW}" >> "$GITHUB_OUTPUT"
 
-      - name: Commit and push version bump
+      - name: Install changelog-roller
+        run: cargo install changelog-roller
+
+      - name: Roll changelog
+        run: >
+          changelog-roller
+          --input-file CHANGELOG.org
+          --add-version "v${{ steps.bump.outputs.version }}"
+          --in-place
+
+      - name: Commit and push release
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Cargo.toml Cargo.lock
-          git commit -m "chore: bump version to ${{ steps.bump.outputs.version }} [skip ci]"
+          git add Cargo.toml Cargo.lock CHANGELOG.org
+          git commit -m "chore: release v${{ steps.bump.outputs.version }} [skip ci]"
           git push
 
       - name: Publish to crates.io

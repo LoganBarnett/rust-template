@@ -6,12 +6,12 @@ CSS must be flat — one selector per element.  Use CSS variables to share
 settings between selectors.  Support both light and dark mode via
 ~prefers-color-scheme~ and CSS custom properties.
 
-* TODO Landing page links to =/me=
+* DONE Landing page links to =/me=
 The hello world / landing page should link to ~/me~ for displaying details
 about the current user.  The template doesn't expose much user data yet, but
 the route and page should exist as a starting point.
 
-* TODO Incorporate changelog-roller
+* DONE Incorporate changelog-roller
 Integrate [[https://github.com/LoganBarnett/changelog-roller][changelog-roller]]
 from =~/dev/changelog-roller=.  This may require adding GitHub Actions to the
 changelog-roller repo itself.  The template should consume changelog-roller to

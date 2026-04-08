@@ -19,3 +19,22 @@ jobs:
 
       - name: Run tests
         run: cargo test --workspace
+
+  changelog:
+    name: Changelog entry required
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install changelog-roller
+        run: cargo install changelog-roller
+
+      - name: Check for new changelog entries
+        run: changelog-roller --input-file CHANGELOG.org --diff-range origin/main

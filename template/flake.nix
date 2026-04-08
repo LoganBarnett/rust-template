@@ -6,6 +6,7 @@
     nixpkgs.url = "github:NixOS/nixpkgs/25.11";
     rust-overlay.url = "github:oxalica/rust-overlay";
     crane.url = "github:ipetkov/crane";
+    changelog-roller.url = "github:LoganBarnett/changelog-roller";
   };
 
   outputs = {
@@ -13,6 +14,7 @@
     nixpkgs,
     rust-overlay,
     crane,
+    changelog-roller,
   } @ inputs: let
     forAllSystems = nixpkgs.lib.genAttrs nixpkgs.lib.systems.flakeExposed;
     overlays = [
@@ -61,8 +63,9 @@
       # binary.
     };
 
-    # Development shell packages.
-    devPackages = pkgs: let
+    # Development shell packages.  Accepts `system` so flake-input
+    # packages can be resolved to the correct platform.
+    devPackages = system: pkgs: let
       rust = pkgs.rust-bin.stable.latest.default.override {
         extensions = [
           # For rust-analyzer and others.  See
@@ -87,13 +90,14 @@
       pkgs.alejandra
       pkgs.prettier
       pkgs.just
+      changelog-roller.packages.${system}.default
     ];
   in {
     devShells = forAllSystems (system: let
       pkgs = pkgsFor system;
     in {
       default = pkgs.mkShell {
-        buildInputs = devPackages pkgs;
+        buildInputs = devPackages system pkgs;
         shellHook = ''
           echo "Rust Template development environment"
           echo ""
