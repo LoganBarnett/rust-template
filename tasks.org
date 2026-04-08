@@ -51,7 +51,7 @@ as the primary purpose.
 This rename touches module names, NixOS/Darwin module files, systemd/launchd
 unit names, documentation, and any references in =flake.nix= or =config.json=.
 
-* TODO Document the server's role and scope
+* DONE Document the server's role and scope
 The documentation should clearly explain what the server template is /for/ vs.
 what it /could/ be used for.  The server is a general-purpose long-running
 service that responds to inputs — it is not specifically an HTTP server.  HTTP

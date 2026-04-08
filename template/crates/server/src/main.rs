@@ -1,4 +1,13 @@
-//! rust-template-server - Long-running server process
+//! rust-template-server - General-purpose long-running service
+//!
+//! This is the project's persistent process.  It is not specifically an
+//! HTTP server — HTTP is present only as infrastructure for health
+//! checks, metrics, and observability.  The server may primarily watch
+//! files, communicate over a binary protocol, bridge between systems,
+//! or serve any other role requiring a long-running process.  Build new
+//! long-running functionality here rather than creating a separate
+//! service; the logging, systemd integration, and graceful shutdown are
+//! already wired up.
 //!
 //! # LLM Development Guidelines
 //! When modifying this code:

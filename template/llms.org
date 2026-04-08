@@ -1,6 +1,32 @@
 #+title:     LLMs
 #+language:  en
 
+* Server crate: role and scope
+
+The =crates/server= crate is the project's general-purpose long-running
+service.  It is /not/ specifically an HTTP server — HTTP is present
+only as infrastructure for health checks, metrics, and observability.
+
+The server might primarily:
+
+- Watch local files for changes and react to them.
+- Communicate over a binary protocol, gRPC, or WebSockets.
+- Bridge between systems (queues, databases, external APIs).
+- Serve any other role that calls for a persistent process responding
+  to stimuli.
+
+When adding new functionality that requires a long-running process,
+build it in the server crate rather than creating a separate service.
+The server already provides structured logging, systemd socket
+activation, watchdog integration, graceful shutdown, and an Elm
+frontend — duplicating this infrastructure is wasteful and
+error-prone.
+
+Do not mistake the server for "just a web server" and stand up a
+separate HTTP service from scratch.  The existing HTTP routes
+(=/healthz=, =/metrics=, =/me=, =/scalar=) are supporting
+infrastructure, not the defining purpose.
+
 * General code guidelines
 
 These are instructions for LLMs to write code more to my liking.
