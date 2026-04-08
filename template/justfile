@@ -16,6 +16,6 @@ test: build-elm test-rust
 test-rust:
     cargo test --workspace
 
-# Build Elm then run the daemon, forwarding all arguments.
+# Build Elm then run via cargo, forwarding all arguments.
 run *args: build-elm
-    cargo run --release -p rust-template-daemon -- {{args}}
+    cargo run {{args}}
