@@ -71,7 +71,7 @@ activation, health checks, and other infrastructure.  Clear documentation that
 the server is /the/ place to build any long-running service logic should prevent
 this.
 
-* TODO Pre-commit hook formats entire tree instead of staged files only
+* DONE Pre-commit hook formats entire tree instead of staged files only
 The =.cargo-husky/hooks/pre-commit= hook passes staged filenames as
 positional arguments to =treefmt=, but treefmt ignores positional arguments
 and uses its own tree walker.  This means =treefmt $STAGED_FILES= formats

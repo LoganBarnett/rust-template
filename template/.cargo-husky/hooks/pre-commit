@@ -1,25 +1,71 @@
 #!/bin/sh
-# Pre-commit hook: format all staged files using treefmt.
+# Pre-commit hook: format staged files using their language-specific
+# formatters.  Runs each formatter only on the staged files that match
+# its file extension, then re-stages the formatted versions.
 
 set -e
 
 # Collect staged filenames (Added, Copied, or Modified only).
-STAGED_FILES=$(git diff --staged --name-only --diff-filter=ACM || true)
+STAGED=$(git diff --staged --name-only --diff-filter=ACM || true)
 
-if [ -z "$STAGED_FILES" ]; then
+if [ -z "$STAGED" ]; then
   exit 0
 fi
 
-echo "Formatting staged files..."
+# Filter staged files by extension pattern.
+staged_matching() {
+  echo "$STAGED" | grep "$1" || true
+}
 
-# Run treefmt on each staged file.  Word-splitting is intentional here;
-# filenames with spaces are not expected in this repository.
-# shellcheck disable=SC2086
-treefmt $STAGED_FILES
+STAGED_RS=$(staged_matching '\.rs$')
+STAGED_NIX=$(staged_matching '\.nix$')
+STAGED_ELM=$(staged_matching '\.elm$')
+STAGED_CSS=$(staged_matching '\.css$')
 
-# Re-stage the files after formatting.
-for f in $STAGED_FILES; do
-  git add "$f"
-done
+formatted=false
 
-echo "Staged files formatted and re-staged."
+if [ -n "$STAGED_RS" ]; then
+  echo "Formatting staged Rust files..."
+  for f in $STAGED_RS; do
+    echo "  - $f"
+    rustfmt --edition 2021 "$f"
+    git add "$f"
+  done
+  formatted=true
+fi
+
+if [ -n "$STAGED_NIX" ]; then
+  echo "Formatting staged Nix files..."
+  for f in $STAGED_NIX; do
+    echo "  - $f"
+    alejandra -q "$f"
+    git add "$f"
+  done
+  formatted=true
+fi
+
+if [ -n "$STAGED_ELM" ]; then
+  echo "Formatting staged Elm files..."
+  for f in $STAGED_ELM; do
+    echo "  - $f"
+    elm-format --yes "$f"
+    git add "$f"
+  done
+  formatted=true
+fi
+
+if [ -n "$STAGED_CSS" ]; then
+  echo "Formatting staged CSS files..."
+  for f in $STAGED_CSS; do
+    echo "  - $f"
+    prettier --write "$f"
+    git add "$f"
+  done
+  formatted=true
+fi
+
+if [ "$formatted" = true ]; then
+  echo "Staged files formatted and re-staged successfully."
+else
+  echo "No formattable files staged for commit."
+fi
