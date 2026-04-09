@@ -1,0 +1,26 @@
+name: Branch protection
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/branch-protection.json'
+      - '.github/workflows/branch-protection.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  apply:
+    name: Apply branch protection
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update branch protection rules
+        run: |
+          gh api repos/${{ github.repository }}/branches/main/protection \
+            -X PUT \
+            --input .github/branch-protection.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
