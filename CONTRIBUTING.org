@@ -42,6 +42,33 @@ nix develop --command cargo test --workspace
 
 Tests must exit with a proper error code.
 
+* UI philosophy: no modals
+
+Do not use modals anywhere in the UI.  Replace every modal with an
+inline expansion that keeps surrounding context visible.
+
+** Why
+
+Modals block the UI — which may contain information relevant to the
+decision at hand — and they are an accessibility nightmare (backdrop
+divs, tab-index trapping, z-index layering).  As an interface matures,
+the probability of needing a modal inside a modal trends to 1.  Powerful
+UIs do not use modals.
+
+** Patterns
+
+- *Export / large output*: clicking the trigger button slides the
+  surrounding content down and reveals the output inline, in the normal
+  document flow.
+- *Destructive confirmations*: replace the triggering button in-place
+  with a "Confirm delete?  Yes / No" prompt.  When the user decides (or
+  clicks elsewhere), restore the original button.
+- *Progressive disclosure*: expand a section in-place rather than
+  overlaying.
+
+Every piece of revealed UI must live in the normal document flow.  No
+backdrop divs, no tab-index trapping, no z-index layering.
+
 * Commit workflow
 
 1. Make your changes on a feature branch.
