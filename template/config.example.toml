@@ -1,5 +1,10 @@
 # Example configuration file for rust-template applications
-# Copy this file to config.toml and customize as needed
+#
+# Searched in order:
+#   1. --config / $CONFIG_FILE        (explicit)
+#   2. ./config.toml                  (working directory)
+#   3. $XDG_CONFIG_HOME/rust-template/config.toml
+#      (default: ~/.config/rust-template/config.toml)
 
 # Logging configuration
 log_level = "info"  # Options: trace, debug, info, warn, error

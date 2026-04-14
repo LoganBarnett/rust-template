@@ -128,9 +128,13 @@ impl Config {
     let config_file = if let Some(config_path) = &cli.config {
       ConfigFileRaw::from_file(config_path)?
     } else {
-      let default_config_path = PathBuf::from("config.toml");
-      if default_config_path.exists() {
-        ConfigFileRaw::from_file(&default_config_path)?
+      let cwd = PathBuf::from("config.toml");
+      let xdg = xdg_config_dir().map(|d| d.join("config.toml"));
+
+      if cwd.exists() {
+        ConfigFileRaw::from_file(&cwd)?
+      } else if let Some(ref xdg_path) = xdg.filter(|p| p.exists()) {
+        ConfigFileRaw::from_file(xdg_path)?
       } else {
         ConfigFileRaw::default()
       }
@@ -244,6 +248,15 @@ impl Config {
       oidc,
     })
   }
+}
+
+/// Resolve `$XDG_CONFIG_HOME/rust-template`, falling back to
+/// `$HOME/.config/rust-template` when the variable is unset.
+fn xdg_config_dir() -> Option<PathBuf> {
+  std::env::var_os("XDG_CONFIG_HOME")
+    .map(PathBuf::from)
+    .or_else(|| home::home_dir().map(|h| h.join(".config")))
+    .map(|d| d.join("rust-template"))
 }
 
 /// Returns the path to the `oidc-client-secret` credential file inside

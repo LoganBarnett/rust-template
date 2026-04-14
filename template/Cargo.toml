@@ -46,6 +46,9 @@ tokio-listener = { version = "0.5", features = ["axum08"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["trace", "cors", "fs", "set-header"] }
 
+# Home directory resolution
+home = "0.5"
+
 # Testing
 tempfile = "3"
 
