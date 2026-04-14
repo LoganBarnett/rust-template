@@ -168,13 +168,12 @@ together yields a ~Config~ that represents a completely valid configuration.
 
 ** Use the Nix development shell when available
 
-If ~nix~ is available (~which nix~ succeeds), run all ~cargo~ commands inside
-the Nix development shell rather than using whatever ~cargo~ is on the system
-PATH:
+If ~nix~ is available (~which nix~ succeeds), run all commands inside the Nix
+development shell rather than using whatever toolchain is on the system PATH:
 
 #+begin_src sh :results none :exports code
-nix develop --command cargo build --workspace
-nix develop --command cargo test --workspace
+nix develop --command just build
+nix develop --command just test
 #+end_src
 
 This ensures the correct Rust toolchain and associated tools (such as
@@ -187,5 +186,4 @@ nix develop --command git commit -m "your message"
 
 ** Run all tests after changes
 
-Run ~cargo test --workspace~ after making any change to verify nothing is
-broken.
+Run ~just test~ after making any change to verify nothing is broken.

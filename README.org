@@ -6,6 +6,193 @@
 An opinionated Rust workspace template.  Clone this repository once; use
 =new-project.sh= whenever you need a new project.
 
+The premise is simple: there is a large set of engineering practices that
+nobody would turn down if they came pre-wired.  Structured logging,
+automated formatting, integration tests, graceful shutdown, dark mode,
+branch protection — individually each is "nice to have", but together
+they represent weeks of setup that most projects skip and never circle
+back to.  This template turns all of it on from commit zero.
+
+* Features
+
+** Server
+
+*** Graceful shutdown
+
+The server handles =SIGTERM= and =SIGINT=, draining in-flight requests
+before exiting.  Rolling deployments and container orchestrators depend
+on this — without it, active connections are severed on every deploy.
+
+*** Health checks
+
+=/healthz= returns a structured status response suitable for load
+balancer probes, Kubernetes liveness checks, and uptime monitors.  A
+health endpoint that exists from day one means the deployment pipeline
+never has to be retrofitted to support one.
+
+*** Prometheus metrics
+
+=/metrics= exposes Prometheus-formatted counters (including
+=http_requests_total=) as plain text.  Grafana, Datadog, and every
+major observability platform can scrape this endpoint directly.
+Instrumenting after the fact means retroactively threading counters
+through code that was never designed for them — starting with metrics
+baked in avoids that.
+
+*** OIDC authentication
+
+A complete OpenID Connect Authorization Code Flow is wired up via
+=openidconnect=: login, callback, logout, and a =require_auth=
+middleware.  When no OIDC provider is configured, the server runs in
+implicit-admin mode — no code changes needed for local development.
+
+*** OpenAPI documentation
+
+Routes are annotated with [[https://github.com/tamasfe/aide][aide]], which generates an OpenAPI 3 spec
+served at =/api-docs/openapi.json=.  A [[https://github.com/scalar/scalar][Scalar]] explorer UI is mounted
+at =/scalar=.  API documentation stays in sync with the code because it
+/is/ the code.
+
+*** Systemd and launchd integration
+
+The server supports systemd socket activation (=--listen sd-listen=),
+=sd_notify= readiness signaling, and watchdog heartbeats.  Secrets are
+passed via =LoadCredential=, never environment variables.  NixOS and
+nix-darwin modules are included, complete with hardened service
+definitions, health checks, and socket units.
+
+** Web UI
+
+*** Strongly typed frontend
+
+The frontend is [[https://elm-lang.org/][Elm]] — a statically typed, purely functional language
+that compiles to JavaScript.  Elm programs famously produce no runtime
+exceptions.  The Nix build compiles Elm hermetically and stamps a
+store-hash cache-busting query string into =index.html=, so deploys
+never serve stale assets.
+
+*** Light and dark mode
+
+CSS custom properties defined on =:root= provide a full light/dark
+palette out of the box via =@media (prefers-color-scheme: dark)=.  Add
+your design tokens to the variables; the media query handles the rest.
+
+*** Simple CSS
+
+Flat selectors only — no nesting, no combinators, no specificity wars.
+Each selector targets exactly one element.  Shared values live in CSS
+variables on =:root=.  The result is a stylesheet you can read top to
+bottom without tracing inheritance chains.  Reuse is achieved through
+variables, not complex selector hierarchies.
+
+** Auto-formatted code
+
+A pre-commit hook runs [[https://github.com/numtide/treefmt][treefmt]], formatting Rust (=rustfmt=), Elm
+(=elm-format=), Nix (=alejandra=), and CSS (=prettier=) in a single
+pass.  CI enforces the same check.  Formatting debates are settled once
+in configuration, not revisited on every pull request.
+
+** Starter integration tests
+
+Both the CLI and server ship with integration tests.  Server tests
+exercise real HTTP routes via =tower::ServiceExt::oneshot= (no running
+server needed).  CLI tests invoke the compiled binary as a subprocess.
+If something works in the test suite, it works in production — no mocks
+standing in for real behavior.
+
+** Separated concerns with LLM guardrails
+
+The workspace splits into =crates/cli=, =crates/server=, and
+=crates/lib=.  An =llms.org= file ships with every generated project,
+instructing LLM agents on what belongs where and how to keep the
+boundaries clean.  Without this, LLM-assisted development tends to dump
+everything into =main.rs=.
+
+** Types as validation
+
+=llms.org= coaches LLM agents to use intermediate types for processing
+phases (=CliRaw= → =ConfigFileRaw= → =Config=) and to avoid =Option=
+for fields that must be present.  This eliminates entire classes of "is
+this field set yet?" bugs and the defensive =unwrap= / =if let= code
+that accompanies them.  The template's own configuration code
+demonstrates the pattern.
+
+** Selective crate generation
+
+=new-project.sh --crates server= emits only the server and lib crates.
+=--crates ""= emits a pure library.  Projects that do not need a CLI do
+not carry dead scaffolding; projects that do not need a server do not
+ship one.
+
+** GitHub Actions
+
+*** Tests and formatting on every push
+
+The =Test= and =Formatting= jobs run on every push and pull request.
+Merges to =main= are blocked until both pass.  Catching breakage before
+merge is table stakes — this ensures it actually happens.
+
+*** Declarative branch protection
+
+Branch protection rules live in =.github/branch-protection.json= and
+are applied automatically via a workflow whenever the file changes.  No
+manual Settings page clicks, no drift between what you think is
+protected and what actually is.
+
+*** Dependabot with guarded auto-merge
+
+Dependabot opens PRs for Cargo and Actions dependency updates.  A
+workflow auto-merges them /only/ if every changed file is a
+=Cargo.toml=, =Cargo.lock=, or workflow YAML — unexpected files block
+the merge with a warning.  Dependencies stay current without
+rubber-stamping changes that touch application code.
+
+*** Changelog enforcement
+
+Non-dependabot PRs must include a changelog entry.  The
+=changelog-roller= tool verifies this in CI.  Changelogs that are
+populated retroactively at release time are always incomplete; enforcing
+entries at PR time means the changelog writes itself.
+
+*** Automatic version cutting and publishing
+
+On merge to =main=, the =publish= workflow bumps the minor version,
+stamps the changelog, commits with =[skip ci]=, and publishes the lib
+crate to crates.io.  No manual version dance, no forgotten publishes.
+(Requires =--public= at generation time.)
+
+** Structured logging
+
+Logging uses =tracing= with structured fields, not interpolated
+strings.  On Linux with systemd, logs route directly to the journal —
+fields are preserved end-to-end through systems like ELK without
+parsing.  Elsewhere, logs emit to stderr in human-readable or JSON
+format.  Logs go to stderr so that captured CLI output (stdout) stays
+clean for piping.
+
+** Staged configuration
+
+Both CLI and server merge configuration from four sources in precedence
+order: command-line flags, environment variables, a TOML config file,
+and compiled defaults.  The config file is discovered automatically
+(=./config.toml= or =XDG_CONFIG_HOME=).  Every layer is optional;
+together they cover interactive use, CI, containers, and systemd.
+
+** Semantic error types
+
+Errors use =thiserror= with domain-specific variants instead of
+=anyhow=.  Every error message names the operation that failed and the
+relevant context (file path, address, field name).  In production you
+often only have logs — "No such file or directory" is not actionable,
+but "Failed to read configuration file at /etc/myapp/config.toml" is.
+
+** Nix development shell
+
+=nix develop= (or =direnv allow=) provides the Rust toolchain, Elm
+toolchain, formatters, =just=, and every other project dependency in a
+single command.  No global installs, no version drift between
+contributors, no "works on my machine."
+
 * Prerequisites
 
 - [[https://nixos.org/download.html][Nix]] with flakes enabled.
