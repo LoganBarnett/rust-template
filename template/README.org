@@ -21,6 +21,23 @@ Explain how to install the project.  Cover at minimum:
 - Installing the library crate via ~Cargo.toml~, if the project ships
   one.
 
+* Nix flake exports
+
+Document the flake outputs so consumers know what is available.
+The template flake provides these by default:
+
+- =packages.${system}.default= — full workspace build.
+- =packages.${system}.cli= — CLI binary only.
+- =apps.${system}.cli= — runnable app entry point.
+- =devShells.${system}.default= — development shell.
+- =nixosModules.server= / =nixosModules.default= — NixOS service
+  module.
+- =darwinModules.server= / =darwinModules.default= — nix-darwin
+  service module.
+
+Update this list as you add or remove flake outputs (overlays,
+additional modules, etc.).
+
 * Usage
 
 Show the most common invocations with concrete, copy-pasteable
