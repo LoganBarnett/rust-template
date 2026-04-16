@@ -228,35 +228,33 @@ in {
     users.knownUsers = [cfg.user];
     users.knownGroups = [cfg.group];
 
-    # Create log and socket directories.  macOS has no tmpfiles equivalent,
-    # so we use nix-darwin activation scripts.
+    # Create the log directory.  The socket directory is created by the
+    # service itself (see ProgramArguments) to avoid coupling with activation.
     system.activationScripts.postActivation.text = let
       logDir = "/var/log/rust-template-server";
-      sockDir =
-        if cfg.socket != null
-        then dirOf cfg.socket
-        else null;
-    in
-      ''
-        mkdir -p ${logDir}
-        chown ${cfg.user}:${cfg.group} ${logDir}
-        chmod 0750 ${logDir}
-      ''
-      + lib.optionalString (sockDir != null) ''
-        mkdir -p ${sockDir}
-        chown ${cfg.user}:${cfg.group} ${sockDir}
-        chmod 0750 ${sockDir}
-      '';
+    in ''
+      mkdir -p ${logDir}
+      chown ${cfg.user}:${cfg.group} ${logDir}
+      chmod 0750 ${logDir}
+    '';
 
     launchd.servers.rust-template-server = {
       serviceConfig = {
-        ProgramArguments = [
+        ProgramArguments = let
+          sockSetup = lib.optionalString (cfg.socket != null)
+            ("/bin/mkdir -p ${dirOf cfg.socket}"
+              + " && /usr/sbin/chown ${cfg.user}:${cfg.group} ${dirOf cfg.socket}"
+              + " && /bin/chmod 0750 ${dirOf cfg.socket}"
+              + " && ");
+        in [
           "/bin/sh"
           "-c"
-          "/bin/wait4path ${cfg.package} && exec ${execLine}"
+          # Runs as root (no UserName/GroupName) so it can create the
+          # socket directory, then drops to the service user via sudo(8).
+          (sockSetup
+            + "/bin/wait4path ${cfg.package}"
+            + " && exec /usr/bin/sudo -E -u ${cfg.user} ${execLine}")
         ];
-        UserName = cfg.user;
-        GroupName = cfg.group;
         RunAtLoad = true;
         KeepAlive = {
           Crashed = true;
