@@ -14,13 +14,12 @@ license = "AGPL-3.0-or-later"
 repository = "https://github.com/yourusername/rust-template"
 
 [workspace.dependencies]
+# Foundation infrastructure crate (config, logging, health, metrics, auth).
+rust-template-foundation = { git = "https://github.com/LoganBarnett/rust-template.git" }
+
 # Logging and tracing
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"] }
-tracing-journald = "0.3"
-
-# Systemd integration
-sd-notify = "0.4"
 
 # Utilities
 # tap - Enables method chaining and reduces superfluous local variables
@@ -46,22 +45,18 @@ tokio-listener = { version = "0.5", features = ["axum08"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["trace", "cors", "fs", "set-header"] }
 
-# Home directory resolution
-home = "0.5"
-
 # Testing
 tempfile = "3"
 
 # OpenMetrics/Prometheus
 prometheus = "0.13"
 
-# OpenAPI
+# OpenAPI (re-exported by foundation, but needed for ApiRouter in app code)
 aide = { version = "0.15", features = ["axum", "axum-json", "axum-query", "scalar", "macros"] }
 schemars = "0.9"
 
-# Authentication
+# Authentication (re-exported by foundation, needed for CoreClient type in app)
 openidconnect = { version = "3", features = ["reqwest"] }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-native-roots"] }
 tower-sessions = { version = "0.15", features = ["memory-store"] }
 
 # Shared library

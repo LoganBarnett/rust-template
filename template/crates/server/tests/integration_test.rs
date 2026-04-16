@@ -12,6 +12,7 @@ use openidconnect::{
   JsonWebKeySetUrl, ResponseTypes,
 };
 use prometheus::{IntCounter, Registry};
+use rust_template_foundation::server::health::HealthRegistry;
 use rust_template_server::web_base::{base_router, AppState};
 use std::{path::PathBuf, sync::Arc};
 use tower::ServiceExt;
@@ -29,7 +30,8 @@ fn stub_state_no_auth(frontend_path: PathBuf) -> AppState {
     .expect("counter registration");
 
   AppState {
-    registry: Arc::new(registry),
+    health_registry: HealthRegistry::default(),
+    metrics_registry: Arc::new(registry),
     request_counter,
     frontend_path,
     oidc_client: None,
@@ -62,7 +64,8 @@ fn stub_state_with_auth(frontend_path: PathBuf) -> AppState {
   );
 
   AppState {
-    registry: Arc::new(registry),
+    health_registry: HealthRegistry::default(),
+    metrics_registry: Arc::new(registry),
     request_counter,
     frontend_path,
     oidc_client: Some(Arc::new(oidc_client)),
@@ -338,9 +341,11 @@ async fn test_config_no_oidc() {
   use rust_template_server::config::{CliRaw, Config};
 
   let cli = CliRaw {
-    log_level: None,
-    log_format: None,
-    config: None,
+    common: rust_template_foundation::config::CommonCli {
+      log_level: None,
+      log_format: None,
+      config: None,
+    },
     listen: None,
     frontend_path: None,
     base_url: Some("https://example.com".to_string()),
@@ -361,9 +366,11 @@ async fn test_config_full_oidc() {
     .join("tests/fixtures/oidc-client-secret");
 
   let cli = CliRaw {
-    log_level: None,
-    log_format: None,
-    config: None,
+    common: rust_template_foundation::config::CommonCli {
+      log_level: None,
+      log_format: None,
+      config: None,
+    },
     listen: None,
     frontend_path: None,
     base_url: Some("https://example.com".to_string()),
@@ -384,9 +391,11 @@ async fn test_config_partial_oidc_errors() {
   use rust_template_server::config::{CliRaw, Config};
 
   let cli = CliRaw {
-    log_level: None,
-    log_format: None,
-    config: None,
+    common: rust_template_foundation::config::CommonCli {
+      log_level: None,
+      log_format: None,
+      config: None,
+    },
     listen: None,
     frontend_path: None,
     base_url: Some("https://example.com".to_string()),

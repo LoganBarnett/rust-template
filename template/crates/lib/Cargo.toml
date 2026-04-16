@@ -8,6 +8,7 @@ repository.workspace = true
 publish = false
 
 [dependencies]
+rust-template-foundation = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }

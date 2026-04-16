@@ -21,17 +21,14 @@
 //! - Keep logging structured and consistent
 //! - Preserve systemd::notify_ready() and systemd::spawn_watchdog() after bind
 
-mod logging;
-mod systemd;
-
+use rust_template_foundation::logging::init_server_logging;
+use rust_template_foundation::server::{shutdown, systemd};
 use rust_template_server::{auth, config, web_base};
 
 use axum::{routing::get, serve, Router};
 use clap::Parser;
 use config::{CliRaw, Config, ConfigError};
-use logging::init_logging;
 use thiserror::Error;
-use tokio::signal;
 use tower_http::trace::TraceLayer;
 use tower_sessions::{cookie::SameSite, MemoryStore, SessionManagerLayer};
 use tracing::{error, info};
@@ -64,7 +61,7 @@ async fn main() -> Result<(), ApplicationError> {
     ApplicationError::ConfigurationLoad(e)
   })?;
 
-  init_logging(config.log_level, config.log_format);
+  init_server_logging(config.log_level, config.log_format);
 
   info!("Starting rust-template-server");
   info!("Configuration loaded successfully");
@@ -97,7 +94,7 @@ async fn main() -> Result<(), ApplicationError> {
   systemd::spawn_watchdog();
 
   serve(listener, app.into_make_service())
-    .with_graceful_shutdown(shutdown_signal())
+    .with_graceful_shutdown(shutdown::shutdown_signal())
     .await
     .map_err(|e| {
       error!("Server error: {}", e);
@@ -126,32 +123,4 @@ fn create_app(state: AppState) -> Router {
     .merge(auth_router)
     .layer(session_layer)
     .layer(TraceLayer::new_for_http())
-}
-
-async fn shutdown_signal() {
-  let ctrl_c = async {
-    signal::ctrl_c()
-      .await
-      .expect("failed to install Ctrl+C handler");
-  };
-
-  #[cfg(unix)]
-  let terminate = async {
-    signal::unix::signal(signal::unix::SignalKind::terminate())
-      .expect("failed to install signal handler")
-      .recv()
-      .await;
-  };
-
-  #[cfg(not(unix))]
-  let terminate = std::future::pending::<()>();
-
-  tokio::select! {
-      _ = ctrl_c => {
-          info!("Received Ctrl+C, shutting down gracefully");
-      },
-      _ = terminate => {
-          info!("Received SIGTERM, shutting down gracefully");
-      },
-  }
 }

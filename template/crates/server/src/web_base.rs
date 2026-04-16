@@ -1,39 +1,52 @@
 use aide::{
   axum::{routing::get_with, ApiRouter},
   openapi::OpenApi,
-  scalar::Scalar,
   transform::TransformOperation,
 };
-use axum::{
-  http::{header, HeaderValue, StatusCode},
-  response::{IntoResponse, Response},
-  routing::get,
-  Json, Router,
-};
+use axum::{extract::FromRef, routing::get, Json, Router};
 use openidconnect::core::CoreClient;
-use prometheus::{Encoder, IntCounter, Registry, TextEncoder};
+use prometheus::{IntCounter, Registry};
+use rust_template_foundation::{
+  auth,
+  server::{health::HealthRegistry, metrics, openapi, spa},
+};
 use schemars::JsonSchema;
 use serde::Serialize;
-use serde_json::json;
 use std::{path::PathBuf, sync::Arc};
 use thiserror::Error;
-use tower::ServiceBuilder;
-use tower_http::{
-  services::{ServeDir, ServeFile},
-  set_header::SetResponseHeaderLayer,
-};
 use tracing::info;
 
-use crate::{auth, config::Config};
+use crate::config::Config;
 
-// ── AppState ──────────────────────────────────────────────────────────────────
+// ── AppState ────────────────────────────────────────────────────────────────
 
 #[derive(Clone)]
 pub struct AppState {
-  pub registry: Arc<Registry>,
+  pub health_registry: HealthRegistry,
+  pub metrics_registry: Arc<Registry>,
   pub request_counter: IntCounter,
   pub frontend_path: PathBuf,
   pub oidc_client: Option<Arc<CoreClient>>,
+}
+
+// FromRef impls so foundation handlers can extract their state slice.
+
+impl FromRef<AppState> for HealthRegistry {
+  fn from_ref(state: &AppState) -> Self {
+    state.health_registry.clone()
+  }
+}
+
+impl FromRef<AppState> for Arc<Registry> {
+  fn from_ref(state: &AppState) -> Self {
+    state.metrics_registry.clone()
+  }
+}
+
+impl FromRef<AppState> for Option<Arc<CoreClient>> {
+  fn from_ref(state: &AppState) -> Self {
+    state.oidc_client.clone()
+  }
 }
 
 #[derive(Debug, Error)]
@@ -46,6 +59,20 @@ pub enum AppStateError {
 
   #[error("Invalid OIDC redirect URI: {0}")]
   InvalidRedirectUri(String),
+}
+
+impl From<auth::OidcDiscoveryError> for AppStateError {
+  fn from(e: auth::OidcDiscoveryError) -> Self {
+    match e {
+      auth::OidcDiscoveryError::InvalidIssuer(s) => {
+        AppStateError::InvalidIssuer(s)
+      }
+      auth::OidcDiscoveryError::Discovery(s) => AppStateError::OidcDiscovery(s),
+      auth::OidcDiscoveryError::InvalidRedirectUri(s) => {
+        AppStateError::InvalidRedirectUri(s)
+      }
+    }
+  }
 }
 
 impl AppState {
@@ -66,39 +93,7 @@ impl AppState {
       .expect("Failed to register counter");
 
     let oidc_client = match &config.oidc {
-      Some(oidc) => {
-        let issuer = openidconnect::IssuerUrl::new(oidc.issuer.clone())
-          .map_err(|e| AppStateError::InvalidIssuer(e.to_string()))?;
-
-        let provider_metadata =
-          openidconnect::core::CoreProviderMetadata::discover_async(
-            issuer,
-            openidconnect::reqwest::async_http_client,
-          )
-          .await
-          .map_err(|e| AppStateError::OidcDiscovery(format!("{e:?}")))?;
-
-        info!(issuer = %oidc.issuer, "OIDC discovery complete");
-
-        let redirect_url = openidconnect::RedirectUrl::new(format!(
-          "{}/auth/callback",
-          config.base_url.trim_end_matches('/')
-        ))
-        .map_err(|e| AppStateError::InvalidRedirectUri(e.to_string()))?;
-
-        // RequestBody sends client credentials in the POST body
-        // (client_secret_post).  Some providers (e.g. Authelia) require this
-        // instead of the HTTP Basic Auth default.
-        let client = openidconnect::core::CoreClient::from_provider_metadata(
-          provider_metadata,
-          openidconnect::ClientId::new(oidc.client_id.clone()),
-          Some(openidconnect::ClientSecret::new(oidc.client_secret.clone())),
-        )
-        .set_redirect_uri(redirect_url)
-        .set_auth_type(openidconnect::AuthType::RequestBody);
-
-        Some(Arc::new(client))
-      }
+      Some(oidc) => Some(auth::discover_oidc(oidc, &config.base_url).await?),
       None => {
         info!("OIDC not configured — running unauthenticated");
         None
@@ -106,7 +101,8 @@ impl AppState {
     };
 
     Ok(Self {
-      registry: Arc::new(registry),
+      health_registry: HealthRegistry::default(),
+      metrics_registry: Arc::new(registry),
       request_counter,
       frontend_path: config.frontend_path.clone(),
       oidc_client,
@@ -114,18 +110,7 @@ impl AppState {
   }
 }
 
-// ── base router ───────────────────────────────────────────────────────────────
-
-#[derive(Serialize, JsonSchema)]
-pub struct HealthResponse {
-  status: String,
-}
-
-async fn healthz() -> Json<HealthResponse> {
-  Json(HealthResponse {
-    status: "healthy".to_string(),
-  })
-}
+// ── base router ─────────────────────────────────────────────────────────────
 
 #[derive(Serialize, JsonSchema)]
 pub struct MeResponse {
@@ -164,13 +149,14 @@ pub fn base_router(state: AppState) -> Router {
   let app_router = ApiRouter::new()
     .api_route(
       "/healthz",
-      get_with(healthz, |op: TransformOperation| {
-        op.description("Health check.")
-      }),
+      get_with(
+        rust_template_foundation::server::health::healthz_handler,
+        |op: TransformOperation| op.description("Health check."),
+      ),
     )
     .api_route(
       "/metrics",
-      get_with(metrics_endpoint, |op: TransformOperation| {
+      get_with(metrics::metrics_handler, |op: TransformOperation| {
         op.description("Prometheus metrics in text/plain format.")
       }),
     )
@@ -182,52 +168,6 @@ pub fn base_router(state: AppState) -> Router {
   Router::new()
     .merge(app_router)
     .route("/me", get(me_handler).with_state(me_state))
-    .route(
-      "/api-docs/openapi.json",
-      get({
-        let api = api.clone();
-        move || async move { Json((*api).clone()) }
-      }),
-    )
-    .route(
-      "/scalar",
-      get(
-        Scalar::new("/api-docs/openapi.json")
-          .with_title("rust-template")
-          .axum_handler(),
-      ),
-    )
-    .fallback_service(
-      ServiceBuilder::new()
-        .layer(SetResponseHeaderLayer::overriding(
-          header::CACHE_CONTROL,
-          HeaderValue::from_static("no-store"),
-        ))
-        .service(
-          ServeDir::new(&frontend_path)
-            .fallback(ServeFile::new(frontend_path.join("index.html"))),
-        ),
-    )
-}
-
-async fn metrics_endpoint(
-  axum::extract::State(state): axum::extract::State<AppState>,
-) -> Response {
-  let encoder = TextEncoder::new();
-  let metric_families = state.registry.gather();
-  let mut buffer = Vec::new();
-
-  match encoder.encode(&metric_families, &mut buffer) {
-    Ok(_) => {
-      (StatusCode::OK, [("content-type", encoder.format_type())], buffer)
-        .into_response()
-    }
-    Err(e) => (
-      StatusCode::INTERNAL_SERVER_ERROR,
-      Json(json!({
-          "error": format!("Failed to encode metrics: {}", e)
-      })),
-    )
-      .into_response(),
-  }
+    .merge(openapi::openapi_routes(api, "rust-template"))
+    .fallback_service(spa::spa_service(&frontend_path))
 }

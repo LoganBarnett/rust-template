@@ -2072,14 +2072,38 @@ name = "rust-template-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
- "home",
+ "rust-template-foundation",
  "rust-template-lib",
  "serde",
- "serde_json",
  "tap",
  "thiserror 2.0.18",
  "toml",
  "tracing",
+]
+
+[[package]]
+name = "rust-template-foundation"
+version = "0.1.0"
+dependencies = [
+ "aide",
+ "axum",
+ "clap",
+ "home",
+ "openidconnect",
+ "prometheus",
+ "reqwest 0.12.28",
+ "schemars 0.9.0",
+ "sd-notify",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "toml",
+ "tower",
+ "tower-http",
+ "tower-sessions",
+ "tracing",
+ "tracing-journald",
  "tracing-subscriber",
 ]
 
@@ -2088,6 +2112,7 @@ name = "rust-template-lib"
 version = "0.1.0"
 dependencies = [
  "cargo-husky",
+ "rust-template-foundation",
  "serde",
  "tap",
  "thiserror 2.0.18",
@@ -2101,13 +2126,11 @@ dependencies = [
  "aide",
  "axum",
  "clap",
- "home",
  "openidconnect",
  "prometheus",
- "reqwest 0.12.28",
+ "rust-template-foundation",
  "rust-template-lib",
  "schemars 0.9.0",
- "sd-notify",
  "serde",
  "serde_json",
  "tap",
@@ -2120,8 +2143,6 @@ dependencies = [
  "tower-http",
  "tower-sessions",
  "tracing",
- "tracing-journald",
- "tracing-subscriber",
 ]
 
 [[package]]

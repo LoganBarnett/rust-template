@@ -10,11 +10,10 @@
 //! - Keep logging structured and consistent
 
 mod config;
-mod logging;
 
 use clap::Parser;
 use config::{CliRaw, Config, ConfigError};
-use logging::init_logging;
+use rust_template_foundation::logging::init_cli_logging;
 use thiserror::Error;
 use tracing::info;
 
@@ -37,7 +36,7 @@ fn main() -> Result<(), ApplicationError> {
     ApplicationError::ConfigurationLoad(e)
   })?;
 
-  init_logging(config.log_level, config.log_format);
+  init_cli_logging(config.log_level, config.log_format);
 
   info!("Starting rust-template-cli");
   info!("Configuration loaded successfully");

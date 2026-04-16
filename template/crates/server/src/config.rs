@@ -1,4 +1,9 @@
 use clap::Parser;
+use rust_template_foundation::auth::OidcConfig;
+use rust_template_foundation::config::{
+  find_config_file, load_toml, resolve_log_settings, CommonCli,
+  CommonConfigFile, ConfigFileError,
+};
 use rust_template_lib::{LogFormat, LogLevel};
 use serde::Deserialize;
 use std::path::PathBuf;
@@ -7,21 +12,8 @@ use tokio_listener::ListenerAddress;
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
-  #[error(
-    "Failed to read configuration file at {path:?} during startup: {source}"
-  )]
-  FileRead {
-    path: PathBuf,
-    #[source]
-    source: std::io::Error,
-  },
-
-  #[error("Failed to parse configuration file at {path:?}: {source}")]
-  Parse {
-    path: PathBuf,
-    #[source]
-    source: toml::de::Error,
-  },
+  #[error("Failed to load configuration file: {0}")]
+  File(#[from] ConfigFileError),
 
   #[error("Configuration validation failed: {0}")]
   Validation(String),
@@ -36,17 +28,8 @@ pub enum ConfigError {
 #[derive(Debug, Parser)]
 #[command(author, version, about, long_about = None)]
 pub struct CliRaw {
-  /// Log level (trace, debug, info, warn, error)
-  #[arg(long, env = "LOG_LEVEL")]
-  pub log_level: Option<String>,
-
-  /// Log format (text, json)
-  #[arg(long, env = "LOG_FORMAT")]
-  pub log_format: Option<String>,
-
-  /// Path to configuration file
-  #[arg(short, long, env = "CONFIG_FILE")]
-  pub config: Option<PathBuf>,
+  #[command(flatten)]
+  pub common: CommonCli,
 
   /// Address to listen on: host:port for TCP, /path/to.sock for Unix socket,
   /// or sd-listen to inherit a socket from systemd
@@ -77,40 +60,15 @@ pub struct CliRaw {
 
 #[derive(Debug, Deserialize, Default)]
 pub struct ConfigFileRaw {
-  pub log_level: Option<String>,
-  pub log_format: Option<String>,
+  #[serde(flatten)]
+  pub common: CommonConfigFile,
+
   pub listen: Option<String>,
   pub frontend_path: Option<PathBuf>,
   pub base_url: Option<String>,
   pub oidc_issuer: Option<String>,
   pub oidc_client_id: Option<String>,
   pub oidc_client_secret_file: Option<PathBuf>,
-}
-
-impl ConfigFileRaw {
-  pub fn from_file(path: &PathBuf) -> Result<Self, ConfigError> {
-    let contents = std::fs::read_to_string(path).map_err(|source| {
-      ConfigError::FileRead {
-        path: path.clone(),
-        source,
-      }
-    })?;
-
-    let config: ConfigFileRaw =
-      toml::from_str(&contents).map_err(|source| ConfigError::Parse {
-        path: path.clone(),
-        source,
-      })?;
-
-    Ok(config)
-  }
-}
-
-#[derive(Debug, Clone)]
-pub struct OidcConfig {
-  pub issuer: String,
-  pub client_id: String,
-  pub client_secret: String,
 }
 
 #[derive(Debug, Clone)]
@@ -125,38 +83,18 @@ pub struct Config {
 
 impl Config {
   pub fn from_cli_and_file(cli: CliRaw) -> Result<Self, ConfigError> {
-    let config_file = if let Some(config_path) = &cli.config {
-      ConfigFileRaw::from_file(config_path)?
-    } else {
-      let cwd = PathBuf::from("config.toml");
-      let xdg = xdg_config_dir().map(|d| d.join("config.toml"));
+    let config_file: ConfigFileRaw =
+      match find_config_file("rust-template", cli.common.config.as_deref()) {
+        Some(path) => load_toml(&path)?,
+        None => ConfigFileRaw::default(),
+      };
 
-      if cwd.exists() {
-        ConfigFileRaw::from_file(&cwd)?
-      } else if let Some(ref xdg_path) = xdg.filter(|p| p.exists()) {
-        ConfigFileRaw::from_file(xdg_path)?
-      } else {
-        ConfigFileRaw::default()
-      }
-    };
-
-    let log_level_str = cli
-      .log_level
-      .or(config_file.log_level)
-      .unwrap_or_else(|| "info".to_string());
-
-    let log_level = log_level_str
-      .parse::<LogLevel>()
-      .map_err(|e| ConfigError::Validation(e.to_string()))?;
-
-    let log_format_str = cli
-      .log_format
-      .or(config_file.log_format)
-      .unwrap_or_else(|| "text".to_string());
-
-    let log_format = log_format_str
-      .parse::<LogFormat>()
-      .map_err(|e| ConfigError::Validation(e.to_string()))?;
+    let (log_level, log_format) = resolve_log_settings(
+      cli.common.log_level,
+      cli.common.log_format,
+      &config_file.common,
+    )
+    .map_err(ConfigError::Validation)?;
 
     let listen_str = cli
       .listen
@@ -193,16 +131,17 @@ impl Config {
           .or_else(credential_secret_path)
           .ok_or_else(|| {
             ConfigError::Validation(
-              "oidc_client_secret_file is required when oidc_issuer and \
-               oidc_client_id are set (set it explicitly or run under \
-               systemd with LoadCredential)"
+              "oidc_client_secret_file is required when \
+                             oidc_issuer and oidc_client_id are set (set it \
+                             explicitly or run under systemd with \
+                             LoadCredential)"
                 .to_string(),
             )
           })?;
 
         let client_secret = std::fs::read_to_string(&secret_file)
           .map(|s| s.trim().to_string())
-          .map_err(|source| ConfigError::FileRead {
+          .map_err(|source| ConfigFileError::FileRead {
             path: secret_file,
             source,
           })?;
@@ -231,8 +170,8 @@ impl Config {
           }
         }
         return Err(ConfigError::Validation(format!(
-          "partial OIDC configuration: set all three fields or none. \
-           present: [{}], missing: [{}]",
+          "partial OIDC configuration: set all three fields or \
+                     none. present: [{}], missing: [{}]",
           present.join(", "),
           missing.join(", ")
         )));
@@ -248,15 +187,6 @@ impl Config {
       oidc,
     })
   }
-}
-
-/// Resolve `$XDG_CONFIG_HOME/rust-template`, falling back to
-/// `$HOME/.config/rust-template` when the variable is unset.
-fn xdg_config_dir() -> Option<PathBuf> {
-  std::env::var_os("XDG_CONFIG_HOME")
-    .map(PathBuf::from)
-    .or_else(|| home::home_dir().map(|h| h.join(".config")))
-    .map(|d| d.join("rust-template"))
 }
 
 /// Returns the path to the `oidc-client-secret` credential file inside
