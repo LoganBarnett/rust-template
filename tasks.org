@@ -103,6 +103,65 @@ chain to just "Request failed", losing the underlying cause (e.g.
 ~InvalidCertificate(UnknownIssuer)~).  Change to ~format!("{e:?}")~ so the full
 error chain is preserved in logs.
 
+* TODO Darwin services must log to /var/log/<service>/ with rotation
+All darwin launchd services should write ~StandardOutPath~ and
+~StandardErrorPath~ to ~/var/log/<service>/~ rather than ~/tmp/~ or
+nowhere.  ~/tmp/~ is cleared on reboot and is not where service logs
+belong.  Without explicit log paths, launchd silently discards all
+output — making post-mortem diagnosis impossible.
+
+** Log directory creation
+
+The log directory must exist before launchd starts the agent.  Use an
+activation script in the module's ~config~ block:
+
+#+begin_src nix
+system.activationScripts.postActivation.text = ''
+  mkdir --parents /var/log/<service>
+  chmod 755 /var/log/<service>
+'';
+#+end_src
+
+While not included here, you will also need to ~chown~ the directory if this is
+a user service.
+
+** launchd plist
+
+Set both ~StandardOutPath~ and ~StandardErrorPath~ in the agent's
+~serviceConfig~:
+
+#+begin_src nix
+StandardOutPath = "/var/log/<service>/<service>.log";
+StandardErrorPath = "/var/log/<service>/<service>.log";
+#+end_src
+
+** Log rotation via newsyslog
+
+macOS ships ~newsyslog~ which reads drop-in configs from
+~/etc/newsyslog.d/~.  Add a config via ~environment.etc~:
+
+#+begin_src nix
+environment.etc."newsyslog.d/<service>.conf".text = ''
+  # logfilename                          mode count size  when flags
+  /var/log/<service>/<service>.log        644  5     10240 *    NJ
+'';
+#+end_src
+
+- ~N~ = no signal (the service isn't syslogd; it re-opens the file on
+  next write).
+- ~J~ = bzip2 compression for rotated archives.
+- ~size~ is in KB (10240 = 10 MB).
+- ~count~ is the number of rotated archives to keep.
+
+Adjust ~count~ and ~size~ per service — high-volume services (e.g. Ollama
+inference server) need more generous limits than one-shot helpers.
+
+** Reference commit
+
+See =dotfiles= commit =a223015e= (~fix(ollama): add launchd log output
+with newsyslog rotation~) for a working example applied to the Ollama
+darwin module.
+
 * DONE Require tests and formatting checks on PRs
 GitHub PRs require tests to pass before merging, and that formatting runs
 without changes (to catch cases where someone bypassed the pre-commit hook).
