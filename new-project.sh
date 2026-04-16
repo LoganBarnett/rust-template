@@ -97,6 +97,16 @@ grep -rl 'rust_template' "$OUTPUT" | while IFS= read -r f; do
     sed_inplace "s/rust_template/$PROJECT_NAME_UNDERSCORE/g" "$f"
 done
 
+# Restore foundation crate references that were mangled by the global
+# substitution above.  The foundation crate always keeps its canonical name
+# regardless of the downstream project name.
+grep -rl "${PROJECT_NAME}-foundation" "$OUTPUT" 2>/dev/null | while IFS= read -r f; do
+    sed_inplace "s/${PROJECT_NAME}-foundation/rust-template-foundation/g" "$f"
+done
+grep -rl "${PROJECT_NAME_UNDERSCORE}_foundation" "$OUTPUT" 2>/dev/null | while IFS= read -r f; do
+    sed_inplace "s/${PROJECT_NAME_UNDERSCORE}_foundation/rust_template_foundation/g" "$f"
+done
+
 # Substitute the placeholder description if one was provided.
 if [[ -n "$DESCRIPTION" ]]; then
     grep -rl 'Rust Template - Best-in-class Rust project setup' "$OUTPUT" | while IFS= read -r f; do
@@ -135,8 +145,17 @@ if [[ "$PUBLIC" == true ]]; then
     sed_inplace '/^publish = false$/d' "$OUTPUT/crates/lib/Cargo.toml"
 else
     # Remove the crates.io publish workflow; it has no use in a private project.
-    rm -rf "$OUTPUT/.github"
+    # Keep CI, branch protection, dependabot, and automerge.
+    rm -f "$OUTPUT/.github/workflows/publish.yml"
 fi
+
+# Restore reusable workflow references in GitHub Actions callers.  The global
+# substitution above mangles `LoganBarnett/rust-template/` to
+# `LoganBarnett/$PROJECT_NAME/`; undo that so callers point at the template repo.
+grep -rl "LoganBarnett/${PROJECT_NAME}/" "$OUTPUT" 2>/dev/null \
+  | while IFS= read -r f; do
+    sed_inplace "s|LoganBarnett/${PROJECT_NAME}/|LoganBarnett/rust-template/|g" "$f"
+done
 
 # Write template provenance so forward-porting can scope diffs precisely
 # (see docs/compliance.org § "Forward-porting template updates").

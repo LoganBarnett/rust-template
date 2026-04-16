@@ -1,0 +1,62 @@
+name: Publish (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      crate-name:
+        required: true
+        type: string
+      changelog-file:
+        type: string
+        default: "CHANGELOG.org"
+    secrets:
+      CARGO_REGISTRY_TOKEN:
+        required: true
+
+jobs:
+  publish:
+    name: Bump version and publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Bump minor version
+        id: bump
+        run: |
+          CURRENT=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          IFS='.' read -r MAJOR MINOR _PATCH <<< "$CURRENT"
+          NEW="${MAJOR}.$((MINOR + 1)).0"
+          sed -i "s/^version = \"${CURRENT}\"/version = \"${NEW}\"/" Cargo.toml
+          cargo fetch
+          echo "version=${NEW}" >> "$GITHUB_OUTPUT"
+
+      - name: Install changelog-roller
+        run: cargo install changelog-roller
+
+      - name: Roll changelog
+        run: >
+          changelog-roller
+          --input-file ${{ inputs.changelog-file }}
+          --add-version "v${{ steps.bump.outputs.version }}"
+          --in-place
+
+      - name: Commit and push release
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Cargo.toml Cargo.lock ${{ inputs.changelog-file }}
+          git commit -m "chore: release v${{ steps.bump.outputs.version }} [skip ci]"
+          git push
+
+      - name: Publish to crates.io
+        run: cargo publish -p ${{ inputs.crate-name }}
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
