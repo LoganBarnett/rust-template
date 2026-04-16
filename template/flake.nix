@@ -78,8 +78,6 @@
     in [
       rust
       pkgs.cargo-sweep
-      pkgs.pkg-config
-      pkgs.openssl
       pkgs.jq
       # Elm toolchain
       pkgs.elmPackages.elm
@@ -146,18 +144,8 @@
       # Common build arguments shared by all crates
       commonArgs = {
         src = craneLib.cleanCargoSource ./.;
-        # LLM: Do NOT add darwin.apple_sdk.frameworks here - they were removed
-        # in nixpkgs 25.11+. Use libiconv for Darwin builds instead.
-        buildInputs = with pkgs;
-          [
-            openssl
-          ]
-          ++ pkgs.lib.optionals pkgs.stdenv.isDarwin (with pkgs.darwin; [
-            libiconv
-          ]);
-        nativeBuildInputs = with pkgs; [
-          pkg-config
-        ];
+        buildInputs = [];
+        nativeBuildInputs = [];
         # Run only unit tests (--lib --bins), skip integration tests in tests/ directories
         # Integration tests may require external services not available in Nix sandbox
         # Full test suite can be run locally with 'cargo test --all'
