@@ -35,7 +35,7 @@
 
   listenArg =
     if cfg.socket != null
-    then "--listen unix:${cfg.socket}"
+    then "--listen ${cfg.socket}"
     else "--listen ${cfg.host}:${toString cfg.port}";
 
   execLine =
