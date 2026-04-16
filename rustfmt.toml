@@ -1,0 +1,16 @@
+# Rust formatting configuration for the foundation crates.
+# Mirrors the template's settings for consistency.
+edition = "2021"
+
+tab_spaces = 2
+
+max_width = 80
+
+fn_params_layout = "Tall"
+fn_call_width = 80
+
+use_field_init_shorthand = true
+
+remove_nested_parens = true
+
+newline_style = "Unix"

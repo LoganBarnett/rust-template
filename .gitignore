@@ -10,5 +10,9 @@
 # Ignore cargo generated build artifacts from the template.
 template/target/
 
+# Ignore cargo generated build artifacts from the root workspace (foundation
+# crates).
+target/
+
 # Local manifest of spawned projects (see config.template.json).
 config.json
