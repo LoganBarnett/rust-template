@@ -111,12 +111,14 @@ if [[ -n "$DESCRIPTION" ]]; then
 fi
 
 # Restore all LoganBarnett/rust-template references mangled by the global
-# substitution.  This covers reusable workflow callers (trailing /) and the
-# foundation crate's git URL (trailing .git).
+# substitution.  This covers reusable workflow callers (trailing /), the
+# foundation crate's git URL (trailing .git), and the foundation flake
+# input URL (bare, ending with a quote).
 grep -rl "LoganBarnett/${PROJECT_NAME}" "$OUTPUT" 2>/dev/null \
   | while IFS= read -r f; do
     sed_inplace "s|LoganBarnett/${PROJECT_NAME}/|LoganBarnett/rust-template/|g" "$f"
     sed_inplace "s|LoganBarnett/${PROJECT_NAME}\\.git|LoganBarnett/rust-template.git|g" "$f"
+    sed_inplace "s|LoganBarnett/${PROJECT_NAME}\"|LoganBarnett/rust-template\"|g" "$f"
 done || true
 
 # Step 3: Add crates via crate-add.sh.  lib is always included.

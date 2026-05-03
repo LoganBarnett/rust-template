@@ -199,7 +199,7 @@ credential plumbing, and launchd health checks.
    Replace ~template/nix/modules/nixos-server.nix~ and ~darwin-server.nix~ with
    thin calls to the helpers.  Verify ~nix flake check~ passes.
 
-** TODO Update spawning scripts for helper usage
+** DONE Update spawning scripts for helper usage
    Ensure ~new-project.sh~ / ~crate-add.sh~ produce modules that reference
    ~inputs.rust-template.lib.mkNixosService~ instead of inlining full modules.
    Add ~rust-template~ as a flake input in the template flake.
