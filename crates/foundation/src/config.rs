@@ -40,24 +40,25 @@ pub fn xdg_config_dir(app_name: &str) -> Option<PathBuf> {
     .map(|d| d.join(app_name))
 }
 
-/// Locate a configuration file using a three-stage search:
+/// Locate a configuration file using a two-stage search:
 ///
 /// 1. If `explicit_path` is `Some`, return it unconditionally.
-/// 2. Otherwise look for `./config.toml` in the working directory.
-/// 3. Fall back to `$XDG_CONFIG_HOME/<app_name>/config.toml`.
+/// 2. Fall back to `$XDG_CONFIG_HOME/<app_name>/config.toml`.
 ///
 /// Returns `None` when no candidate exists on disk.
+///
+/// A working-directory lookup is deliberately omitted.  `config.toml` is a
+/// common enough filename that silently picking one up from whatever
+/// directory the user happens to be in is a footgun — different config
+/// would load depending on cwd, with no warning.  Callers who want a
+/// local config can pass its path via `explicit_path` (the `--config`
+/// flag / `CONFIG_FILE` env var on [`CommonCli`]).
 pub fn find_config_file(
   app_name: &str,
   explicit_path: Option<&Path>,
 ) -> Option<PathBuf> {
   if let Some(p) = explicit_path {
     return Some(p.to_path_buf());
-  }
-
-  let cwd = PathBuf::from("config.toml");
-  if cwd.exists() {
-    return Some(cwd);
   }
 
   xdg_config_dir(app_name)

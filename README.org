@@ -174,9 +174,10 @@ clean for piping.
 
 Both CLI and server merge configuration from four sources in precedence
 order: command-line flags, environment variables, a TOML config file,
-and compiled defaults.  The config file is discovered automatically
-(=./config.toml= or =XDG_CONFIG_HOME=).  Every layer is optional;
-together they cover interactive use, CI, containers, and systemd.
+and compiled defaults.  The config file is discovered from
+=$XDG_CONFIG_HOME/<app>/config.toml=, or pointed at explicitly via
+=--config= / =CONFIG_FILE=.  Every layer is optional; together they
+cover interactive use, CI, containers, and systemd.
 
 ** Semantic error types
 

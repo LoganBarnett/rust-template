@@ -82,13 +82,10 @@ fn find_config_file_xdg_discovery() {
 
 #[test]
 fn find_config_file_none_when_nothing_exists() {
-  // Point XDG somewhere empty to avoid picking up real config.
+  // Point XDG somewhere empty so the lookup can't pick up real config.
   let dir = TempDir::new().unwrap();
   std::env::set_var("XDG_CONFIG_HOME", dir.path());
 
-  // Also ensure there's no ./config.toml in cwd by changing dir is tricky
-  // in tests, so just check that with a non-existent app name it returns
-  // None.
   let result = find_config_file("nonexistent-app-xyz-test", None);
   assert!(result.is_none());
 
