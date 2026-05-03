@@ -148,7 +148,7 @@ pub struct Config {
    trait impl.  Add ~clap~ and ~serde~ as dependencies of the derive crate if
    needed (for path references in generated code).
 
-** TODO Update example-cli config to use MergeConfig
+** DONE Update example-cli config to use MergeConfig
    Simplest test case: ~common~ log fields + one field with a default.
    Validates the macro compiles and basic merge logic works.
    Run ~cargo test~ in ~tests/example-cli/~.

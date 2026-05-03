@@ -249,10 +249,10 @@ fn mc_gen_cli_raw(
       }
 
       let field_ty = if *parse {
-        quote! { ::std::option::Option<::std::string::String> }
+        quote! { Option<String> }
       } else {
         let ty = &f.ty;
-        quote! { ::std::option::Option<#ty> }
+        quote! { Option<#ty> }
       };
 
       Some(quote! {
@@ -303,10 +303,10 @@ fn mc_gen_config_file_raw(
       }
 
       let field_ty = if *parse {
-        quote! { ::std::option::Option<::std::string::String> }
+        quote! { Option<String> }
       } else {
         let ty = &f.ty;
-        quote! { ::std::option::Option<#ty> }
+        quote! { Option<#ty> }
       };
 
       Some(quote! {
