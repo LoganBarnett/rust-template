@@ -157,7 +157,7 @@ pub struct Config {
    Server case with ~ServerApp~ impl.  Validates ~common~ + ~cli_only~ + server
    trait integration.  Run ~cargo test~ in ~tests/example-server/~.
 
-** TODO Update template CLI config to use MergeConfig
+** DONE Update template CLI config to use MergeConfig
    Replace the manual ~CliRaw~ / ~ConfigFileRaw~ / ~from_cli_and_file~ with the
    derive macro.  Keep ~CliApp~ trait impl generation by the macro.
 
