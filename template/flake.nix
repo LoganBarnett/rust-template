@@ -7,6 +7,8 @@
     rust-overlay.url = "github:oxalica/rust-overlay";
     crane.url = "github:ipetkov/crane";
     changelog-roller.url = "github:LoganBarnett/changelog-roller";
+    foundation.url = "github:LoganBarnett/rust-template";
+    foundation.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs = {
@@ -15,6 +17,7 @@
     rust-overlay,
     crane,
     changelog-roller,
+    foundation,
   } @ inputs: let
     forAllSystems = nixpkgs.lib.genAttrs nixpkgs.lib.systems.flakeExposed;
     overlays = [
@@ -179,7 +182,7 @@
     # NIXOS MODULES
     # ============================================================================
     nixosModules = {
-      server = import ./nix/modules/nixos-server.nix {inherit self;};
+      server = import ./nix/modules/nixos-server.nix {inherit self foundation;};
       default = self.nixosModules.server;
     };
 
@@ -187,7 +190,7 @@
     # DARWIN MODULES
     # ============================================================================
     darwinModules = {
-      server = import ./nix/modules/darwin-server.nix {inherit self;};
+      server = import ./nix/modules/darwin-server.nix {inherit self foundation;};
       default = self.darwinModules.server;
     };
 

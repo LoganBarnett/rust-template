@@ -195,7 +195,7 @@ credential plumbing, and launchd health checks.
    Add ~lib.mkNixosService~ and ~lib.mkDarwinService~ to the template repo's
    flake outputs.
 
-** TODO Update template service modules to use helpers
+** DONE Update template service modules to use helpers
    Replace ~template/nix/modules/nixos-server.nix~ and ~darwin-server.nix~ with
    thin calls to the helpers.  Verify ~nix flake check~ passes.
 
