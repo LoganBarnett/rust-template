@@ -1,8 +1,11 @@
 use clap::Parser;
 use rust_template_foundation::auth::OidcConfig;
 use rust_template_foundation::config::{
-  find_config_file, load_toml, resolve_log_settings, CommonCli,
-  CommonConfigFile, ConfigFileError,
+  credential_secret_path, find_config_file, load_toml, resolve_log_settings,
+  CommonCli, CommonConfigFile, ConfigFileError,
+};
+use rust_template_foundation::server::runner::{
+  CliApp, ServerApp, ServerRunConfig,
 };
 use rust_template_lib::{LogFormat, LogLevel};
 use serde::Deserialize;
@@ -23,6 +26,12 @@ pub enum ConfigError {
     address: String,
     reason: &'static str,
   },
+}
+
+impl std::fmt::Display for Config {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "Config(listen={})", self.listen_address)
+  }
 }
 
 #[derive(Debug, Parser)]
@@ -79,6 +88,39 @@ pub struct Config {
   pub frontend_path: PathBuf,
   pub base_url: String,
   pub oidc: Option<OidcConfig>,
+}
+
+impl CliApp for Config {
+  type CliArgs = CliRaw;
+  type Error = ConfigError;
+
+  fn app_name() -> &'static str {
+    "rust-template"
+  }
+
+  fn from_cli(cli: CliRaw) -> Result<Self, ConfigError> {
+    Config::from_cli_and_file(cli)
+  }
+
+  fn log_level(&self) -> LogLevel {
+    self.log_level
+  }
+
+  fn log_format(&self) -> LogFormat {
+    self.log_format
+  }
+}
+
+impl ServerApp for Config {
+  fn server_run_configs(&self) -> Vec<ServerRunConfig> {
+    vec![ServerRunConfig {
+      app_name: Self::app_name().to_string(),
+      listen_address: self.listen_address.clone(),
+      frontend_path: Some(self.frontend_path.clone()),
+      base_url: self.base_url.clone(),
+      oidc: self.oidc.clone(),
+    }]
+  }
 }
 
 impl Config {
@@ -187,13 +229,4 @@ impl Config {
       oidc,
     })
   }
-}
-
-/// Returns the path to the `oidc-client-secret` credential file inside
-/// systemd's `CREDENTIALS_DIRECTORY`, if the directory is set and the
-/// file exists.
-fn credential_secret_path() -> Option<PathBuf> {
-  let dir = std::env::var("CREDENTIALS_DIRECTORY").ok()?;
-  let path = PathBuf::from(dir).join("oidc-client-secret");
-  path.exists().then_some(path)
 }

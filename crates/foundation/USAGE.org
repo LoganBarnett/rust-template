@@ -1,0 +1,305 @@
+#+title:     rust-template-foundation Usage Guide
+#+language:  en
+
+* Overview
+
+=rust-template-foundation= provides the generic plumbing that every spawned
+project needs: configuration discovery, logging, health checks, metrics,
+OpenAPI, OIDC authentication, systemd integration, and a managed entry point.
+
+The crate is organised behind feature flags so projects only pay for what they
+use:
+
+- *cli* — ~CommonCli~ / ~CommonConfigFile~ structs for ~clap~ integration, CLI
+  logging, the ~CliApp~ trait, and the ~#[foundation_main]~ proc macro.
+- *server* — Health registry, metrics endpoint, OpenAPI/Scalar helpers, SPA
+  fallback, systemd notify/watchdog, server logging.
+- *auth* (implies ~server~ + ~cli~) — OIDC login/callback/logout handlers,
+  ~require_auth~ middleware, ~Server~ runner, ~ServerApp~ trait, and
+  ~BaseServerState~.
+
+* Quick start: server
+
+#+begin_src rustic :results none :exports code
+// main.rs — the entire file
+use rust_template_foundation::main as foundation_main;
+use rust_template_foundation::{Server, ServerError};
+use crate::config::Config;
+use crate::web_base::AppState;
+use std::process::ExitCode;
+
+#[foundation_main]
+pub async fn main(
+    config: Config,
+    server: Server,
+) -> Result<ExitCode, ServerError> {
+    let server = server.with_state(|base| AppState { base });
+    server.listen().await?;
+    Ok(ExitCode::SUCCESS)
+}
+#+end_src
+
+By the time the function body runs: CLI is parsed, config is resolved, logging
+is live, OIDC discovery (if configured) is complete, and the ~Server~ is ready
+to have routes added.
+
+* Quick start: CLI
+
+#+begin_src rustic :results none :exports code
+// main.rs — the entire file
+use rust_template_foundation::main as foundation_main;
+use crate::config::Config;
+use std::process::ExitCode;
+use tracing::info;
+
+#[foundation_main]
+pub fn main(config: Config) -> Result<ExitCode, AppError> {
+    info!("Hello, {}!", config.name);
+    Ok(ExitCode::SUCCESS)
+}
+#+end_src
+
+* ~#[foundation_main]~
+
+The proc macro examines the annotated function's signature to determine what
+kind of app this is:
+
+| Signal         | Interpretation  |
+|----------------+-----------------|
+| ~Server~ param | Server app      |
+| No ~Server~    | CLI app         |
+| ~async fn~     | Wrap in tokio   |
+| ~fn~           | Direct call     |
+
+** Generated code for server apps
+
+1. Parse CLI via ~<Config as CliApp>::CliArgs::parse()~
+2. Resolve config via ~<Config as CliApp>::from_cli(cli)~
+3. Init server logging from config's log settings
+4. Build tokio runtime
+5. Inside ~block_on~:
+   a. ~BaseServerState::init~ from first server config
+   b. ~Server::new(base, config)~ for each ~ServerRunConfig~
+   c. Call user's function with ~(config, server)~ or ~(config, (s1, s2))~
+6. Map ~Result<ExitCode, E>~ to ~ExitCode~ (log error on ~Err~)
+
+** Generated code for CLI apps
+
+1. Parse CLI
+2. Resolve config
+3. Init CLI logging
+4. Call user's function
+5. Map result to ~ExitCode~
+
+* Traits: ~CliApp~ and ~ServerApp~
+
+** ~CliApp~
+
+#+begin_src rustic :results none :exports code
+pub trait CliApp: Sized {
+    type CliArgs: clap::Parser;
+    type Error: std::fmt::Display;
+    fn app_name() -> &'static str;
+    fn from_cli(cli: Self::CliArgs) -> Result<Self, Self::Error>;
+    fn log_level(&self) -> LogLevel;
+    fn log_format(&self) -> LogFormat;
+}
+#+end_src
+
+Implement this on your ~Config~ type.  All apps (CLI and server) must implement
+~CliApp~.
+
+** ~ServerApp~
+
+#+begin_src rustic :results none :exports code
+pub trait ServerApp: CliApp {
+    fn server_run_configs(&self) -> Vec<ServerRunConfig>;
+}
+#+end_src
+
+Server apps additionally implement ~ServerApp~.  Return a ~Vec~ of one for a
+single server, or ~Vec~ of N for multiple servers.
+
+* ~Server<S>~ API
+
+The ~Server~ type is a builder that accumulates routes and configuration before
+either binding a listener (~listen()~) or producing a test router
+(~into_test_router()~).
+
+** ~Server::new(base, config)~
+
+Create a server from shared base state and a run config.
+
+** ~.with_state(|base| AppState { base })~
+
+Transform to use custom application state.  The closure receives the
+~BaseServerState~ and returns your custom state type.  The new state type must
+implement ~FromRef~ for ~HealthRegistry~, ~Arc<Registry>~, and
+~Option<Arc<CoreClient>>~ — use the ~impl_server_state!~ macro.
+
+** ~.api_route(path, method_router)~
+
+Add an OpenAPI-documented route using aide's ~get_with~, ~post_with~, etc.
+
+** ~.merge(api_router)~
+
+Merge an ~ApiRouter~ of user routes.
+
+** ~.listen()~
+
+Start listening.  Blocks until graceful shutdown completes.  Internally:
+1. Assembles infrastructure routes (~/healthz~, ~/metrics~)
+2. Merges user routes
+3. Finalises OpenAPI spec
+4. Builds auth routes (~/auth/login~, ~/auth/callback~, ~/auth/logout~)
+5. Builds ~/me~ route
+6. Applies session layer and trace layer
+7. Optionally serves SPA frontend
+8. Binds listener via ~tokio-listener~ (supports TCP, Unix, systemd)
+9. Calls ~systemd::notify_ready()~ and ~systemd::spawn_watchdog()~
+10. Serves with graceful shutdown (~SIGTERM~ / ~Ctrl+C~)
+
+** ~.into_test_router()~
+
+Build the complete ~Router~ without binding a listener.  Uses
+~secure_cookies=false~ so plain HTTP works in tests.  Drive it with
+~tower::ServiceExt::oneshot~.
+
+** ~.base_state()~
+
+Access the shared ~BaseServerState~.  Clone this to create additional servers
+on different ports/sockets.
+
+* ~BaseServerState~
+
+#+begin_src rustic :results none :exports code
+pub struct BaseServerState {
+    pub health_registry: HealthRegistry,
+    pub metrics_registry: Arc<prometheus::Registry>,
+    pub request_counter: prometheus::IntCounter,
+    pub oidc_client: Option<Arc<CoreClient>>,
+    pub frontend_path: Option<PathBuf>,
+}
+#+end_src
+
+Created once by the proc macro, shared across all servers via ~Arc~-backed
+cloning.
+
+* ~impl_server_state!~
+
+#+begin_src rustic :results none :exports code
+use rust_template_foundation::{impl_server_state, server::runner::BaseServerState};
+
+#[derive(Clone)]
+pub struct AppState {
+    pub base: BaseServerState,
+    // your fields here
+}
+
+impl_server_state!(AppState, base);
+#+end_src
+
+Generates ~FromRef<AppState>~ for ~HealthRegistry~, ~Arc<Registry>~, and
+~Option<Arc<CoreClient>>~, delegating to the named field.
+
+* Auth behaviour
+
+OIDC is fully optional.  When ~oidc~ is ~None~ in the ~ServerRunConfig~:
+
+- ~/auth/login~, ~/auth/callback~, ~/auth/logout~ return 404.
+- ~/me~ returns ~{"name": "admin", "auth_enabled": false}~.
+- ~require_auth~ middleware passes all requests through.
+
+To protect specific routes, apply ~require_auth~ as middleware on your route
+groups:
+
+#+begin_src rustic :results none :exports code
+use rust_template_foundation::auth::require_auth;
+use axum::middleware;
+
+let protected = ApiRouter::new()
+    .api_route("/api/things", get_with(list_things, ...))
+    .layer(middleware::from_fn_with_state(state.clone(), require_auth));
+#+end_src
+
+* Testing
+
+Use ~Server::into_test_router()~ + ~tower::ServiceExt::oneshot~:
+
+#+begin_src rustic :results none :exports code
+let server = Server::new(base_state, config)
+    .api_route("/api/hello", get_with(hello_handler, ...));
+let app = server.into_test_router();
+
+let resp = app
+    .oneshot(Request::builder().uri("/api/hello").body(Body::empty())?)
+    .await?;
+assert_eq!(resp.status(), StatusCode::OK);
+#+end_src
+
+* Config pattern
+
+The recommended configuration pattern uses three stages:
+
+1. *~CliRaw~* — parsed CLI arguments (~clap::Parser~)
+2. *~ConfigFileRaw~* — deserialised config file (~serde::Deserialize~)
+3. *~Config~* — validated, merged configuration
+
+The ~Config::from_cli_and_file~ method merges CLI → config file → defaults.
+Wire it into the ~CliApp~ trait via ~from_cli~.
+
+* Systemd integration
+
+Foundation provides built-in systemd integration:
+
+- *~notify_ready()~* — sends ~READY=1~ to systemd when the server is listening.
+- *~spawn_watchdog()~* — sends heartbeats at half the configured
+  ~WATCHDOG_USEC~ interval.
+- *Socket activation* — ~tokio-listener~ supports ~sd-listen~ for inheriting
+  sockets from systemd.
+- *Credential loading* — ~credential_secret_path()~ reads OIDC client secrets
+  from systemd's ~CREDENTIALS_DIRECTORY~.
+
+* Multiple servers
+
+For multiple servers (e.g. primary + admin), return multiple configs and receive
+a tuple:
+
+#+begin_src rustic :results none :exports code
+impl ServerApp for Config {
+    fn server_run_configs(&self) -> Vec<ServerRunConfig> {
+        vec![self.primary_config(), self.admin_config()]
+    }
+}
+
+#[foundation_main]
+pub async fn main(
+    config: Config,
+    (primary, admin): (Server, Server),
+) -> Result<ExitCode, AppError> {
+    tokio::select! {
+        r = primary.listen() => r?,
+        r = admin.listen() => r?,
+    }
+    Ok(ExitCode::SUCCESS)
+}
+#+end_src
+
+For fully dynamic cases, create additional servers at runtime:
+
+#+begin_src rustic :results none :exports code
+let extra = Server::new(server.base_state().clone(), extra_config);
+#+end_src
+
+* Lifecycle hooks
+
+| Stage                      | Hook                              | Example use                                   |
+|----------------------------+-----------------------------------+-----------------------------------------------|
+| CLI parsing                | ~CliApp::from_cli()~              | Custom validation, env var fallbacks           |
+| Config → ServerRunConfig   | ~ServerApp::server_run_configs()~ | Control listen addr, OIDC, frontend path       |
+| State construction         | ~Server::with_state(\vert{}base\vert{} ...)~ | Add app-specific fields, custom metrics        |
+| Route registration         | ~Server::api_route()~ / ~merge()~ | All app-specific routes                        |
+| Additional servers         | ~Server::new(base.clone(), cfg)~  | Admin API on separate port                     |
+| Post-listen cleanup        | Code after ~server.listen().await~ | Drain queues, close connections                |
+
+Every hook has a sensible default.  Touch only the hooks you need.

@@ -1,29 +1,28 @@
 use clap::Parser;
 use rust_template_foundation::config::{
   find_config_file, load_toml, resolve_log_settings, CommonCli,
-  CommonConfigFile, ConfigFileError,
+  CommonConfigFile,
 };
+use rust_template_foundation::logging::{LogFormat, LogLevel};
 use rust_template_foundation::CliApp;
-use rust_template_lib::{LogFormat, LogLevel};
 use serde::Deserialize;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
   #[error("Failed to load configuration file: {0}")]
-  File(#[from] ConfigFileError),
+  File(#[from] rust_template_foundation::config::ConfigFileError),
 
   #[error("Configuration validation failed: {0}")]
   Validation(String),
 }
 
 #[derive(Debug, Parser)]
-#[command(author, version, about, long_about = None)]
+#[command(name = "example-cli", version, about)]
 pub struct CliRaw {
   #[command(flatten)]
   pub common: CommonCli,
 
-  /// Example: Name to greet
   #[arg(short, long)]
   pub name: Option<String>,
 }
@@ -48,26 +47,12 @@ impl CliApp for Config {
   type Error = ConfigError;
 
   fn app_name() -> &'static str {
-    "rust-template"
+    "example-cli"
   }
 
   fn from_cli(cli: CliRaw) -> Result<Self, ConfigError> {
-    Config::from_cli_and_file(cli)
-  }
-
-  fn log_level(&self) -> LogLevel {
-    self.log_level
-  }
-
-  fn log_format(&self) -> LogFormat {
-    self.log_format
-  }
-}
-
-impl Config {
-  pub fn from_cli_and_file(cli: CliRaw) -> Result<Self, ConfigError> {
     let config_file: ConfigFileRaw =
-      match find_config_file("rust-template", cli.common.config.as_deref()) {
+      match find_config_file("example-cli", cli.common.config.as_deref()) {
         Some(path) => load_toml(&path)?,
         None => ConfigFileRaw::default(),
       };
@@ -89,5 +74,13 @@ impl Config {
       log_format,
       name,
     })
+  }
+
+  fn log_level(&self) -> LogLevel {
+    self.log_level
+  }
+
+  fn log_format(&self) -> LogFormat {
+    self.log_format
   }
 }

@@ -7,3 +7,9 @@ pub mod openapi;
 pub mod shutdown;
 pub mod spa;
 pub mod systemd;
+
+#[cfg(feature = "auth")]
+pub mod me;
+
+#[cfg(feature = "auth")]
+pub mod runner;

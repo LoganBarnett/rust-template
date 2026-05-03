@@ -28,17 +28,14 @@ tap = { workspace = true }  # For method chaining, reduces superfluous locals
 axum = { workspace = true }
 tokio = { workspace = true }
 tokio-listener = { workspace = true }
-tower = { workspace = true }
-tower-http = { workspace = true }
 prometheus = { workspace = true }
 aide = { workspace = true }
 schemars = { workspace = true }
 openidconnect = { workspace = true }
-tower-sessions = { workspace = true }
 
 [dev-dependencies]
 openidconnect = { workspace = true }
 prometheus = { workspace = true }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
-tower-sessions = { workspace = true }
+tower = { workspace = true }

@@ -166,3 +166,37 @@ darwin module.
 GitHub PRs require tests to pass before merging, and that formatting runs
 without changes (to catch cases where someone bypassed the pre-commit hook).
 Configure branch protection rules and/or GitHub Actions to enforce this.
+
+* TODO MergeConfig derive macro
+Auto-generate the ~CliRaw -> ConfigFileRaw -> Config~ merge from a single type
+definition.  The ~#[derive(MergeConfig)]~ macro should produce the ~CliRaw~
+(clap Parser), ~ConfigFileRaw~ (serde Deserialize), and the ~from_cli_and_file~
+resolution function from a single annotated ~Config~ struct.  This eliminates
+the three-type boilerplate that every spawned project maintains.
+
+* TODO Nix mkNixosService / mkDarwinService helpers
+Extract the ~150-line NixOS and Darwin service modules into reusable helpers
+exported from the template's flake.  Spawned projects call
+~rust-template.lib.mkNixosService { name = "my-app"; ... }~ instead of
+maintaining their own copy of systemd hardening, socket activation, watchdog,
+OIDC credential plumbing, and launchd health checks.
+
+* TODO Nix mkRustProject flake helper
+Reduce the spawned project's ~flake.nix~ to declarations.  A
+~rust-template.lib.mkRustProject { crates = { ... }; }~ helper would emit all
+packages, apps, devShells, and module outputs from a workspace crate map,
+absorbing the crane build logic, devShell assembly, and overlay wiring that is
+currently duplicated.
+
+* TODO Compliance test suite for spawned repos
+Build a test suite (shell script or Rust) that verifies structural file presence
+and correctness in spawned repos: foundation dependency present with correct
+features, CI workflows call reusable workflows, required files exist
+(~CHANGELOG.org~, ~.envrc~, ~rustfmt.toml~, etc.), no stale ~rust-template~
+literals.  Run from the template repo against all ~config.json~ spawns.
+
+* TODO Request counting middleware
+The ~http_requests_total~ Prometheus counter is registered in ~BaseServerState~
+but never incremented.  Add a ~TraceLayer~-based or custom middleware in
+~Server::listen()~ that increments the counter on each request, with labels for
+method and status code.

@@ -8,14 +8,18 @@
 //! # Feature flags
 //!
 //! - **`cli`** — `CommonCli` / `CommonConfigFile` structs for `clap`
-//!   integration, plus CLI logging initialisation.
+//!   integration, CLI logging, `CliApp` trait, and `#[foundation_main]`.
 //! - **`server`** — Health registry, metrics endpoint, OpenAPI/Scalar
 //!   helpers, SPA fallback, systemd notify/watchdog, server logging.
-//! - **`auth`** (implies `server`) — OIDC login/callback/logout
-//!   handlers and `require_auth` middleware.
+//! - **`auth`** (implies `server` + `cli`) — OIDC login/callback/logout
+//!   handlers, `require_auth` middleware, `Server` runner, `ServerApp`
+//!   trait, and `BaseServerState`.
 
 pub mod config;
 pub mod logging;
+
+#[cfg(feature = "cli")]
+pub mod app;
 
 #[cfg(feature = "server")]
 pub mod server;
@@ -29,3 +33,17 @@ pub mod prelude {
   pub use crate::config::load_toml;
   pub use crate::logging::{LogFormat, LogLevel};
 }
+
+// Re-export the proc macro so users write `use rust_template_foundation::main`.
+#[cfg(feature = "cli")]
+pub use rust_template_foundation_derive::foundation_main as main;
+
+// Re-export CliApp at crate root for CLI apps.
+#[cfg(feature = "cli")]
+pub use app::CliApp;
+
+// Re-export key runner types at crate root for server apps.
+#[cfg(feature = "auth")]
+pub use server::runner::{
+  BaseServerState, Server, ServerApp, ServerError, ServerRunConfig,
+};

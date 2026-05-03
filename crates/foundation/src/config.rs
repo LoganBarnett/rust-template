@@ -111,6 +111,16 @@ pub struct CommonConfigFile {
   pub log_format: Option<String>,
 }
 
+/// Returns the path to the `oidc-client-secret` credential file inside
+/// systemd's `CREDENTIALS_DIRECTORY`, if the directory is set and the
+/// file exists.
+#[cfg(feature = "server")]
+pub fn credential_secret_path() -> Option<PathBuf> {
+  let dir = std::env::var("CREDENTIALS_DIRECTORY").ok()?;
+  let path = PathBuf::from(dir).join("oidc-client-secret");
+  path.exists().then_some(path)
+}
+
 /// Resolve `log_level` and `log_format` from CLI → config-file → defaults.
 ///
 /// Returns `(LogLevel, LogFormat)` or an error message suitable for user
