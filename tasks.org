@@ -224,7 +224,7 @@ absorbing the crane build logic, devShell assembly, and overlay wiring.
 ** DONE Export from root flake.nix
    Add ~lib.mkRustProject~ to the template repo's flake outputs.
 
-** TODO Simplify template/flake.nix to use mkRustProject
+** DONE Simplify template/flake.nix to use mkRustProject
    Replace the ~200-line template flake body with a declaration that calls
    ~inputs.rust-template.lib.mkRustProject~.  Ensure per-crate package
    overrides (~nix/packages/server.nix~ for Elm frontend) still function.
