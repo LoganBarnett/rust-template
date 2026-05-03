@@ -344,35 +344,45 @@ specific-crate = "1.0"  # Not in workspace dependencies
 
 * Forward-porting template updates
 
-When the template is updated after your project was emitted, use
-=rust-template.json= at the project root to determine exactly what has changed
-rather than guessing from a structural comparison.
+When the template is updated after your project was emitted, pull in the
+relevant infrastructure changes using =rust-template.json= at the project
+root.  =docs/compliance.org= owns the authoritative process; the summary
+below shows which of the two paths applies to your repo.
 
-** 1. Find the base hash
+** Diff-based — when =template_sync_hashes= is non-empty
 
-Open =rust-template.json= and take the last entry in =template_sync_hashes=.
-That is your diff base.  If the list is empty (project predates this file),
-skip to step 3 and do a full structural audit instead.
-
-** 2. Diff the template
-
-In the template repository:
+Take the last entry in =template_sync_hashes= as your base and diff the
+template repository:
 
 #+begin_src sh :exports code
 git diff <last-hash>..HEAD
 #+end_src
 
-This gives a precise list of what changed in the template since the last sync.
+Every changed file is a candidate to port.  Skip project-name substitutions
+and business logic; apply infrastructure changes to your project.
 
-** 3. Apply the changes
+** Fresh-emission — when =template_sync_hashes= is empty or the file is absent
 
-Follow the compliance discipline in =compliance.org=: enumerate gaps, confirm
-with the user, apply infrastructure changes only.  Leave business logic alone.
+Your project predates template provenance, so there is no commit to diff
+from.  Emit a fresh project from the current template into a temporary
+directory and compare against it file by file:
 
-** 4. Update rust-template.json
+#+begin_src sh :exports code
+./new-project.sh \
+  --name <your-project-name> \
+  --output /tmp/<your-project-name>-fresh \
+  --crates <same crates you use>
+#+end_src
 
-After porting, append the current template HEAD to =template_sync_hashes= so
-the next port starts from the correct position:
+For every file or directory in the fresh emission, add it if absent from
+your repo and reconcile if divergent — favouring the template except
+where you have legitimate customisation (business logic, project-specific
+configuration, domain-specific dependencies).
+
+** Finish the update
+
+After porting, append the current template HEAD to =template_sync_hashes=
+so the next forward-port starts from the correct position:
 
 #+begin_src sh :exports code
 # Get the current template HEAD
@@ -388,4 +398,6 @@ git -C <path-to-template-repo> rev-parse HEAD
 }
 #+end_src
 
-Commit =rust-template.json= together with the ported changes.
+Commit =rust-template.json= together with the ported changes.  See
+=docs/compliance.org= for the discipline expected when applying changes
+(what counts as compliance, what to leave alone, and how to verify).

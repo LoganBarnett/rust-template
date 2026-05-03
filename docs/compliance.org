@@ -59,7 +59,15 @@ A target repo may have more crates than the template (workers, etc.).
 Extra crates are not non-compliant; they simply do not have a direct template
 counterpart.  Apply the general [[*Cross-role compliance items]] to them.
 
-* Compliance items by role
+* Compliance items reference
+
+The tables below enumerate known compliance items for orientation and code
+review.  They are *not* the compliance checklist — the process in
+[[*Compliance process]] is.  A static list in this document will drift behind
+the template as it evolves, and feature-by-feature auditing is too easy to
+miss things.  Use the tables to recognise what kind of infrastructure belongs
+where; rely on the actual template output to decide what a given project is
+missing.
 
 Items marked *required* must be present in every compliant crate of that role.
 Items marked *conditional* apply only when the target crate uses the related
@@ -80,7 +88,7 @@ These apply to every crate regardless of role.
 | =rustfmt.toml= | Required (workspace) | The workspace =rustfmt.toml= is present and unmodified. |
 | Pre-commit hook | Required (workspace) | =.cargo-husky/= is present and enforces =treefmt= before commits. |
 | Nix dev shell | Required (workspace) | =flake.nix= is present with a working =devShells.default=. |
-| Template provenance | Required (workspace) | =rust-template.json= is present at the project root and committed.  Contains a =template_sync_hashes= list of template commit hashes, one per sync event (emission or forward port), oldest first.  The last entry is the base for the next forward-port diff.  Projects predating this file may start with an empty list.  See [[*Forward-porting template updates]]. |
+| Template provenance | Required (workspace) | =rust-template.json= is present at the project root and committed.  Contains a =template_sync_hashes= list of template commit hashes, one per sync event (emission or forward port), oldest first.  The last entry is the base for the next diff-based compliance run.  Projects predating this file may start with an empty list; see [[*Compliance process]] for how the process branches on sync state. |
 
 ** =lib= crate compliance items
 
@@ -113,58 +121,97 @@ These apply to every crate regardless of role.
 
 * Compliance process
 
-1. *Identify the crate mapping.* List each target crate and decide its template
-   role.  Record any crates without a direct template counterpart.
+Compliance work has two processes, selected by the derived repo's sync state.
+Both compare against the actual template output rather than a static
+checklist — any list in this document will drift behind the template as it
+evolves, and going feature by feature is too easy to miss things.  The
+tables in [[*Compliance items reference]] exist for orientation, not as the
+audit checklist.
 
-2. *Audit each mapped crate.* For each compliance item in the relevant role
-   table, note whether it is present, absent, or partially present.  Produce a
-   gap list.
+** Determine the process
 
-3. *Report gaps to the user.* Present the gap list.  Call out any gaps that
-   require non-trivial restructuring (e.g., a server crate with no separation
-   between application routes and infrastructure).  Wait for confirmation before
-   proceeding, unless operating autonomously.
+1. Open =rust-template.json= in the derived repo.
+2. Inspect =template_sync_hashes=:
+   - Non-empty → use [[*Diff-based compliance]] against the last entry.
+   - Empty, or file absent → use [[*Fresh-emission compliance]].
 
-4. *Apply compliance items.* Bring in missing items one crate at a time.  Copy
-   infrastructure from the template verbatim where possible; adapt only where
-   the target codebase makes verbatim copying impossible (e.g., different Axum
-   state type).
+** Diff-based compliance
 
-5. *Verify.* Run the full build and test suite:
-   #+begin_src sh :exports code
-   nix develop --command cargo build --workspace
-   nix develop --command cargo test --workspace
-   #+end_src
-   Both must succeed with no errors before declaring compliance work done.
+Used when a prior sync event has recorded a commit hash.  The diff between
+that hash and the template's current =HEAD= bounds the work precisely.
 
-* Forward-porting template updates
+1. *Determine the base hash.*  Take the last entry in =template_sync_hashes=.
 
-When the template changes after a project was emitted, use =rust-template.json=
-to scope exactly which template changes need porting rather than doing a full
-structural diff.
-
-1. *Determine the base hash.*  Open =rust-template.json= in the derived repo
-   and take the last entry in =template_sync_hashes=.  If the list is empty
-   (project predates this file), no scoped diff is possible — fall back to a
-   full structural audit.
-
-2. *Diff the template.*  In the template repository, run:
+2. *Diff the template.*  In the template repository:
    #+begin_src sh :exports code
    git diff <last-hash>..HEAD
    #+end_src
-   This shows exactly what has changed in the template since the last sync.
-   Ignore changes that are clearly project-name substitutions or business logic
-   unrelated to the derived project's crates.
+   Every changed file is a candidate for porting.  Ignore changes that are
+   clearly project-name substitutions or business logic unrelated to the
+   derived project's crates.
 
-3. *Apply the relevant changes.*  Follow the [[*Compliance process]] discipline:
-   enumerate gaps, report to the user, apply infrastructure changes only.
+3. *Map, enumerate, report, apply.*  Follow the [[*LLM role during compliance
+   work]] discipline: map each touched file to a crate role, enumerate gaps,
+   report them, then apply infrastructure only.  Consult [[*Crate mapping]]
+   when the diff touches role-specific files.
 
-4. *Update the record.*  After porting, append the current template HEAD to
-   =template_sync_hashes= in =rust-template.json= and commit the file together
-   with the ported changes:
+4. *Update the record.*  Append the current template =HEAD= to
+   =template_sync_hashes= in =rust-template.json= and commit the file
+   together with the ported changes:
    #+begin_src sh :exports code
    git -C <path-to-template-repo> rev-parse HEAD
    #+end_src
+
+** Fresh-emission compliance
+
+Used when =rust-template.json= is absent or =template_sync_hashes= is empty
+— the derived project predates template provenance and there is no baseline
+to diff from.  A feature-by-feature walk of this document cannot catch
+everything the template emits; compare against a real emission instead.
+
+1. *Emit a fresh project in a temporary directory.*
+   #+begin_src sh :exports code
+   ./new-project.sh \
+     --name <target-project-name> \
+     --output /tmp/<target-project-name>-fresh \
+     --crates <same crate set the target uses>
+   #+end_src
+   Include =--public= if the target is public.  Use the same
+   =--description= if one was recorded in the spawn manifest.
+
+2. *File-by-file comparison.*  Walk the fresh emission against the derived
+   repo.  For each file or directory in the emission:
+   - Absent from the derived repo → propose adding it.
+   - Present but divergent → propose reconciling.  Favor template content
+     except where the target has legitimate customisation (business logic,
+     project-specific configuration fields, domain-specific dependencies).
+   - Present and equivalent → skip.
+
+3. *Map, enumerate, report, apply.*  Follow the [[*LLM role during compliance
+   work]] discipline.
+
+4. *Establish provenance.*  After applying, create =rust-template.json=
+   with =template_sync_hashes= containing the current template =HEAD= so
+   subsequent compliance work can use the diff-based process:
+   #+begin_src sh :exports code
+   git -C <path-to-template-repo> rev-parse HEAD
+   #+end_src
+
+** Verification
+
+After applying compliance changes, run the full build and test suite:
+#+begin_src sh :exports code
+nix develop --command cargo build --workspace
+nix develop --command cargo test --workspace
+#+end_src
+Both must succeed with no errors before declaring compliance work done.
+
+** Future: CHANGELOG-driven hints
+
+A forthcoming =CHANGELOG.org= in the template will record
+compliance-relevant changes per release.  Once available, it will augment
+— not replace — the diff-based process above, making it easier to
+prioritise and group related changes during review.
 
 * What compliance does not cover
 

@@ -144,8 +144,8 @@ else
     rm -f "$OUTPUT/.github/workflows/publish.yml"
 fi
 
-# Write template provenance so forward-porting can scope diffs precisely
-# (see docs/compliance.org § "Forward-porting template updates").
+# Write template provenance so subsequent compliance work can scope diffs
+# precisely (see docs/compliance.org § "Compliance process").
 TEMPLATE_HASH="$(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")"
 cat > "$OUTPUT/rust-template.json" <<EOF
 {
