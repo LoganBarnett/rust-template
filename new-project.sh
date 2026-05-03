@@ -4,6 +4,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TEMPLATE_DIR="$SCRIPT_DIR/template"
 
+# shellcheck source=script-common.sh
+source "$SCRIPT_DIR/script-common.sh"
+
 PROJECT_NAME=""
 DESCRIPTION=""
 CRATES="cli,server"
@@ -30,14 +33,6 @@ Examples:
 EOF
     exit 1
 }
-
-# Detect whether the sed in PATH is GNU (supports -i without an extension
-# argument) or BSD (requires -i '').
-if sed --version 2>/dev/null | grep -q GNU; then
-    sed_inplace() { sed -i "$@"; }
-else
-    sed_inplace() { sed -i '' "$@"; }
-fi
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -81,64 +76,64 @@ fi
 
 echo "Creating $PROJECT_NAME in $OUTPUT ..."
 
+# Step 1: Copy template skeleton (without crate directories or build artifacts).
 mkdir -p "$OUTPUT"
 cp -r "$TEMPLATE_DIR/." "$OUTPUT/"
+rm -rf "$OUTPUT/crates/cli" "$OUTPUT/crates/server" "$OUTPUT/crates/lib"
+rm -rf "$OUTPUT/target"
 
-# Substitute the placeholder project name throughout all text files.
-grep -rl 'rust-template' "$OUTPUT" | while IFS= read -r f; do
-    sed_inplace "s/rust-template/$PROJECT_NAME/g" "$f"
-done
-
-# Substitute the underscore form used in Rust lib names and `use` statements
-# (e.g. `rust_template_server` → `my_project_server`).  Must run after the
-# hyphen pass so any hyphen→underscore collisions are already resolved.
+# Step 2: Global name substitution on skeleton files.
 PROJECT_NAME_UNDERSCORE="${PROJECT_NAME//-/_}"
-grep -rl 'rust_template' "$OUTPUT" | while IFS= read -r f; do
-    sed_inplace "s/rust_template/$PROJECT_NAME_UNDERSCORE/g" "$f"
-done
 
-# Restore foundation crate references that were mangled by the global
-# substitution above.  The foundation crate always keeps its canonical name
-# regardless of the downstream project name.
+# Hyphen pass: rust-template → project name.
+grep -rl 'rust-template' "$OUTPUT" 2>/dev/null | while IFS= read -r f; do
+    sed_inplace "s/rust-template/$PROJECT_NAME/g" "$f"
+done || true
+
+# Underscore pass: rust_template → project name underscore form.
+grep -rl 'rust_template' "$OUTPUT" 2>/dev/null | while IFS= read -r f; do
+    sed_inplace "s/rust_template/$PROJECT_NAME_UNDERSCORE/g" "$f"
+done || true
+
+# Restore foundation crate references mangled by the global substitution.
 grep -rl "${PROJECT_NAME}-foundation" "$OUTPUT" 2>/dev/null | while IFS= read -r f; do
     sed_inplace "s/${PROJECT_NAME}-foundation/rust-template-foundation/g" "$f"
-done
+done || true
 grep -rl "${PROJECT_NAME_UNDERSCORE}_foundation" "$OUTPUT" 2>/dev/null | while IFS= read -r f; do
     sed_inplace "s/${PROJECT_NAME_UNDERSCORE}_foundation/rust_template_foundation/g" "$f"
-done
+done || true
 
 # Substitute the placeholder description if one was provided.
 if [[ -n "$DESCRIPTION" ]]; then
-    grep -rl 'Rust Template - Best-in-class Rust project setup' "$OUTPUT" | while IFS= read -r f; do
+    grep -rl 'Rust Template - Best-in-class Rust project setup' "$OUTPUT" 2>/dev/null | while IFS= read -r f; do
         sed_inplace "s/Rust Template - Best-in-class Rust project setup/$DESCRIPTION/g" "$f"
-    done
+    done || true
 fi
 
-# Prune binary crates that were not requested, removing their directories and
-# scrubbing their entries from Cargo.toml and flake.nix.
-ALL_BINARY_CRATES=(cli server)
+# Restore all LoganBarnett/rust-template references mangled by the global
+# substitution.  This covers reusable workflow callers (trailing /) and the
+# foundation crate's git URL (trailing .git).
+grep -rl "LoganBarnett/${PROJECT_NAME}" "$OUTPUT" 2>/dev/null \
+  | while IFS= read -r f; do
+    sed_inplace "s|LoganBarnett/${PROJECT_NAME}/|LoganBarnett/rust-template/|g" "$f"
+    sed_inplace "s|LoganBarnett/${PROJECT_NAME}\\.git|LoganBarnett/rust-template.git|g" "$f"
+done || true
+
+# Step 3: Add crates via crate-add.sh.  lib is always included.
+"$SCRIPT_DIR/crate-add.sh" \
+    --type lib \
+    --project-dir "$OUTPUT" \
+    --project-name "$PROJECT_NAME"
+
 IFS=',' read -ra REQUESTED <<< "$CRATES"
-
-for crate in "${ALL_BINARY_CRATES[@]}"; do
-    if [[ ! " ${REQUESTED[*]} " =~ " $crate " ]]; then
-        echo "  Removing crate: $crate"
-
-        rm -rf "$OUTPUT/crates/$crate"
-
-        # Strip the workspace member line from Cargo.toml.
-        grep -v "\"crates/$crate\"" "$OUTPUT/Cargo.toml" > "$OUTPUT/Cargo.toml.tmp"
-        mv "$OUTPUT/Cargo.toml.tmp" "$OUTPUT/Cargo.toml"
-
-        # Strip the workspaceCrates block from flake.nix using the sentinel
-        # comments added by this template.
-        awk "/# CRATE:$crate:begin/{skip=1; next} \
-             /# CRATE:$crate:end/{skip=0; next} \
-             !skip" \
-            "$OUTPUT/flake.nix" > "$OUTPUT/flake.nix.tmp"
-        mv "$OUTPUT/flake.nix.tmp" "$OUTPUT/flake.nix"
-    fi
+for crate in "${REQUESTED[@]}"; do
+    "$SCRIPT_DIR/crate-add.sh" \
+        --type "$crate" \
+        --project-dir "$OUTPUT" \
+        --project-name "$PROJECT_NAME"
 done
 
+# Step 4: Post-processing.
 if [[ "$PUBLIC" == true ]]; then
     # Remove the publish = false guard from the lib crate so it can be
     # published to crates.io.
@@ -148,14 +143,6 @@ else
     # Keep CI, branch protection, dependabot, and automerge.
     rm -f "$OUTPUT/.github/workflows/publish.yml"
 fi
-
-# Restore reusable workflow references in GitHub Actions callers.  The global
-# substitution above mangles `LoganBarnett/rust-template/` to
-# `LoganBarnett/$PROJECT_NAME/`; undo that so callers point at the template repo.
-grep -rl "LoganBarnett/${PROJECT_NAME}/" "$OUTPUT" 2>/dev/null \
-  | while IFS= read -r f; do
-    sed_inplace "s|LoganBarnett/${PROJECT_NAME}/|LoganBarnett/rust-template/|g" "$f"
-done
 
 # Write template provenance so forward-porting can scope diffs precisely
 # (see docs/compliance.org § "Forward-porting template updates").

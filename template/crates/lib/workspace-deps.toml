@@ -1,0 +1,8 @@
+# Workspace dependencies required by the lib crate type.
+# Used by crate-add.sh to ensure deps exist when adding to an existing project.
+[dependencies]
+rust-template-foundation = { git = "https://github.com/LoganBarnett/rust-template.git" }
+tracing = "0.1"
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "2.0"
+tap = "1.0"

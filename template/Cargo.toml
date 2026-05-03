@@ -1,9 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/cli",
-    "crates/lib",
-    "crates/server",
+    # CRATE_MEMBERS
 ]
 
 [workspace.package]
@@ -61,6 +59,7 @@ tower-sessions = { version = "0.15", features = ["memory-store"] }
 
 # Shared library
 rust-template-lib = { path = "crates/lib" }
+# WORKSPACE_DEPS
 
 # ============================================================================
 # BUILD PROFILES

@@ -41,23 +41,7 @@
     # 3. The package and app generation will automatically update
     # ============================================================================
     workspaceCrates = {
-      # CRATE:cli:begin
-      # CLI application
-      cli = {
-        name = "rust-template-cli";
-        binary = "rust-template-cli";
-        description = "CLI application";
-      };
-      # CRATE:cli:end
-
-      # CRATE:server:begin
-      # Server process
-      server = {
-        name = "rust-template-server";
-        binary = "rust-template-server";
-        description = "Server process";
-      };
-      # CRATE:server:end
+      # CRATE_ENTRIES
 
       # Note: The 'lib' crate is not included here as it doesn't produce a
       # binary.
