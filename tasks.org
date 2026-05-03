@@ -204,7 +204,7 @@ credential plumbing, and launchd health checks.
    ~inputs.rust-template.lib.mkNixosService~ instead of inlining full modules.
    Add ~rust-template~ as a flake input in the template flake.
 
-* IN-PROGRESS Nix mkRustProject flake helper
+* DONE Nix mkRustProject flake helper
 Reduce the spawned project's ~flake.nix~ to declarations.  A
 ~rust-template.lib.mkRustProject { crates = { ... }; }~ helper emits all
 packages, apps, devShells, and module outputs from a workspace crate map,
@@ -229,7 +229,7 @@ absorbing the crane build logic, devShell assembly, and overlay wiring.
    ~inputs.rust-template.lib.mkRustProject~.  Ensure per-crate package
    overrides (~nix/packages/server.nix~ for Elm frontend) still function.
 
-** TODO Verify spawning scripts still work
+** DONE Verify spawning scripts still work
    Run ~test-crate-add.sh~ and a full ~new-project.sh~ spawn to confirm the
    simplified flake works end-to-end.
 
