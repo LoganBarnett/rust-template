@@ -167,25 +167,25 @@ pub struct Config {
    base_url.  User provides ~resolve_oidc~, ~Display~, and ~ServerApp~ impls
    manually.
 
-* TODO Nix mkNixosService / mkDarwinService helpers
+* IN-PROGRESS Nix mkNixosService / mkDarwinService helpers
 Extract the ~150-line NixOS and Darwin service modules into reusable helper
 functions exported from the template repo's flake.  Spawned projects add
 ~rust-template~ as a flake input and call the helpers instead of maintaining
 their own copy of systemd hardening, socket activation, watchdog, OIDC
 credential plumbing, and launchd health checks.
 
-** TODO Extract common service options into shared Nix function
+** DONE Extract common service options into shared Nix function
    Create ~nix/lib/service-options.nix~ with the shared option schema: enable,
    package, socket, host, port, logLevel, logFormat, frontendPath, baseUrl,
    oidc*, user, group.  Both NixOS and Darwin modules import this.
 
-** TODO Implement mkNixosService helper
+** DONE Implement mkNixosService helper
    Create ~nix/lib/mkNixosService.nix~ taking ~{ name, self }~ and returning a
    NixOS module function.  Generates: systemd service (Type=notify, watchdog),
    socket unit (optional), tmpfiles rules, user/group, OIDC credential
    plumbing, hardening.
 
-** TODO Implement mkDarwinService helper
+** DONE Implement mkDarwinService helper
    Create ~nix/lib/mkDarwinService.nix~ taking ~{ name, self }~ and returning a
    Darwin module function.  Generates: launchd service, health check agent,
    activation scripts for socket/log directories, newsyslog rotation,
