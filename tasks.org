@@ -233,24 +233,24 @@ absorbing the crane build logic, devShell assembly, and overlay wiring.
    Run ~test-crate-add.sh~ and a full ~new-project.sh~ spawn to confirm the
    simplified flake works end-to-end.
 
-* TODO Compliance test suite for spawned repos
+* DONE Compliance test suite for spawned repos
 Build a test suite (shell script) that verifies structural file presence and
 correctness in spawned repos.  Run from the template repo against all
 ~config.json~ spawns.
 
-** TODO Design compliance checks
+** DONE Design compliance checks
    Define checks: foundation dependency present with correct features, CI
    workflows call reusable workflows, required files exist (~CHANGELOG.org~,
    ~.envrc~, ~rustfmt.toml~, ~.github/workflows/~), no stale ~rust-template~
    literals (except foundation refs), ~rust-template.json~ provenance file
    present, flake input references ~rust-template~ correctly.
 
-** TODO Implement compliance test script
+** DONE Implement compliance test script
    Shell script (~compliance-check.sh~) that iterates over ~config.json~
    spawns, runs structural checks against each project directory, reports
    pass/fail per check, and exits with proper error code.
 
-** TODO Run against all spawns and fix violations
+** DONE Run against all spawns and fix violations
    Execute the suite against every tracked spawn.  File issues or fix
    violations found.
 
