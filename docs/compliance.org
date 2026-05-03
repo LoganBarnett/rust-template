@@ -78,7 +78,7 @@ These apply to every crate regardless of role.
 | =logging.rs= module | Required (binaries) | Logging initialization lives in its own file and delegates to the lib crate's logging infrastructure. |
 | Integration tests | Required | At least one integration test under =crates/<name>/tests/=. |
 | =rustfmt.toml= | Required (workspace) | The workspace =rustfmt.toml= is present and unmodified. |
-| Pre-commit hook | Required (workspace) | =.cargo-husky/= is present and enforces =rustfmt= before commits. |
+| Pre-commit hook | Required (workspace) | =.cargo-husky/= is present and enforces =treefmt= before commits. |
 | Nix dev shell | Required (workspace) | =flake.nix= is present with a working =devShells.default=. |
 | Template provenance | Required (workspace) | =rust-template.json= is present at the project root and committed.  Contains a =template_sync_hashes= list of template commit hashes, one per sync event (emission or forward port), oldest first.  The last entry is the base for the next forward-port diff.  Projects predating this file may start with an empty list.  See [[*Forward-porting template updates]]. |
 
