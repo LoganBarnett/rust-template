@@ -12,9 +12,12 @@ use aide::{
   openapi::OpenApi,
   transform::TransformOperation,
 };
-use axum::{extract::FromRef, routing::get, serve, Router};
+use axum::{
+  body::Body, extract::FromRef, middleware as axum_middleware,
+  response::Response, routing::get, serve, Extension, Router,
+};
 use openidconnect::core::CoreClient;
-use prometheus::{IntCounter, Registry};
+use prometheus::{IntCounterVec, Opts, Registry};
 use std::{path::PathBuf, sync::Arc};
 use thiserror::Error;
 use tokio_listener::ListenerAddress;
@@ -77,7 +80,7 @@ pub enum ServerError {
 pub struct BaseServerState {
   pub health_registry: HealthRegistry,
   pub metrics_registry: Arc<Registry>,
-  pub request_counter: IntCounter,
+  pub request_counter: IntCounterVec,
   pub oidc_client: Option<Arc<CoreClient>>,
   pub frontend_path: Option<PathBuf>,
 }
@@ -88,9 +91,14 @@ impl BaseServerState {
   /// settings as the canonical source.
   pub async fn init(config: &ServerRunConfig) -> Result<Self, ServerError> {
     let registry = Registry::new();
-    let request_counter =
-      IntCounter::new("http_requests_total", "Total HTTP requests")
-        .expect("counter creation must not fail");
+    let request_counter = IntCounterVec::new(
+      Opts::new(
+        "http_requests_total",
+        "Total HTTP requests by method and status",
+      ),
+      &["method", "status"],
+    )
+    .expect("counter creation must not fail");
     registry
       .register(Box::new(request_counter.clone()))
       .expect("counter registration must not fail");
@@ -135,6 +143,12 @@ impl FromRef<BaseServerState> for Option<Arc<CoreClient>> {
   }
 }
 
+impl FromRef<BaseServerState> for IntCounterVec {
+  fn from_ref(state: &BaseServerState) -> Self {
+    state.request_counter.clone()
+  }
+}
+
 // ── impl_server_state! macro ────────────────────────────────────────────────
 
 /// Generate `FromRef` implementations that delegate to a
@@ -171,6 +185,12 @@ macro_rules! impl_server_state {
     {
       fn from_ref(state: &$state_ty) -> Self {
         state.$field.oidc_client.clone()
+      }
+    }
+
+    impl ::axum::extract::FromRef<$state_ty> for ::prometheus::IntCounterVec {
+      fn from_ref(state: &$state_ty) -> Self {
+        state.$field.request_counter.clone()
       }
     }
   };
@@ -357,8 +377,28 @@ where
       .with_secure(secure_cookies)
       .with_same_site(SameSite::Lax);
 
-    full.layer(session_layer).layer(TraceLayer::new_for_http())
+    full
+      .layer(axum_middleware::from_fn(request_counter_middleware))
+      .layer(Extension(base.request_counter.clone()))
+      .layer(session_layer)
+      .layer(TraceLayer::new_for_http())
   }
+}
+
+// ── request counting middleware ──────────────────────────────────────────
+
+/// Middleware that increments the `http_requests_total` counter with
+/// method and status labels after each response.
+async fn request_counter_middleware(
+  Extension(counter): Extension<IntCounterVec>,
+  request: axum::http::Request<Body>,
+  next: axum::middleware::Next,
+) -> Response {
+  let method = request.method().to_string();
+  let response = next.run(request).await;
+  let status = response.status().as_u16().to_string();
+  counter.with_label_values(&[&method, &status]).inc();
+  response
 }
 
 // ── non-generic route builders ──────────────────────────────────────────────

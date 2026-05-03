@@ -254,28 +254,28 @@ correctness in spawned repos.  Run from the template repo against all
    Execute the suite against every tracked spawn.  File issues or fix
    violations found.
 
-* TODO Request counting middleware
+* DONE Request counting middleware
 The ~http_requests_total~ Prometheus counter is registered in ~BaseServerState~
 but never incremented.  Add a custom middleware in ~Server::build_router()~ that
 increments the counter on each request, with labels for method and status code.
 
-** TODO Change IntCounter to IntCounterVec in BaseServerState
+** DONE Change IntCounter to IntCounterVec in BaseServerState
    Replace ~prometheus::IntCounter~ with ~IntCounterVec~ labeled by ~method~
    and ~status~.  Update ~BaseServerState::init()~, ~impl_server_state!~ macro
    (if it references the counter), and all test helpers that construct
    ~BaseServerState~ manually.
 
-** TODO Implement request counting middleware
+** DONE Implement request counting middleware
    Add an axum middleware function (same pattern as ~require_auth~) that calls
    ~next.run(req).await~, extracts method and status code, and increments the
    appropriate counter vector label.
 
-** TODO Apply middleware in Server::build_router
+** DONE Apply middleware in Server::build_router
    Add the counting layer in ~build_router()~ after ~TraceLayer~ so every
    request is counted.  The counter state is extracted from ~BaseServerState~
    via ~FromRef~.
 
-** TODO Add test for request counting
+** DONE Add test for request counting
    In ~crates/foundation/tests/server_integration.rs~, add a test that issues
    requests to ~/healthz~ and ~/metrics~, then verifies the ~/metrics~ response
    contains incremented ~http_requests_total~ counters with correct labels.

@@ -22,9 +22,14 @@ use tower::ServiceExt;
 
 fn base_state_no_auth() -> BaseServerState {
   let registry = prometheus::Registry::new();
-  let request_counter =
-    prometheus::IntCounter::new("http_requests_total", "Total HTTP requests")
-      .expect("counter creation");
+  let request_counter = prometheus::IntCounterVec::new(
+    prometheus::Opts::new(
+      "http_requests_total",
+      "Total HTTP requests by method and status",
+    ),
+    &["method", "status"],
+  )
+  .expect("counter creation");
   registry
     .register(Box::new(request_counter.clone()))
     .expect("counter registration");
@@ -103,11 +108,10 @@ async fn metrics_returns_prometheus_text() {
     .unwrap();
 
   assert_eq!(resp.status(), StatusCode::OK);
-  let body = body_string(resp.into_body()).await;
-  assert!(
-    body.contains("http_requests_total"),
-    "metrics should contain http_requests_total counter"
-  );
+  // IntCounterVec only appears in output after at least one label
+  // combination is observed.  The request-counting middleware has not
+  // fired here, so the counter is absent — we just verify the
+  // endpoint returns 200 with a valid (possibly empty) response.
 }
 
 // ── OpenAPI ─────────────────────────────────────────────────────────────────
@@ -376,5 +380,71 @@ async fn custom_routes_appear_in_openapi() {
   assert!(
     body.contains("/api/custom"),
     "OpenAPI spec should document /api/custom"
+  );
+}
+
+// ── request counting ──────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn request_counter_increments_with_labels() {
+  let base = base_state_no_auth();
+  let counter = base.request_counter.clone();
+  let server = Server::new(base, test_config("test-app"));
+  let app = server.into_test_router();
+
+  // Issue a GET to /healthz.
+  let resp = app
+    .oneshot(
+      Request::builder()
+        .uri("/healthz")
+        .body(Body::empty())
+        .unwrap(),
+    )
+    .await
+    .unwrap();
+  assert_eq!(resp.status(), StatusCode::OK);
+
+  // The counter should have been incremented for GET 200.
+  let value = counter.with_label_values(&["GET", "200"]).get();
+  assert_eq!(value, 1, "expected 1 request counted for GET 200, got {value}");
+}
+
+#[tokio::test]
+async fn request_counter_appears_in_metrics_output() {
+  let base = base_state_no_auth();
+  let server = Server::new(base.clone(), test_config("test-app"));
+  let app = server.into_test_router();
+
+  // Issue a request to generate counter data.
+  let resp = app
+    .oneshot(
+      Request::builder()
+        .uri("/healthz")
+        .body(Body::empty())
+        .unwrap(),
+    )
+    .await
+    .unwrap();
+  let _ = body_string(resp.into_body()).await;
+
+  // Build a fresh router sharing the same base state (oneshot
+  // consumes the service, but the registry is Arc-backed).
+  let server2 = Server::new(base, test_config("test-app"));
+  let app2 = server2.into_test_router();
+
+  let resp = app2
+    .oneshot(
+      Request::builder()
+        .uri("/metrics")
+        .body(Body::empty())
+        .unwrap(),
+    )
+    .await
+    .unwrap();
+
+  let body = body_string(resp.into_body()).await;
+  assert!(
+    body.contains("http_requests_total"),
+    "metrics should contain http_requests_total"
   );
 }
