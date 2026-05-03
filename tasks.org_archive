@@ -1,0 +1,167 @@
+#+title:     Rename me
+#+author:    Logan Barnett
+#+email:     logustus@gmail.com
+#+date:      <2026-04-16 Thu>
+#+language:  en
+#+file_tags:
+#+tags:
+Archived entries from file /Users/logan/dev/rust-template/tasks.org
+
+
+* DONE Flat CSS with light/dark mode support
+:PROPERTIES:
+:ARCHIVE_TIME: 2026-04-16 Thu 11:22
+:ARCHIVE_FILE: ~/dev/rust-template/tasks.org
+:ARCHIVE_CATEGORY: tasks
+:ARCHIVE_TODO: DONE
+:END:
+CSS must be flat — one selector per element.  Use CSS variables to share
+settings between selectors.  Support both light and dark mode via
+~prefers-color-scheme~ and CSS custom properties.
+
+* DONE Landing page links to =/me=
+:PROPERTIES:
+:ARCHIVE_TIME: 2026-04-16 Thu 11:22
+:ARCHIVE_FILE: ~/dev/rust-template/tasks.org
+:ARCHIVE_CATEGORY: tasks
+:ARCHIVE_TODO: DONE
+:END:
+The hello world / landing page should link to ~/me~ for displaying details
+about the current user.  The template doesn't expose much user data yet, but
+the route and page should exist as a starting point.
+
+* DONE Incorporate changelog-roller
+:PROPERTIES:
+:ARCHIVE_TIME: 2026-04-16 Thu 11:22
+:ARCHIVE_FILE: ~/dev/rust-template/tasks.org
+:ARCHIVE_CATEGORY: tasks
+:ARCHIVE_TODO: DONE
+:END:
+Integrate [[https://github.com/LoganBarnett/changelog-roller][changelog-roller]]
+from =~/dev/changelog-roller=.  This may require adding GitHub Actions to the
+changelog-roller repo itself.  The template should consume changelog-roller to
+automate changelog generation.
+
+changelog-roller is a Rust crate providing an executable that rolls the
+changelog.  It should have no external dependencies.
+
+- In GitHub Actions: use ~cargo install~ to grab the crate.
+- In =flake.nix=: include changelog-roller in the devshell so it's available
+  locally via direnv.
+
+* DONE Auto-merge dependabot PRs
+:PROPERTIES:
+:ARCHIVE_TIME: 2026-04-16 Thu 11:22
+:ARCHIVE_FILE: ~/dev/rust-template/tasks.org
+:ARCHIVE_CATEGORY: tasks
+:ARCHIVE_TODO: DONE
+:END:
+Auto-merge Dependabot changes that pass all tests and other checks.
+Dependabot gets a free pass only for dependency bumping — it is subjected to
+all other rigors of a feature branch (tests, formatting, etc.).  This implies
+adding a Dependabot configuration file to the template.
+
+* DONE Rename "daemon" to "server"
+:PROPERTIES:
+:ARCHIVE_TIME: 2026-04-16 Thu 11:22
+:ARCHIVE_FILE: ~/dev/rust-template/tasks.org
+:ARCHIVE_CATEGORY: tasks
+:ARCHIVE_TODO: DONE
+:END:
+The template uses "daemon" to describe the long-running service, but "server"
+is more accurate.  "Daemon" describes /how/ a process is run (backgrounded,
+detached from a terminal), whereas "server" describes /what/ it does (listens
+for and responds to inputs).  The service is general-purpose — it may watch
+local files, communicate over a binary protocol, or serve any number of roles.
+HTTP is present only as infrastructure for health checks and observability, not
+as the primary purpose.
+
+This rename touches module names, NixOS/Darwin module files, systemd/launchd
+unit names, documentation, and any references in =flake.nix= or =config.json=.
+
+* DONE Document the server's role and scope
+:PROPERTIES:
+:ARCHIVE_TIME: 2026-04-16 Thu 11:22
+:ARCHIVE_FILE: ~/dev/rust-template/tasks.org
+:ARCHIVE_CATEGORY: tasks
+:ARCHIVE_TODO: DONE
+:END:
+The documentation should clearly explain what the server template is /for/ vs.
+what it /could/ be used for.  The server is a general-purpose long-running
+service that responds to inputs — it is not specifically an HTTP server.  HTTP
+is present only as infrastructure (health checks, observability, metrics) and
+should be described as such.
+
+The server might primarily watch local files, communicate over a binary
+protocol, bridge between systems, or serve any other role that calls for a
+persistent process responding to stimuli.  Documentation should frame HTTP as a
+supporting capability rather than the defining characteristic, so spawned
+projects don't inherit a misleading "web server" identity.
+
+This is not just a cosmetic concern — LLMs reading the project documentation
+have previously misidentified the server as "just for web stuff" and stood up
+their own server from scratch, bypassing the template's logging, systemd socket
+activation, health checks, and other infrastructure.  Clear documentation that
+the server is /the/ place to build any long-running service logic should prevent
+this.
+
+* DONE Pre-commit hook formats entire tree instead of staged files only
+:PROPERTIES:
+:ARCHIVE_TIME: 2026-04-16 Thu 11:22
+:ARCHIVE_FILE: ~/dev/rust-template/tasks.org
+:ARCHIVE_CATEGORY: tasks
+:ARCHIVE_TODO: DONE
+:END:
+The =.cargo-husky/hooks/pre-commit= hook passes staged filenames as
+positional arguments to =treefmt=, but treefmt ignores positional arguments
+and uses its own tree walker.  This means =treefmt $STAGED_FILES= formats
+every file in the repository, not just the staged ones.  Unstaged files get
+reformatted on disk but are not re-staged, leaving dirty working tree
+artifacts that have to be committed separately.
+
+Fix: use =treefmt --paths= (or the appropriate flag for limiting treefmt to
+specific files) so only staged files are reformatted.  If treefmt does not
+support per-file invocation, consider an alternative approach such as
+running the language-specific formatters directly on the staged files.
+
+* DONE Use native CA store for TLS instead of webpki-roots
+:PROPERTIES:
+:ARCHIVE_TIME: 2026-04-16 Thu 11:22
+:ARCHIVE_FILE: ~/dev/rust-template/tasks.org
+:ARCHIVE_CATEGORY: tasks
+:ARCHIVE_TODO: DONE
+:END:
+The =openidconnect= crate pulls =reqwest= with =rustls-tls=, which uses
+=webpki-roots= (Mozilla's CA list baked in at compile time).  This doesn't
+include private CAs, so OIDC discovery fails with
+~InvalidCertificate(UnknownIssuer)~ when the issuer uses an internal CA.
+
+Fix: add =reqwest= as a direct workspace dependency with the
+=rustls-tls-native-roots= feature.  Cargo's feature unification pulls in
+=rustls-native-certs= so the system CA store (e.g.
+~/etc/ssl/certs/ca-certificates.crt~) is read at runtime.  The crate member
+that uses =openidconnect= must also list =reqwest = { workspace = true }= in its
+own =Cargo.toml= for the unification to take effect.
+
+* DONE Use Debug format for OIDC discovery errors
+:PROPERTIES:
+:ARCHIVE_TIME: 2026-04-16 Thu 11:22
+:ARCHIVE_FILE: ~/dev/rust-template/tasks.org
+:ARCHIVE_CATEGORY: tasks
+:ARCHIVE_TODO: DONE
+:END:
+The OIDC discovery error handler uses ~e.to_string()~ which flattens the error
+chain to just "Request failed", losing the underlying cause (e.g.
+~InvalidCertificate(UnknownIssuer)~).  Change to ~format!("{e:?}")~ so the full
+error chain is preserved in logs.
+
+* DONE Require tests and formatting checks on PRs
+:PROPERTIES:
+:ARCHIVE_TIME: 2026-04-16 Thu 11:22
+:ARCHIVE_FILE: ~/dev/rust-template/tasks.org
+:ARCHIVE_CATEGORY: tasks
+:ARCHIVE_TODO: DONE
+:END:
+GitHub PRs require tests to pass before merging, and that formatting runs
+without changes (to catch cases where someone bypassed the pre-commit hook).
+Configure branch protection rules and/or GitHub Actions to enforce this.
