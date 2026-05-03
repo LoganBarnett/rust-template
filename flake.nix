@@ -37,5 +37,12 @@
         buildInputs = (packages (pkgsFor system));
       };
     });
+
+    # Reusable helpers for spawned projects.  Imported via:
+    #   inputs.foundation.lib.mkNixosService { name = "my-app-server"; self = self; }
+    lib = {
+      mkNixosService = import ./nix/lib/mkNixosService.nix;
+      mkDarwinService = import ./nix/lib/mkDarwinService.nix;
+    };
   };
 }

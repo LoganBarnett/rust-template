@@ -191,7 +191,7 @@ credential plumbing, and launchd health checks.
    activation scripts for socket/log directories, newsyslog rotation,
    user/group with static UID/GID.
 
-** TODO Export helpers from root flake.nix
+** DONE Export helpers from root flake.nix
    Add ~lib.mkNixosService~ and ~lib.mkDarwinService~ to the template repo's
    flake outputs.
 
