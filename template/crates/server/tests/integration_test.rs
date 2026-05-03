@@ -1,11 +1,11 @@
 use rust_template_foundation::config::CommonCli;
 use std::path::PathBuf;
 
-// ── config tests ─────────────────────────────────────────────────────────────
+// ── config tests ────────────────────────────────────────────────────
 
 #[tokio::test]
 async fn test_config_no_oidc() {
-  use rust_template_server::config::{CliRaw, Config};
+  use rust_template_server::config::{CliRaw, Config, OidcCliFields};
 
   let cli = CliRaw {
     common: CommonCli {
@@ -16,9 +16,11 @@ async fn test_config_no_oidc() {
     listen: None,
     frontend_path: None,
     base_url: Some("https://example.com".to_string()),
-    oidc_issuer: None,
-    oidc_client_id: None,
-    oidc_client_secret_file: None,
+    extra: OidcCliFields {
+      oidc_issuer: None,
+      oidc_client_id: None,
+      oidc_client_secret_file: None,
+    },
   };
 
   let config = Config::from_cli_and_file(cli).unwrap();
@@ -27,7 +29,7 @@ async fn test_config_no_oidc() {
 
 #[tokio::test]
 async fn test_config_full_oidc() {
-  use rust_template_server::config::{CliRaw, Config};
+  use rust_template_server::config::{CliRaw, Config, OidcCliFields};
 
   let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
     .join("tests/fixtures/oidc-client-secret");
@@ -41,9 +43,11 @@ async fn test_config_full_oidc() {
     listen: None,
     frontend_path: None,
     base_url: Some("https://example.com".to_string()),
-    oidc_issuer: Some("https://sso.example.com".to_string()),
-    oidc_client_id: Some("my-client".to_string()),
-    oidc_client_secret_file: Some(fixture),
+    extra: OidcCliFields {
+      oidc_issuer: Some("https://sso.example.com".to_string()),
+      oidc_client_id: Some("my-client".to_string()),
+      oidc_client_secret_file: Some(fixture),
+    },
   };
 
   let config = Config::from_cli_and_file(cli).unwrap();
@@ -55,7 +59,7 @@ async fn test_config_full_oidc() {
 
 #[tokio::test]
 async fn test_config_partial_oidc_errors() {
-  use rust_template_server::config::{CliRaw, Config};
+  use rust_template_server::config::{CliRaw, Config, OidcCliFields};
 
   let cli = CliRaw {
     common: CommonCli {
@@ -66,9 +70,11 @@ async fn test_config_partial_oidc_errors() {
     listen: None,
     frontend_path: None,
     base_url: Some("https://example.com".to_string()),
-    oidc_issuer: Some("https://sso.example.com".to_string()),
-    oidc_client_id: None,
-    oidc_client_secret_file: None,
+    extra: OidcCliFields {
+      oidc_issuer: Some("https://sso.example.com".to_string()),
+      oidc_client_id: None,
+      oidc_client_secret_file: None,
+    },
   };
 
   let err = Config::from_cli_and_file(cli).unwrap_err();

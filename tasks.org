@@ -161,7 +161,7 @@ pub struct Config {
    Replace the manual ~CliRaw~ / ~ConfigFileRaw~ / ~from_cli_and_file~ with the
    derive macro.  Keep ~CliApp~ trait impl generation by the macro.
 
-** TODO Update template server config to use MergeConfig
+** DONE Update template server config to use MergeConfig
    Most complex case: ~skip~ for OIDC with ~extra_cli = "OidcCliFields"~ and
    ~extra_file = "OidcFileFields"~, ~parse~ for listen address, ~required~ for
    base_url.  User provides ~resolve_oidc~, ~Display~, and ~ServerApp~ impls
