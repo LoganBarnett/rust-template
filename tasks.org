@@ -153,7 +153,7 @@ pub struct Config {
    Validates the macro compiles and basic merge logic works.
    Run ~cargo test~ in ~tests/example-cli/~.
 
-** TODO Update example-server config to use MergeConfig
+** DONE Update example-server config to use MergeConfig
    Server case with ~ServerApp~ impl.  Validates ~common~ + ~cli_only~ + server
    trait integration.  Run ~cargo test~ in ~tests/example-server/~.
 
