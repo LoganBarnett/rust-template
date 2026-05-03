@@ -43,6 +43,7 @@
     lib = {
       mkNixosService = import ./nix/lib/mkNixosService.nix;
       mkDarwinService = import ./nix/lib/mkDarwinService.nix;
+      mkRustProject = import ./nix/lib/mkRustProject.nix;
     };
   };
 }
