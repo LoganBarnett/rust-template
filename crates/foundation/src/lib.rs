@@ -34,9 +34,13 @@ pub mod prelude {
   pub use crate::logging::{LogFormat, LogLevel};
 }
 
-// Re-export the proc macro so users write `use rust_template_foundation::main`.
+// Re-export proc macros so users write
+// `use rust_template_foundation::main` and
+// `use rust_template_foundation::MergeConfig`.
 #[cfg(feature = "cli")]
 pub use rust_template_foundation_derive::foundation_main as main;
+#[cfg(feature = "cli")]
+pub use rust_template_foundation_derive::MergeConfig;
 
 // Re-export CliApp at crate root for CLI apps.
 #[cfg(feature = "cli")]

@@ -72,33 +72,210 @@ darwin module.
 * TODO MergeConfig derive macro
 Auto-generate the ~CliRaw -> ConfigFileRaw -> Config~ merge from a single type
 definition.  The ~#[derive(MergeConfig)]~ macro should produce the ~CliRaw~
-(clap Parser), ~ConfigFileRaw~ (serde Deserialize), and the ~from_cli_and_file~
-resolution function from a single annotated ~Config~ struct.  This eliminates
-the three-type boilerplate that every spawned project maintains.
+(clap Parser), ~ConfigFileRaw~ (serde Deserialize), ~ConfigError~, the
+~from_cli_and_file~ resolution function, and the ~CliApp~ trait impl from a
+single annotated ~Config~ struct.
+
+** API design
+
+Struct attributes:
+- ~app_name = "name"~ — required, used for ~find_config_file~ and ~CliApp::app_name~
+- ~extra_cli = "Type"~ — optional type flattened into generated ~CliRaw~
+- ~extra_file = "Type"~ — optional type flattened into generated ~ConfigFileRaw~
+
+Field attributes:
+- ~common~ — resolved from ~CommonCli~ / ~CommonConfigFile~ via ~resolve_log_settings~
+- ~env = "VAR"~ — environment variable for clap
+- ~name = "field"~ — CLI/file field name (defaults to struct field name)
+- ~short = 'x'~ — short flag for clap
+- ~default = "expr"~ — default value expression
+- ~required~ — error if not provided (no default)
+- ~parse~ — CLI/file type is ~String~, parsed via ~FromStr~ to field type
+- ~skip~ — not auto-merged; calls ~Config::resolve_<field>(cli, file)~
+- ~cli_only~ — not in config file
+
+Generated items:
+1. ~CliRaw~ struct (~#[derive(Debug, clap::Parser)]~)
+2. ~ConfigFileRaw~ struct (~#[derive(Debug, serde::Deserialize, Default)]~)
+3. ~ConfigError~ enum (~File~ + ~Validation~ variants)
+4. ~impl Config { pub fn from_cli_and_file(cli: CliRaw) -> Result<Self, ConfigError> }~
+5. ~impl CliApp for Config~
+
+Example (simple CLI):
+#+begin_src rust :exports code
+#[derive(Debug, Clone, MergeConfig)]
+#[merge_config(app_name = "my-cli")]
+pub struct Config {
+    #[merge_config(common)]
+    pub log_level: LogLevel,
+    #[merge_config(common)]
+    pub log_format: LogFormat,
+    #[merge_config(short = 'n', default = "\"World\".to_string()")]
+    pub name: String,
+}
+#+end_src
+
+Example (server with OIDC):
+#+begin_src rust :exports code
+#[derive(Debug, Clone, MergeConfig)]
+#[merge_config(
+    app_name = "my-server",
+    extra_cli = "OidcCliFields",
+    extra_file = "OidcFileFields",
+)]
+pub struct Config {
+    #[merge_config(common)]
+    pub log_level: LogLevel,
+    #[merge_config(common)]
+    pub log_format: LogFormat,
+    #[merge_config(name = "listen", env = "LISTEN",
+                   default = "\"127.0.0.1:3000\".to_string()", parse)]
+    pub listen_address: ListenerAddress,
+    #[merge_config(env = "FRONTEND_PATH",
+                   default = "std::path::PathBuf::from(\"frontend/public\")")]
+    pub frontend_path: std::path::PathBuf,
+    #[merge_config(env = "BASE_URL", required)]
+    pub base_url: String,
+    #[merge_config(skip)]
+    pub oidc: Option<OidcConfig>,
+}
+#+end_src
+
+** DONE Implement MergeConfig derive in foundation-derive
+   Replace the placeholder in ~crates/foundation-derive/src/lib.rs~ with the
+   full implementation.  Parse struct-level and field-level attributes, generate
+   ~CliRaw~, ~ConfigFileRaw~, ~ConfigError~, ~from_cli_and_file~, and ~CliApp~
+   trait impl.  Add ~clap~ and ~serde~ as dependencies of the derive crate if
+   needed (for path references in generated code).
+
+** TODO Update example-cli config to use MergeConfig
+   Simplest test case: ~common~ log fields + one field with a default.
+   Validates the macro compiles and basic merge logic works.
+   Run ~cargo test~ in ~tests/example-cli/~.
+
+** TODO Update example-server config to use MergeConfig
+   Server case with ~ServerApp~ impl.  Validates ~common~ + ~cli_only~ + server
+   trait integration.  Run ~cargo test~ in ~tests/example-server/~.
+
+** TODO Update template CLI config to use MergeConfig
+   Replace the manual ~CliRaw~ / ~ConfigFileRaw~ / ~from_cli_and_file~ with the
+   derive macro.  Keep ~CliApp~ trait impl generation by the macro.
+
+** TODO Update template server config to use MergeConfig
+   Most complex case: ~skip~ for OIDC with ~extra_cli = "OidcCliFields"~ and
+   ~extra_file = "OidcFileFields"~, ~parse~ for listen address, ~required~ for
+   base_url.  User provides ~resolve_oidc~, ~Display~, and ~ServerApp~ impls
+   manually.
 
 * TODO Nix mkNixosService / mkDarwinService helpers
-Extract the ~150-line NixOS and Darwin service modules into reusable helpers
-exported from the template's flake.  Spawned projects call
-~rust-template.lib.mkNixosService { name = "my-app"; ... }~ instead of
-maintaining their own copy of systemd hardening, socket activation, watchdog,
-OIDC credential plumbing, and launchd health checks.
+Extract the ~150-line NixOS and Darwin service modules into reusable helper
+functions exported from the template repo's flake.  Spawned projects add
+~rust-template~ as a flake input and call the helpers instead of maintaining
+their own copy of systemd hardening, socket activation, watchdog, OIDC
+credential plumbing, and launchd health checks.
+
+** TODO Extract common service options into shared Nix function
+   Create ~nix/lib/service-options.nix~ with the shared option schema: enable,
+   package, socket, host, port, logLevel, logFormat, frontendPath, baseUrl,
+   oidc*, user, group.  Both NixOS and Darwin modules import this.
+
+** TODO Implement mkNixosService helper
+   Create ~nix/lib/mkNixosService.nix~ taking ~{ name, self }~ and returning a
+   NixOS module function.  Generates: systemd service (Type=notify, watchdog),
+   socket unit (optional), tmpfiles rules, user/group, OIDC credential
+   plumbing, hardening.
+
+** TODO Implement mkDarwinService helper
+   Create ~nix/lib/mkDarwinService.nix~ taking ~{ name, self }~ and returning a
+   Darwin module function.  Generates: launchd service, health check agent,
+   activation scripts for socket/log directories, newsyslog rotation,
+   user/group with static UID/GID.
+
+** TODO Export helpers from root flake.nix
+   Add ~lib.mkNixosService~ and ~lib.mkDarwinService~ to the template repo's
+   flake outputs.
+
+** TODO Update template service modules to use helpers
+   Replace ~template/nix/modules/nixos-server.nix~ and ~darwin-server.nix~ with
+   thin calls to the helpers.  Verify ~nix flake check~ passes.
+
+** TODO Update spawning scripts for helper usage
+   Ensure ~new-project.sh~ / ~crate-add.sh~ produce modules that reference
+   ~inputs.rust-template.lib.mkNixosService~ instead of inlining full modules.
+   Add ~rust-template~ as a flake input in the template flake.
 
 * TODO Nix mkRustProject flake helper
 Reduce the spawned project's ~flake.nix~ to declarations.  A
-~rust-template.lib.mkRustProject { crates = { ... }; }~ helper would emit all
+~rust-template.lib.mkRustProject { crates = { ... }; }~ helper emits all
 packages, apps, devShells, and module outputs from a workspace crate map,
-absorbing the crane build logic, devShell assembly, and overlay wiring that is
-currently duplicated.
+absorbing the crane build logic, devShell assembly, and overlay wiring.
+
+** TODO Design mkRustProject API
+   Define parameter shape: workspace crate map, per-crate package overrides
+   (via ~nix/packages/<key>.nix~ files), dev shell extra packages, frontend
+   build configuration, module outputs.  Document the contract.
+
+** TODO Implement mkRustProject.nix
+   Create ~nix/lib/mkRustProject.nix~ that generates: packages (via crane with
+   per-crate overrides), apps, devShells (with common + project-specific
+   packages), overlays.  Support the ~# CRATE_ENTRIES~ sentinel pattern for
+   ~crate-add.sh~ compatibility.
+
+** TODO Export from root flake.nix
+   Add ~lib.mkRustProject~ to the template repo's flake outputs.
+
+** TODO Simplify template/flake.nix to use mkRustProject
+   Replace the ~200-line template flake body with a declaration that calls
+   ~inputs.rust-template.lib.mkRustProject~.  Ensure per-crate package
+   overrides (~nix/packages/server.nix~ for Elm frontend) still function.
+
+** TODO Verify spawning scripts still work
+   Run ~test-crate-add.sh~ and a full ~new-project.sh~ spawn to confirm the
+   simplified flake works end-to-end.
 
 * TODO Compliance test suite for spawned repos
-Build a test suite (shell script or Rust) that verifies structural file presence
-and correctness in spawned repos: foundation dependency present with correct
-features, CI workflows call reusable workflows, required files exist
-(~CHANGELOG.org~, ~.envrc~, ~rustfmt.toml~, etc.), no stale ~rust-template~
-literals.  Run from the template repo against all ~config.json~ spawns.
+Build a test suite (shell script) that verifies structural file presence and
+correctness in spawned repos.  Run from the template repo against all
+~config.json~ spawns.
+
+** TODO Design compliance checks
+   Define checks: foundation dependency present with correct features, CI
+   workflows call reusable workflows, required files exist (~CHANGELOG.org~,
+   ~.envrc~, ~rustfmt.toml~, ~.github/workflows/~), no stale ~rust-template~
+   literals (except foundation refs), ~rust-template.json~ provenance file
+   present, flake input references ~rust-template~ correctly.
+
+** TODO Implement compliance test script
+   Shell script (~compliance-check.sh~) that iterates over ~config.json~
+   spawns, runs structural checks against each project directory, reports
+   pass/fail per check, and exits with proper error code.
+
+** TODO Run against all spawns and fix violations
+   Execute the suite against every tracked spawn.  File issues or fix
+   violations found.
 
 * TODO Request counting middleware
 The ~http_requests_total~ Prometheus counter is registered in ~BaseServerState~
-but never incremented.  Add a ~TraceLayer~-based or custom middleware in
-~Server::listen()~ that increments the counter on each request, with labels for
-method and status code.
+but never incremented.  Add a custom middleware in ~Server::build_router()~ that
+increments the counter on each request, with labels for method and status code.
+
+** TODO Change IntCounter to IntCounterVec in BaseServerState
+   Replace ~prometheus::IntCounter~ with ~IntCounterVec~ labeled by ~method~
+   and ~status~.  Update ~BaseServerState::init()~, ~impl_server_state!~ macro
+   (if it references the counter), and all test helpers that construct
+   ~BaseServerState~ manually.
+
+** TODO Implement request counting middleware
+   Add an axum middleware function (same pattern as ~require_auth~) that calls
+   ~next.run(req).await~, extracts method and status code, and increments the
+   appropriate counter vector label.
+
+** TODO Apply middleware in Server::build_router
+   Add the counting layer in ~build_router()~ after ~TraceLayer~ so every
+   request is counted.  The counter state is extracted from ~BaseServerState~
+   via ~FromRef~.
+
+** TODO Add test for request counting
+   In ~crates/foundation/tests/server_integration.rs~, add a test that issues
+   requests to ~/healthz~ and ~/metrics~, then verifies the ~/metrics~ response
+   contains incremented ~http_requests_total~ counters with correct labels.
