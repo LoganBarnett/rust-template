@@ -87,3 +87,15 @@ opt-level = 3
 
 [profile.release]
 debug = false
+
+# ============================================================================
+# LINTS
+# ============================================================================
+# Project-wide ban on the panicking variants of Result/Option, enforced
+# via clippy.  Test code is exempted by clippy.toml's
+# allow-unwrap-in-tests / allow-expect-in-tests, which cover both
+# #[cfg(test)] modules in src/ and integration tests under tests/.
+# Member crates opt in by setting [lints] workspace = true.
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"

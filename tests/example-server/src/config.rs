@@ -1,6 +1,7 @@
 use rust_template_foundation::logging::{LogFormat, LogLevel};
 use rust_template_foundation::server::runner::{ServerApp, ServerRunConfig};
 use rust_template_foundation::{CliApp, MergeConfig};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use tokio_listener::ListenerAddress;
 
 #[derive(Debug, Clone, MergeConfig)]
@@ -22,7 +23,10 @@ impl ServerApp for Config {
   fn server_run_configs(&self) -> Vec<ServerRunConfig> {
     vec![ServerRunConfig {
       app_name: Self::app_name().to_string(),
-      listen_address: "127.0.0.1:3000".parse::<ListenerAddress>().unwrap(),
+      listen_address: ListenerAddress::Tcp(SocketAddr::new(
+        IpAddr::V4(Ipv4Addr::LOCALHOST),
+        3000,
+      )),
       frontend_path: None,
       base_url: self.base_url.clone(),
       oidc: None,

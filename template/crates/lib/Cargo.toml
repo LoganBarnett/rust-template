@@ -16,3 +16,6 @@ tap = { workspace = true }  # For method chaining, reduces superfluous locals
 
 [dev-dependencies]
 cargo-husky = { version = "1", default-features = false, features = ["user-hooks"] }
+
+[lints]
+workspace = true

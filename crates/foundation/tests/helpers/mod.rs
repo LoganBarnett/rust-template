@@ -1,4 +1,9 @@
 //! Test helpers for foundation integration tests.
+//
+// Helpers are not inside `#[test]` functions or `#[cfg(test)]` modules,
+// so `allow-unwrap-in-tests` does not auto-exempt them — opt the whole
+// file in explicitly.
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use openidconnect::{
   core::{

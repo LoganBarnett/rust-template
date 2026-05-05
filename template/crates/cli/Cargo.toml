@@ -19,3 +19,6 @@ tracing = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 tap = { workspace = true }  # For method chaining, reduces superfluous locals
+
+[lints]
+workspace = true

@@ -51,8 +51,11 @@ mod tests {
 
   fn test_server() -> Server {
     let registry = prometheus::Registry::new();
-    let request_counter =
-      prometheus::IntCounter::new("http_requests_total", "requests").unwrap();
+    let request_counter = prometheus::IntCounterVec::new(
+      prometheus::Opts::new("http_requests_total", "requests"),
+      &["method", "status"],
+    )
+    .unwrap();
     registry
       .register(Box::new(request_counter.clone()))
       .unwrap();

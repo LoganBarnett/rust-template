@@ -903,8 +903,13 @@ fn generate_server_main(
       );
 
       // 4. Build tokio runtime.
-      let __rt = ::tokio::runtime::Runtime::new()
-        .expect("failed to create tokio runtime");
+      let __rt = match ::tokio::runtime::Runtime::new() {
+        Ok(rt) => rt,
+        Err(e) => {
+          ::std::eprintln!("Failed to create tokio runtime: {}", e);
+          return ::std::process::ExitCode::FAILURE;
+        }
+      };
 
       // 5. Run async block.
       let __result = __rt.block_on(async {
@@ -1000,8 +1005,13 @@ fn generate_async_cli_main(
         <#config_type as ::rust_template_foundation::CliApp>::log_format(&__config),
       );
 
-      let __rt = ::tokio::runtime::Runtime::new()
-        .expect("failed to create tokio runtime");
+      let __rt = match ::tokio::runtime::Runtime::new() {
+        Ok(rt) => rt,
+        Err(e) => {
+          ::std::eprintln!("Failed to create tokio runtime: {}", e);
+          return ::std::process::ExitCode::FAILURE;
+        }
+      };
 
       let __result = __rt.block_on(async {
         match #inner_fn_name(__config).await {

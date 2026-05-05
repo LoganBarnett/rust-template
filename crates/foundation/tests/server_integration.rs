@@ -4,6 +4,10 @@
 //! to drive requests without binding a real listener.
 
 #![cfg(feature = "auth")]
+// Helpers (test_router_*, request body extraction, etc.) sit outside
+// `#[test]` functions, so `allow-unwrap-in-tests` does not cover them
+// — opt the whole file in explicitly.
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 
 mod helpers;
 

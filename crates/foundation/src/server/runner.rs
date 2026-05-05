@@ -68,6 +68,9 @@ pub enum ServerError {
     source: std::io::Error,
   },
 
+  #[error("HTTP-request metrics setup failed: {0}")]
+  RequestMetricsInit(#[from] prometheus::Error),
+
   #[error("Server runtime error: {0}")]
   Runtime(#[source] std::io::Error),
 }
@@ -97,11 +100,8 @@ impl BaseServerState {
         "Total HTTP requests by method and status",
       ),
       &["method", "status"],
-    )
-    .expect("counter creation must not fail");
-    registry
-      .register(Box::new(request_counter.clone()))
-      .expect("counter registration must not fail");
+    )?;
+    registry.register(Box::new(request_counter.clone()))?;
 
     let oidc_client = match &config.oidc {
       Some(oidc) => Some(auth::discover_oidc(oidc, &config.base_url).await?),
@@ -275,34 +275,46 @@ where
 
   /// Start listening.  Blocks until graceful shutdown completes.
   pub async fn listen(self) -> Result<(), ServerError> {
-    let listen_address = self.config.listen_address.to_string();
+    let listen_address = self.config.listen_address.clone();
+    let listen_address_display = listen_address.to_string();
     let app = self.build_router(true);
 
-    let parsed_address: ListenerAddress = listen_address
-      .parse()
-      .expect("round-tripping ListenerAddress through Display must succeed");
-
     let listener = tokio_listener::Listener::bind(
-      &parsed_address,
+      &listen_address,
       &tokio_listener::SystemOptions::default(),
       &tokio_listener::UserOptions::default(),
     )
     .await
     .map_err(|source| {
-      error!("Failed to bind to {}: {}", listen_address, source);
+      error!("Failed to bind to {}: {}", listen_address_display, source);
       ServerError::ListenerBind {
-        address: listen_address.clone(),
+        address: listen_address_display.clone(),
         source,
       }
     })?;
 
-    info!("Server listening on {}", listen_address);
+    info!("Server listening on {}", listen_address_display);
 
     systemd::notify_ready();
     systemd::spawn_watchdog();
 
+    let shutdown_future = async {
+      // If signal-handler installation fails, log and fall back to a
+      // never-resolving future so the server keeps serving traffic
+      // until externally killed.  The alternative (resolving now)
+      // would shut the server down immediately at startup, which is
+      // strictly worse than missing graceful-shutdown.
+      if let Err(e) = shutdown::shutdown_signal().await {
+        error!(
+          "Shutdown-signal install failed; graceful shutdown disabled: {}",
+          e,
+        );
+        std::future::pending::<()>().await;
+      }
+    };
+
     serve(listener, app.into_make_service())
-      .with_graceful_shutdown(shutdown::shutdown_signal())
+      .with_graceful_shutdown(shutdown_future)
       .await
       .map_err(|e| {
         error!("Server error: {}", e);
