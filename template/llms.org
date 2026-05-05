@@ -112,6 +112,191 @@ fn config_file_contents() -> Result<String, AppError> {
 Generally this means there will be little reuse of error variants, and that is
 acceptable.  Do not swallow errors — let them propagate.
 
+*** No ~unwrap~ or ~expect~ in non-test code
+
+~.unwrap()~ and ~.expect()~ (the panicking variants — /not/ ~unwrap_or~,
+~unwrap_or_else~, or ~unwrap_or_default~, which are fine) are prohibited in all
+non-test code.  No carve-outs.
+
+Errors must never be silently swallowed either: no ~let _ = ...~ on a ~Result~,
+no ~.ok()~ to discard, no empty match arm dropping the ~Err~.  Propagate with
+~?~, transform with ~.map_err(...)~, or handle explicitly.
+
+Tests are the only exemption.  Code under ~#[cfg(test)]~, ~#[test]~, and
+integration tests under ~tests/~ may use ~.unwrap()~ and ~.expect()~ freely —
+panicking is the desired failure signal there, and tests are not shipping code
+paths.
+
+**** The principle
+
+~Result~ is not primarily a recovery mechanism.  Its primary value is /typed
+control flow and semantic stamping/ — it forces the caller to acknowledge a
+failure mode and lets you propagate, transform, or convert errors in a linear,
+reasonable-about way.  Recovery is one thing you can do with that; propagation
+and forced acknowledgment are the rest.
+
+~.unwrap()~ and ~.expect()~ discard that value in exchange for cosmetic
+brevity.  That trade is never worth it in shipping code.
+
+If a failure is genuinely impossible, /prove it to the compiler/ via a macro,
+type, or ~const~.  Do not assert it to a future reader with ~.unwrap()~.
+
+**** Compile-time-known literals: use a macro
+
+The most tempting exception is "but the input is a string literal, it can only
+fail on a programmer typo."  The fix is not to allow ~.unwrap()~ — it is to
+move the validation to compile time:
+
+- *Regex.* Use ~lazy_regex::regex!("^foo$")~.  The proc-macro validates the
+  pattern at expansion time, returns a ~&'static Regex~, and caches it.
+  Invalid patterns become compile errors.
+- *IP addresses.* Do not parse — ~Ipv4Addr::new(127, 0, 0, 1)~ is ~const~.
+  Same for ~Ipv6Addr~ and ~SocketAddrV4~ / ~SocketAddrV6~ construction.
+- *URLs.* Use ~url-macro~ or similar; or build with ~const_format~.
+- *General pattern.* Any proc-macro can validate a string literal at expansion
+  time.  The ~.unwrap()~, if any, lives inside macro-generated code on a path
+  the proc-macro has statically proven unreachable — never at the call site.
+
+If no suitable macro exists for a given parse, the right move is /write one/,
+not allow ~.unwrap()~.
+
+**** Considered exceptions and why each was rejected
+
+These are the cases that look reasonable on first pass.  The argument for each
+and the rejection reasoning are captured here so they don't get re-derived
+incorrectly.
+
+***** Literal regex / literal parse without a macro
+
+/Argument for:/ "The pattern is a string literal known at compile time; the
+only failure mode is a programmer typo, caught the first time the code runs."
+
+/Why rejected:/ "Caught the first time the code runs" assumes 100% line
+coverage of every path containing a ~.unwrap()~.  That is fantasy.  A
+~Regex::new("...").unwrap()~ on a cold or rare code path is a landmine for the
+next person — it ships, and the panic surfaces in production on the unusual
+input that finally hits that branch.  If the input really is a literal, prove
+it at compile time with a macro (see above).  Do not assert it at runtime.
+
+***** ~std::sync::Mutex~ / ~RwLock~ poisoning
+
+/Argument for:/ "A poisoned lock means another thread panicked
+mid-critical-section.  The protected invariants may be broken; recovering is
+almost always wrong.  ~.unwrap()~ is idiomatic."
+
+/Why rejected:/ That is an /application author's/ judgment smuggled into a
+rule that also governs library code.  A library that panics on poisoning
+takes the recovery decision away from a consumer who might be a long-running
+daemon, a supervisor process, an FFI host, or something else entirely.
+Return ~Result~ and let the caller decide.  If a project standardizes on
+~parking_lot::Mutex~, this whole class of unwrap goes away — no poisoning,
+no ~.unwrap()~ needed.
+
+***** ~build.rs~ and other build-time scripts
+
+/Argument for:/ "Build scripts run once at build time.  A panic gives a
+clear build failure with a backtrace.  ~Result~ plumbing is pure ceremony."
+
+/Why rejected:/ What looks like ceremony is the actual value.  Write
+~fn main() -> Result<(), Box<dyn Error>>~ in the build script and ~?~
+through the whole thing — cargo still sees a non-zero exit and prints the
+error.  You keep typed control flow, composable error transformation, and
+you avoid pushing correctness onto "specific arrangement of code" in the
+exception-language style.  Otherwise non-trivial ~build.rs~ drifts toward
+needing its own unit tests just to verify error paths, which is a giant step
+back from what ~Result~ already gives you for free.
+
+***** Examples and benchmarks
+
+/Argument for:/ "These aren't shipping code paths; relax the rule the same
+way tests are exempt."
+
+/Why rejected:/ Unlike tests, examples have no upside from ~.unwrap()~ over
+~?~.  Both fail loudly when something goes wrong; ~?~ just composes properly
+and reads the same.  More importantly, examples are /teaching material/ —
+whatever pattern they show is the pattern users copy.  Modeling ~.unwrap()~
+in examples propagates ~.unwrap()~ everywhere.  Use
+~fn main() -> Result<(), Box<dyn Error>>~ and ~?~ — that teaches the right
+thing.  Benches follow the same logic.
+
+***** ~thread::spawn~ join handle propagating a child panic
+
+/Argument for:/ "~handle.join().unwrap()~ /re-raises/ the child thread's
+panic in the parent.  The ~Err~ payload literally is the panic.  Unwrapping
+is the correct propagation; not unwrapping would be swallowing it."
+
+/Why rejected, on two counts:/
+
+1. Not panicking is not the same as swallowing.  Rust forces explicit effort
+   to swallow an ~Err~ (~let _ =~, ~.ok()~, etc.).  Returning the ~Err~ up
+   the stack, or converting it via ~.map_err(...)~ into a typed error, is the
+   /opposite/ of swallowing.
+2. The framing presumes recovery is the only point of ~Result~.  It is not —
+   see the principle above.  You can convert a join ~Err~ (which is
+   ~Box<dyn Any + Send>~) into your own error type and propagate it; the
+   caller may genuinely want to log it, retry, fail over, or report it
+   structurally rather than die.  If you specifically want to re-raise a
+   panic, ~std::panic::resume_unwind~ is the honest way to say so — it makes
+   the intent explicit instead of disguising it as a generic ~.unwrap()~.
+
+***** ~SystemTime::now().duration_since(UNIX_EPOCH)~
+
+/Argument for:/ "Only fails if the system clock is set before 1970, which
+won't happen."
+
+/Why rejected:/ It happens.  Misconfigured embedded devices, freshly-imaged
+VMs with bad RTCs, containers without time sync.  Use
+~.unwrap_or(Duration::ZERO)~ or propagate.
+
+***** "I just checked above" patterns
+
+/Argument for:/ "I called ~if !vec.is_empty()~ on the line above, so
+~vec.first().unwrap()~ can't fail."
+
+/Why rejected:/ The check-and-unwrap pair rots the moment someone refactors
+between the two lines.  Restructure with ~if let Some(x) = vec.first()~ —
+the type system carries the invariant for you, no comment or discipline
+required.
+
+***** ~env::var("FOO").unwrap()~ for "always-set" env vars
+
+/Argument for:/ "We always set ~FOO~ in our deployment."
+
+/Why rejected:/ The "always set" assumption breaks the moment someone runs
+the binary in a new context (local dev, a one-off script, a new deploy
+environment, a debugging shell).  Load config at startup with proper error
+reporting that names the missing variable.
+
+***** ~OnceCell::get().unwrap()~ / ~LazyLock~ after init
+
+/Argument for:/ "I initialized it earlier in ~main~."
+
+/Why rejected:/ Usually a sign the data structure is wrong — ~LazyLock~
+exposes the value via ~Deref~ directly, and ~OnceLock~ has ~get_or_init~.
+Restructure rather than asserting initialization order at runtime.
+
+**** How to apply
+
+Treat ~.unwrap()~ and ~.expect()~ outside the test exemption as a defect.
+Refactor to ~Result<_, E>~ and propagate with ~?~.  If the error type does
+not compose, fix the error type (add a ~From~ impl, use ~anyhow~ /
+~thiserror~, etc.) — do not reach for ~.unwrap()~.
+
+For literal-input cases (regex, addresses, URLs, etc.), use or write a macro
+that validates at compile time.  The unwrap, if any, lives inside the macro
+on a statically-proven-unreachable path — never in user code.
+
+When reviewing diffs, flag every new ~.unwrap()~ / ~.expect()~ and check it
+against the considered-exceptions list above.  "But this case is different"
+is itself a yellow flag — usually it is one of the above wearing a different
+hat.
+
+The bias to watch for: LLMs carry a strong "exceptions are friendly"
+instinct from Python and other exception-driven languages where ad-hoc
+~try/except~ is normal.  Rust's design rejects that worldview.  The
+discipline is: prove unreachability to the compiler, or propagate.  There
+is no third option for shipping code.
+
 *** Code Structure
 
 **** Files and modules
