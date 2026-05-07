@@ -30,6 +30,8 @@ auth = [
     "dep:openidconnect",
     "dep:reqwest",
     "dep:tower-sessions",
+    "dep:axum-jwt-auth",
+    "dep:jsonwebtoken",
 ]
 
 [dependencies]
@@ -61,6 +63,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"]
 openidconnect = { version = "3", features = ["reqwest"], optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-native-roots"], optional = true }
 tower-sessions = { version = "0.15", features = ["memory-store"], optional = true }
+axum-jwt-auth = { version = "0.6", optional = true }
+jsonwebtoken = { version = "10", optional = true }
 
 # Unix-only: journald logging (server feature)
 [target.'cfg(unix)'.dependencies]
@@ -74,6 +78,7 @@ serde_json = "1.0"
 openidconnect = { version = "3", features = ["reqwest"] }
 http-body-util = "0.1"
 axum = "0.8"
+jsonwebtoken = "10"
 
 [lints]
 workspace = true

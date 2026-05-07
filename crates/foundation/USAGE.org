@@ -15,8 +15,9 @@ use:
 - *server* — Health registry, metrics endpoint, OpenAPI/Scalar helpers, SPA
   fallback, systemd notify/watchdog, server logging.
 - *auth* (implies ~server~ + ~cli~) — OIDC login/callback/logout handlers,
-  ~require_auth~ middleware, ~Server~ runner, ~ServerApp~ trait, and
-  ~BaseServerState~.
+  ~require_auth~ middleware, ~Server~ runner, ~ServerApp~ trait,
+  ~BaseServerState~, and JWT bearer-token validation for service /
+  automation callers (see [[*JWT bearer auth (automation callers)]]).
 
 * Quick start: server
 
@@ -222,6 +223,98 @@ let protected = ApiRouter::new()
     .layer(middleware::from_fn_with_state(state.clone(), require_auth));
 #+end_src
 
+* JWT bearer auth (automation callers)
+
+Browser users authenticate via the OIDC session flow above.  Service
+clients, scripts, and other automation authenticate by sending a
+signed JWT in ~Authorization: Bearer <token>~, validated against an
+issuer's JWKS.  This path is independent of ~require_auth~ — there is
+no session cookie involved — and is intended to make automation a
+first-class caller rather than an afterthought.
+
+The building blocks live in ~rust_template_foundation::auth::jwt~ and
+are intentionally not auto-wired into ~BaseServerState~: the claims
+type is application-specific, so apps embed a ~Decoder<T>~ in their
+own state.
+
+** Default claims (~ServiceClaims~)
+
+For the common case — registered claims plus a flattened map of
+extras — use the bundled ~ServiceClaims~ struct:
+
+#+begin_src rustic :results none :exports code
+use axum::{Router, routing::get, extract::FromRef, Json};
+use rust_template_foundation::auth::jwt::{
+  build_decoder, Claims, Decoder, JwtConfig, ServiceClaims,
+};
+
+#[derive(Clone, FromRef)]
+struct AppState {
+  decoder: Decoder<ServiceClaims>,
+}
+
+async fn protected(claims: Claims<ServiceClaims>) -> Json<String> {
+  Json(claims.claims.sub)
+}
+
+let config = JwtConfig {
+  jwks_url: "https://issuer.example/.well-known/jwks.json".into(),
+  issuer: "https://issuer.example/".into(),
+  audiences: vec!["my-api".into()],
+  algorithms: vec![jsonwebtoken::Algorithm::RS256],
+};
+let state = AppState { decoder: build_decoder::<ServiceClaims>(&config).await? };
+let app = Router::new()
+  .route("/protected", get(protected))
+  .with_state(state);
+#+end_src
+
+~build_decoder~ performs the initial JWKS fetch synchronously — a
+misconfigured issuer surfaces as a startup error rather than a flood
+of 401s — and spawns a background refresh task whose lifetime is tied
+to the process.
+
+** Bringing your own claims struct
+
+When you need typed access to provider-specific claims (~scope~,
+~roles~, tenant identifiers, etc.), define your own struct and
+parameterise ~build_decoder~ over it:
+
+#+begin_src rustic :results none :exports code
+#[derive(Clone, serde::Deserialize)]
+struct MyClaims {
+  sub: String,
+  exp: i64,
+  #[serde(default)]
+  scope: String,
+  tenant_id: String,
+}
+
+let decoder: Decoder<MyClaims> = build_decoder::<MyClaims>(&config).await?;
+// Pair with Claims<MyClaims> in handlers.
+#+end_src
+
+The only requirement is ~T: DeserializeOwned + Send + Sync + 'static~.
+The same ~RemoteJwksDecoder~ instance underneath supports any claims
+type — only the trait-object coercion picks ~T~.
+
+** Validation rules
+
+~JwtConfig::validation()~ produces a ~jsonwebtoken::Validation~ with:
+
+- ~algorithms~ set from the config (defaults to ~RS256~ if empty —
+  empty would otherwise disable algorithm checking, which is almost
+  never what you want).
+- ~iss~ set to the configured issuer.
+- ~aud~ set to the configured audiences (skipped if empty).
+- Default ~jsonwebtoken~ behaviour for everything else — notably a
+  60-second leeway on ~exp~ / ~nbf~.
+
+The full ~Validation~ surface is exposed if you need to tweak it
+(~required_spec_claims~, ~leeway~, etc.) — construct one yourself and
+pass it to ~RemoteJwksDecoder::builder()~ directly instead of going
+through ~build_decoder~.
+
 * Testing
 
 Use ~Server::into_test_router()~ + ~tower::ServiceExt::oneshot~:
@@ -247,6 +340,73 @@ The recommended configuration pattern uses three stages:
 
 The ~Config::from_cli_and_file~ method merges CLI → config file → defaults.
 Wire it into the ~CliApp~ trait via ~from_cli~.
+
+** Subcommands
+
+Mark a field with ~#[merge_config(subcommand)]~ to expose a clap subcommand on
+the generated ~CliRaw~.  The field's type is forwarded verbatim, so required
+vs. optional follows the type:
+
+- ~pub command: Commands~ — clap requires a subcommand.
+- ~pub command: Option<Commands>~ — running the binary with no subcommand
+  yields ~None~.
+
+#+begin_src rustic :results none :exports code
+#[derive(clap::Args)]
+pub struct PrintArgs {
+    #[arg(long)]
+    pub message: String,
+}
+
+#[derive(clap::Subcommand)]
+pub enum Commands {
+    Print(PrintArgs),
+    Play(PlayArgs),
+}
+
+#[derive(MergeConfig)]
+#[merge_config(app_name = "my-app")]
+pub struct Config {
+    #[merge_config(common)]
+    pub log_level: LogLevel,
+    #[merge_config(common)]
+    pub log_format: LogFormat,
+
+    #[merge_config(default = "\"World\".to_string()")]
+    pub name: String,
+
+    #[merge_config(subcommand)]
+    pub command: Commands,
+}
+#+end_src
+
+The user function then matches on ~config.command~:
+
+#+begin_src rustic :results none :exports code
+#[foundation_main]
+pub fn main(config: Config) -> Result<ExitCode, AppError> {
+    match config.command {
+        Commands::Print(args) => println!("{}", args.message),
+        Commands::Play(args) => play(&args.track),
+    }
+    Ok(ExitCode::SUCCESS)
+}
+#+end_src
+
+*** Limitations
+
+Subcommand fields are *CLI-only*.  They are deliberately omitted from
+~ConfigFileRaw~ — TOML has no clean tagged-enum mapping for clap-style
+subcommands, and "default subcommand pinned by config file" is not a goal
+of this macro.  Per-variant arg defaults from the config file remain a
+possible future addition; today, projects that want such defaults should
+layer them in the variant's own ~Args~ struct or via a wrapper script.
+
+The ~subcommand~ kind rejects ~default~, ~required~, ~env~, ~short~,
+~parse~, ~cli_only~, and ~name~.  Those attributes have no meaning for a
+passthrough field — the macro errors at compile time if any are present.
+
+At most one ~subcommand~ field is permitted per struct.
 
 * Systemd integration
 
