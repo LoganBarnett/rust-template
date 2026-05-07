@@ -52,10 +52,13 @@ pub trait HealthCheck: Send + Sync {
 
 // ── registry ────────────────────────────────────────────────────────────────
 
+/// Shared, mutable list of (name, check) pairs.
+type CheckList = Arc<RwLock<Vec<(String, Arc<dyn HealthCheck>)>>>;
+
 /// Thread-safe registry of named health checks.
 #[derive(Clone, Default)]
 pub struct HealthRegistry {
-  checks: Arc<RwLock<Vec<(String, Arc<dyn HealthCheck>)>>>,
+  checks: CheckList,
 }
 
 impl HealthRegistry {

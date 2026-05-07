@@ -42,17 +42,21 @@ enum McShortFlag {
   Explicit(LitChar),
 }
 
+struct McMerged {
+  raw_name: Ident,
+  env: Option<LitStr>,
+  short: McShortFlag,
+  default: Option<Expr>,
+  required: bool,
+  parse: bool,
+  cli_only: bool,
+}
+
 enum McFieldKind {
   Common,
-  Merged {
-    raw_name: Ident,
-    env: Option<LitStr>,
-    short: McShortFlag,
-    default: Option<Expr>,
-    required: bool,
-    parse: bool,
-    cli_only: bool,
-  },
+  // Boxed because the inner struct dwarfs the unit variants — keeping
+  // it inline would push every `McFieldKind` to ~232 bytes.
+  Merged(Box<McMerged>),
   Skip,
   // Pure passthrough of a clap `#[derive(Subcommand)]` enum.  Forwarded
   // to `CliRaw` with `#[command(subcommand)]` and copied verbatim into
@@ -242,7 +246,7 @@ fn mc_parse_field(field: &syn::Field) -> syn::Result<McFieldInfo> {
       .map(|n| Ident::new(&n.value(), n.span()))
       .unwrap_or_else(|| ident.clone());
 
-    McFieldKind::Merged {
+    McFieldKind::Merged(Box::new(McMerged {
       raw_name,
       env,
       short,
@@ -250,7 +254,7 @@ fn mc_parse_field(field: &syn::Field) -> syn::Result<McFieldInfo> {
       required,
       parse,
       cli_only,
-    }
+    }))
   };
 
   Ok(McFieldInfo {
@@ -270,37 +274,31 @@ fn mc_gen_cli_raw(
   let field_defs: Vec<_> = fields
     .iter()
     .filter_map(|f| {
-      let McFieldKind::Merged {
-        raw_name,
-        env,
-        short,
-        parse,
-        ..
-      } = &f.kind
-      else {
+      let McFieldKind::Merged(m) = &f.kind else {
         return None;
       };
 
       let docs = &f.doc_attrs;
 
       let mut arg_parts = Vec::new();
-      match short {
+      match &m.short {
         McShortFlag::Auto => arg_parts.push(quote! { short }),
         McShortFlag::Explicit(c) => arg_parts.push(quote! { short = #c }),
         McShortFlag::None => {}
       }
       arg_parts.push(quote! { long });
-      if let Some(env_val) = env {
+      if let Some(env_val) = &m.env {
         arg_parts.push(quote! { env = #env_val });
       }
 
-      let field_ty = if *parse {
+      let field_ty = if m.parse {
         quote! { Option<String> }
       } else {
         let ty = &f.ty;
         quote! { Option<#ty> }
       };
 
+      let raw_name = &m.raw_name;
       Some(quote! {
         #(#docs)*
         #[arg(#(#arg_parts),*)]
@@ -353,26 +351,21 @@ fn mc_gen_config_file_raw(
   let field_defs: Vec<_> = fields
     .iter()
     .filter_map(|f| {
-      let McFieldKind::Merged {
-        raw_name,
-        parse,
-        cli_only,
-        ..
-      } = &f.kind
-      else {
+      let McFieldKind::Merged(m) = &f.kind else {
         return None;
       };
-      if *cli_only {
+      if m.cli_only {
         return None;
       }
 
-      let field_ty = if *parse {
+      let field_ty = if m.parse {
         quote! { Option<String> }
       } else {
         let ty = &f.ty;
         quote! { Option<#ty> }
       };
 
+      let raw_name = &m.raw_name;
       Some(quote! {
         pub #raw_name: #field_ty,
       })
@@ -525,30 +518,23 @@ fn mc_gen_from_cli_and_file(
   let merge_stmts: Vec<_> = fields
     .iter()
     .filter_map(|f| {
-      let McFieldKind::Merged {
-        raw_name,
-        default,
-        required,
-        parse,
-        cli_only,
-        ..
-      } = &f.kind
-      else {
+      let McFieldKind::Merged(m) = &f.kind else {
         return None;
       };
 
       let field_name = &f.ident;
       let field_ty = &f.ty;
+      let raw_name = &m.raw_name;
 
-      let or_file = if *cli_only {
+      let or_file = if m.cli_only {
         quote! {}
       } else {
         quote! { .or(file.#raw_name) }
       };
 
-      let unwrap = if let Some(default_expr) = default {
+      let unwrap = if let Some(default_expr) = &m.default {
         quote! { .unwrap_or_else(|| #default_expr) }
-      } else if *required {
+      } else if m.required {
         quote! {
           .ok_or_else(|| ConfigError::Validation(
             ::std::format!(
@@ -561,7 +547,7 @@ fn mc_gen_from_cli_and_file(
         quote! {}
       };
 
-      if *parse {
+      if m.parse {
         let raw_var =
           Ident::new(&format!("__raw_{}", field_name), field_name.span());
         Some(quote! {
@@ -843,7 +829,7 @@ pub fn foundation_main(_attr: TokenStream, item: TokenStream) -> TokenStream {
   let server_tuple_len = server_param.as_ref().and_then(|(pat, ty)| {
     if let (Pat::Tuple(tuple_pat), Type::Tuple(tuple_ty)) = (pat, ty) {
       // Verify all elements are Server types.
-      let all_server = tuple_ty.elems.iter().all(|e| type_is_server(e));
+      let all_server = tuple_ty.elems.iter().all(type_is_server);
       if all_server && tuple_pat.elems.len() == tuple_ty.elems.len() {
         Some(tuple_ty.elems.len())
       } else {
@@ -895,7 +881,7 @@ fn type_is_server(ty: &Type) -> bool {
       .unwrap_or(false),
     Type::Tuple(tuple) => {
       // A tuple of Servers is also a server param.
-      !tuple.elems.is_empty() && tuple.elems.iter().all(|e| type_is_server(e))
+      !tuple.elems.is_empty() && tuple.elems.iter().all(type_is_server)
     }
     _ => false,
   }

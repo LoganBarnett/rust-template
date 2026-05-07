@@ -5,12 +5,19 @@ members = [
     "crates/foundation-derive",
 ]
 
-# Project-wide ban on the panicking variants of Result/Option, enforced
-# via clippy.  Test code is exempted by clippy.toml's
-# allow-unwrap-in-tests / allow-expect-in-tests, which cover both
-# #[cfg(test)] modules in src/ and integration tests under tests/.
-# Member crates opt in by setting [lints] workspace = true.
+# Project-wide lint policy, enforced via clippy.  Test code is exempted
+# from the panicking-variant bans by clippy.toml's
+# allow-unwrap-in-tests / allow-expect-in-tests / allow-panic-in-tests,
+# which cover both #[cfg(test)] modules in src/ and integration tests
+# under tests/.  Member crates opt in by setting [lints] workspace = true.
+#
+# `clippy::all` (the default groups: correctness, style, complexity,
+# perf, suspicious) is denied so that any clippy warning fails the
+# build, not just the panicking-variant bans.  Priority -1 is required
+# whenever a lint group and individual lints from that group share a
+# table — otherwise cargo errors with "lints contain duplicate".
 [workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
 unwrap_used = "deny"
 expect_used = "deny"
 panic = "deny"
