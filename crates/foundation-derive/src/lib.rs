@@ -54,6 +54,12 @@ enum McFieldKind {
     cli_only: bool,
   },
   Skip,
+  // Pure passthrough of a clap `#[derive(Subcommand)]` enum.  Forwarded
+  // to `CliRaw` with `#[command(subcommand)]` and copied verbatim into
+  // the resolved `Config`.  Never appears in `ConfigFileRaw` — TOML has
+  // no clean tagged-enum mapping for clap subcommands, so subcommands
+  // are CLI-only by construction.
+  Subcommand,
 }
 
 struct McFieldInfo {
@@ -130,6 +136,7 @@ fn mc_parse_field(field: &syn::Field) -> syn::Result<McFieldInfo> {
 
   let mut is_common = false;
   let mut is_skip = false;
+  let mut is_subcommand = false;
   let mut name: Option<LitStr> = None;
   let mut env: Option<LitStr> = None;
   let mut short = McShortFlag::None;
@@ -147,6 +154,8 @@ fn mc_parse_field(field: &syn::Field) -> syn::Result<McFieldInfo> {
         is_common = true;
       } else if meta.path.is_ident("skip") {
         is_skip = true;
+      } else if meta.path.is_ident("subcommand") {
+        is_subcommand = true;
       } else if meta.path.is_ident("name") {
         name = Some(meta.value()?.parse()?);
       } else if meta.path.is_ident("env") {
@@ -173,10 +182,47 @@ fn mc_parse_field(field: &syn::Field) -> syn::Result<McFieldInfo> {
     })?;
   }
 
+  // Mutually exclusive top-level kinds.
+  let exclusive_count = [is_common, is_skip, is_subcommand]
+    .iter()
+    .filter(|b| **b)
+    .count();
+  if exclusive_count > 1 {
+    return Err(syn::Error::new_spanned(
+      &ident,
+      "`common`, `skip`, and `subcommand` are mutually exclusive",
+    ));
+  }
+
   let kind = if is_common {
     McFieldKind::Common
   } else if is_skip {
     McFieldKind::Skip
+  } else if is_subcommand {
+    // Subcommand fields are pure clap passthrough.  Reject any merge-
+    // semantics attrs — they have no meaning here, and forbidding
+    // them keeps the surface honest.
+    let forbidden = [
+      ("name", name.is_some()),
+      ("env", env.is_some()),
+      ("short", !matches!(short, McShortFlag::None)),
+      ("default", default.is_some()),
+      ("required", required),
+      ("parse", parse),
+      ("cli_only", cli_only),
+    ];
+    for (attr_name, present) in forbidden {
+      if present {
+        return Err(syn::Error::new_spanned(
+          &ident,
+          ::std::format!(
+            "`{}` is not allowed on a `subcommand` field",
+            attr_name,
+          ),
+        ));
+      }
+    }
+    McFieldKind::Subcommand
   } else {
     if default.is_none() && !required {
       return Err(syn::Error::new_spanned(
@@ -263,6 +309,23 @@ fn mc_gen_cli_raw(
     })
     .collect();
 
+  // Subcommand field is forwarded verbatim.  Required/optional follows
+  // the user's field type: `Commands` requires a subcommand, while
+  // `Option<Commands>` makes it optional.
+  let subcommand_field = fields.iter().find_map(|f| {
+    if !matches!(f.kind, McFieldKind::Subcommand) {
+      return None;
+    }
+    let ident = &f.ident;
+    let ty = &f.ty;
+    let docs = &f.doc_attrs;
+    Some(quote! {
+      #(#docs)*
+      #[command(subcommand)]
+      pub #ident: #ty,
+    })
+  });
+
   let extra_field = attrs.extra_cli.as_ref().map(|extra_ty| {
     quote! {
       #[command(flatten)]
@@ -277,6 +340,7 @@ fn mc_gen_cli_raw(
       #[command(flatten)]
       pub common: ::rust_template_foundation::config::CommonCli,
       #(#field_defs)*
+      #subcommand_field
       #extra_field
     }
   }
@@ -444,6 +508,19 @@ fn mc_gen_from_cli_and_file(
     })
     .collect();
 
+  // Subcommand passthrough — partial move out of `cli`.  Order
+  // relative to merged stmts is irrelevant; each field moves
+  // independently.
+  let subcommand_stmt = fields.iter().find_map(|f| {
+    if !matches!(f.kind, McFieldKind::Subcommand) {
+      return None;
+    }
+    let field_name = &f.ident;
+    Some(quote! {
+      let #field_name = cli.#field_name;
+    })
+  });
+
   // Merged field resolution (moves from cli/file).
   let merge_stmts: Vec<_> = fields
     .iter()
@@ -539,6 +616,7 @@ fn mc_gen_from_cli_and_file(
         #log_resolve
         #(#skip_stmts)*
         #(#merge_stmts)*
+        #subcommand_stmt
 
         ::std::result::Result::Ok(#struct_name {
           #(#field_names),*
@@ -651,6 +729,17 @@ fn mc_derive_impl(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
       &input,
       "common fields must be named `log_level` and \
        `log_format`",
+    ));
+  }
+
+  let subcommand_count = field_infos
+    .iter()
+    .filter(|f| matches!(f.kind, McFieldKind::Subcommand))
+    .count();
+  if subcommand_count > 1 {
+    return Err(syn::Error::new_spanned(
+      &input,
+      "MergeConfig allows at most one `subcommand` field",
     ));
   }
 
