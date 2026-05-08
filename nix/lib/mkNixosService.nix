@@ -32,6 +32,12 @@
   sharedOptions = import ./service-options.nix {
     inherit name self cfg lib pkgs;
   };
+  # Env-var prefix derived from the service name, matching the Rust
+  # MergeConfig macro's derivation: lowercase, with hyphens turned into
+  # underscores (POSIX env-var names are restricted to letters, digits,
+  # and underscore).  See crates/foundation/USAGE.org → "Environment
+  # variables" for the naming rule and POSIX §8.1 citation.
+  envPrefix = lib.replaceStrings ["-"] ["_"] (lib.toLower name);
 in {
   options.services.${name} =
     sharedOptions
@@ -131,13 +137,13 @@ in {
 
       environment =
         {
-          LOG_LEVEL = cfg.logLevel;
-          LOG_FORMAT = cfg.logFormat;
-          BASE_URL = cfg.baseUrl;
+          "${envPrefix}_log_level" = cfg.logLevel;
+          "${envPrefix}_log_format" = cfg.logFormat;
+          "${envPrefix}_base_url" = cfg.baseUrl;
         }
         // lib.optionalAttrs (cfg.oidcIssuer != null) {
-          OIDC_ISSUER = cfg.oidcIssuer;
-          OIDC_CLIENT_ID = cfg.oidcClientId;
+          "${envPrefix}_oidc_issuer" = cfg.oidcIssuer;
+          "${envPrefix}_oidc_client_id" = cfg.oidcClientId;
         };
 
       serviceConfig = {

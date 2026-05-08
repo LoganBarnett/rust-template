@@ -37,6 +37,8 @@ unit-scoped credential directory before the process starts.
 2. In ~crates/server/src/config.rs~, follow the existing pattern:
    try the explicit option first, fall back to
    ~credential_secret_path~, then error.
-3. On Darwin, pass the file path via ~OIDC_CLIENT_SECRET_FILE~ (or
-   the equivalent new variable) in ~nix/modules/darwin-server.nix~ —
-   launchd has no ~LoadCredential~ equivalent.
+3. On Darwin, pass the file path via ~<app>_oidc_client_secret_file~
+   (or the equivalent new variable, following the
+   ~<app>_<flag>~-lowercase scheme) in
+   ~nix/modules/darwin-server.nix~ — launchd has no ~LoadCredential~
+   equivalent.

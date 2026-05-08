@@ -52,7 +52,8 @@ pub fn xdg_config_dir(app_name: &str) -> Option<PathBuf> {
 /// directory the user happens to be in is a footgun — different config
 /// would load depending on cwd, with no warning.  Callers who want a
 /// local config can pass its path via `explicit_path` (the `--config`
-/// flag / `CONFIG_FILE` env var on [`CommonCli`]).
+/// flag, or the `<app>_config` environment variable, on the
+/// macro-generated `CliRaw`).
 pub fn find_config_file(
   app_name: &str,
   explicit_path: Option<&Path>,
@@ -84,28 +85,16 @@ pub fn load_toml<T: DeserializeOwned>(
   })
 }
 
-// ── CLI / config-file fragment structs ──────────────────────────────────────
-
-/// Common CLI arguments shared by every project crate.  Flatten into your
-/// crate's `CliRaw` with `#[command(flatten)]`.
-#[cfg(feature = "cli")]
-#[derive(Debug, clap::Args)]
-pub struct CommonCli {
-  /// Log level (trace, debug, info, warn, error).
-  #[arg(long, env = "LOG_LEVEL")]
-  pub log_level: Option<String>,
-
-  /// Log format (text, json).
-  #[arg(long, env = "LOG_FORMAT")]
-  pub log_format: Option<String>,
-
-  /// Path to configuration file.
-  #[arg(short, long, env = "CONFIG_FILE")]
-  pub config: Option<PathBuf>,
-}
+// ── config-file fragment ────────────────────────────────────────────────────
 
 /// Common config-file fields shared by every project crate.  Flatten into
 /// your `ConfigFileRaw` with `#[serde(flatten)]`.
+///
+/// The CLI counterpart is generated inline by the `MergeConfig` derive
+/// macro — each app gets per-app-prefixed env vars
+/// (`<app>_log_level`, `<app>_log_format`, `<app>_config`), which a
+/// shared struct cannot deliver since clap bakes env names into the
+/// struct's own attributes at the struct's compile site.
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct CommonConfigFile {
   pub log_level: Option<String>,

@@ -10,8 +10,10 @@ OpenAPI, OIDC authentication, systemd integration, and a managed entry point.
 The crate is organised behind feature flags so projects only pay for what they
 use:
 
-- *cli* — ~CommonCli~ / ~CommonConfigFile~ structs for ~clap~ integration, CLI
-  logging, the ~CliApp~ trait, and the ~#[foundation_main]~ proc macro.
+- *cli* — ~CommonConfigFile~ (file side of the CLI/file merge), CLI
+  logging, the ~CliApp~ trait, the ~MergeConfig~ derive (which generates
+  ~CliRaw~ inline with per-app-prefixed env vars), and the
+  ~#[foundation_main]~ proc macro.
 - *server* — Health registry, metrics endpoint, OpenAPI/Scalar helpers, SPA
   fallback, systemd notify/watchdog, server logging.
 - *auth* (implies ~server~ + ~cli~) — OIDC login/callback/logout handlers,
@@ -487,6 +489,135 @@ impl Config {
 Callers that need to discriminate get ~ConfigError::Extra(MyError::…)~
 back; callers that only print the error see the inner ~Display~
 verbatim, with no extra wrapper text.
+
+* Environment variables
+
+** Naming scheme
+
+Every env-var name read by an app generated through ~MergeConfig~ is
+*lowercase*, with the app name as a prefix and underscores between
+words: ~<app>_<flag>~.  Hyphens in the app name become underscores
+(POSIX env-var names are restricted to letters, digits, and
+underscore).
+
+Concrete examples for ~app_name = "example-server"~:
+
+| Field / flag    | Env var                       |
+|-----------------+-------------------------------|
+| ~--log-level~   | ~example_server_log_level~    |
+| ~--log-format~  | ~example_server_log_format~   |
+| ~--config~      | ~example_server_config~       |
+| ~--listen~      | ~example_server_listen~       |
+| ~--base-url~    | ~example_server_base_url~     |
+
+** Why lowercase?  POSIX §8.1
+
+The convention many projects reach for —
+~APP_THING_IN_SHOUTING_CASE~ — is the convention POSIX defines for
+its /own/ utility variables (~PATH~, ~HOME~, ~LANG~, …), not for
+application variables.  The relevant standard is IEEE Std 1003.1-2017
+(POSIX.1-2017), [[https://pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap08.html][Chapter 8 — Environment Variables]].
+
+§8.1 states (verbatim):
+
+#+begin_quote
+Environment variable names used by the utilities in the Shell and
+Utilities volume of POSIX.1-2017 consist solely of uppercase letters,
+digits, and the <underscore> ( '_' ) from the characters defined in
+Portable Character Set and do not begin with a digit.
+#+end_quote
+
+and immediately after:
+
+#+begin_quote
+The name space of environment variable names containing lowercase
+letters is reserved for applications.  Applications can define any
+environment variables with names from this name space without
+modifying the behavior of the standard utilities.
+#+end_quote
+
+The standard distinguishes /Standard Utilities/ from /Applications/.
+[[https://pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap03.html][Chapter 3 — Definitions]] gives:
+
+- *§3.17 Application:* "A computer program that performs some desired
+  function."
+- *§3.369 Standard Utilities:* "The utilities described in the Shell
+  and Utilities volume of POSIX.1-2017."
+
+Anything any of us writes is an /Application/ by §3.17 — utilities are
+the specific programs the standard itself describes.  So the
+namespace explicitly carved out for /our/ env vars is the one
+containing lowercase letters.  Using lowercase is what the standard
+asks for and is guaranteed not to collide with current or future
+POSIX utility variables.
+
+The widespread instinct to write ~APP_FOO~ for application variables
+is a cargo-culted carry-over from the §8.1 utility rule.  It is not
+required by any tool in a normal Unix deployment path — POSIX shells
+(bash, zsh, dash), systemd ~Environment=~, Docker ~ENV~, Kubernetes
+env, clap's ~env = "..."~, and CI runners (GitHub Actions, GitLab CI)
+all preserve case and treat the name verbatim.
+
+** Why prefix?
+
+POSIX does not mandate a prefix, but it does warn that the lowercase
+namespace is shared across all applications on the system.  A bare
+name like ~listen~ or ~base_url~ is liable to collide with another
+process's variables or with a developer's shell environment, and
+~LISTEN~ specifically lives near systemd's ~LISTEN_FDS~ /
+~LISTEN_PID~ socket-activation contract.  Prefixing with the app name
+sidesteps both.
+
+** ~env~ vs ~env = "literal"~
+
+The ~MergeConfig~ derive accepts two forms of the ~env~ attribute on
+merged fields:
+
+- *Bare ~env~* — derive the name as ~<app>_<flag>~, where ~flag~ is
+  the ~name = "..."~ override if present, otherwise the field
+  identifier.  Use this whenever the derivation gives the right
+  answer.
+
+  #+begin_src rustic :results none :exports code
+  #[merge_config(env, required)]
+  pub base_url: String,
+  // → reads `<app>_base_url`
+  #+end_src
+
+- *~env = "literal"~* — use the literal verbatim, with no prefixing.
+  Reserved for genuine deviations: a name imposed by an external
+  contract, or the rare case where the derived form is wrong.  When
+  you reach for the literal form, leave a comment beside it that
+  explains *why* it deviates — the explicit form is now the
+  attention-getter, so it should earn the attention.
+
+  #+begin_src rustic :results none :exports code
+  // External: matches the legacy `MYORG_LICENCE_KEY` contract used
+  // by every other tool in the suite; do not rename without updating
+  // those callers.
+  #[merge_config(env = "MYORG_LICENCE_KEY", required)]
+  pub licence_key: String,
+  #+end_src
+
+Omit the attribute entirely on fields that should *not* read from the
+environment (subcommand selectors, secrets you want to source only
+from a credential file, etc.).
+
+** Consequences for tooling
+
+A field's env-var name is no longer a literal string in the source —
+it is derived at macro expansion.  Two ways to recover the spelling:
+
+- Run the binary with ~--help~.  Clap prints each flag's env-var name
+  in the right-hand column ("[env: ~my_app_listen~]"), so a user
+  trying to find the right variable to set has the answer in front of
+  them with no source dive.
+- ~cargo expand~ shows the expanded ~CliRaw~ if you need to confirm
+  exactly what clap sees, or want to grep the post-expansion form.
+
+When grepping the source itself, search by the field name (or, for a
+~name~ override, by the override) rather than by the env-var
+spelling.
 
 * Systemd integration
 

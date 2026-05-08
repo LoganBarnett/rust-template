@@ -10,19 +10,25 @@ use std::path::PathBuf;
 use tokio_listener::ListenerAddress;
 
 /// OIDC CLI arguments, flattened into the generated `CliRaw`.
+///
+/// Env-var names are written out long-hand here because this struct is
+/// raw clap (flattened in via `extra_cli`), not a `MergeConfig` field —
+/// the macro's bare-`env` derivation does not reach inside `extra_cli`
+/// types.  Names follow the same `<app>_<flag>` convention the macro
+/// uses elsewhere; if you rename the project, update the prefix here.
 #[derive(Debug, clap::Args)]
 pub struct OidcCliFields {
   /// OIDC issuer URL
   /// (e.g. https://sso.example.com/application/o/myapp).
-  #[arg(long, env = "OIDC_ISSUER")]
+  #[arg(long, env = "rust_template_oidc_issuer")]
   pub oidc_issuer: Option<String>,
 
   /// OIDC client ID.
-  #[arg(long, env = "OIDC_CLIENT_ID")]
+  #[arg(long, env = "rust_template_oidc_client_id")]
   pub oidc_client_id: Option<String>,
 
   /// Path to a file containing the OIDC client secret.
-  #[arg(long, env = "OIDC_CLIENT_SECRET_FILE")]
+  #[arg(long, env = "rust_template_oidc_client_secret_file")]
   pub oidc_client_secret_file: Option<PathBuf>,
 }
 
@@ -50,20 +56,20 @@ pub struct Config {
   /// Unix socket, or sd-listen to inherit from systemd.
   #[merge_config(
     name = "listen",
-    env = "LISTEN",
+    env,
     default = "\"127.0.0.1:3000\".to_string()",
     parse
   )]
   pub listen_address: ListenerAddress,
   /// Path to compiled frontend static assets.
   #[merge_config(
-    env = "FRONTEND_PATH",
+    env,
     default = "std::path::PathBuf::from(\"frontend/public\")"
   )]
   pub frontend_path: PathBuf,
   /// Base URL of the service (e.g. https://example.com), used to
   /// construct the OIDC redirect URI.
-  #[merge_config(env = "BASE_URL", required)]
+  #[merge_config(env, required)]
   pub base_url: String,
   #[merge_config(skip)]
   pub oidc: Option<OidcConfig>,

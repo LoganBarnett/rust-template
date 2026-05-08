@@ -43,9 +43,21 @@ enum McShortFlag {
   Explicit(LitChar),
 }
 
+/// Environment-variable binding for a merged field.
+///
+/// `Auto` derives the name as `<env_prefix>_<raw_name>` (lowercase per
+/// POSIX §8.1's application namespace).  `Literal` is reserved for
+/// genuine deviations from that derivation — using it draws attention,
+/// so a comment beside `env = "..."` should explain why.
+enum McEnv {
+  None,
+  Auto,
+  Literal(LitStr),
+}
+
 struct McMerged {
   raw_name: Ident,
-  env: Option<LitStr>,
+  env: McEnv,
   short: McShortFlag,
   default: Option<Expr>,
   required: bool,
@@ -148,7 +160,7 @@ fn mc_parse_field(field: &syn::Field) -> syn::Result<McFieldInfo> {
   let mut is_skip = false;
   let mut is_subcommand = false;
   let mut name: Option<LitStr> = None;
-  let mut env: Option<LitStr> = None;
+  let mut env = McEnv::None;
   let mut short = McShortFlag::None;
   let mut default: Option<Expr> = None;
   let mut required = false;
@@ -169,7 +181,12 @@ fn mc_parse_field(field: &syn::Field) -> syn::Result<McFieldInfo> {
       } else if meta.path.is_ident("name") {
         name = Some(meta.value()?.parse()?);
       } else if meta.path.is_ident("env") {
-        env = Some(meta.value()?.parse()?);
+        // Bare `env` derives the name; `env = "literal"` overrides.
+        if meta.input.peek(syn::Token![=]) {
+          env = McEnv::Literal(meta.value()?.parse()?);
+        } else {
+          env = McEnv::Auto;
+        }
       } else if meta.path.is_ident("short") {
         if meta.input.peek(syn::Token![=]) {
           short = McShortFlag::Explicit(meta.value()?.parse()?);
@@ -214,7 +231,7 @@ fn mc_parse_field(field: &syn::Field) -> syn::Result<McFieldInfo> {
     // them keeps the surface honest.
     let forbidden = [
       ("name", name.is_some()),
-      ("env", env.is_some()),
+      ("env", !matches!(env, McEnv::None)),
       ("short", !matches!(short, McShortFlag::None)),
       ("default", default.is_some()),
       ("required", required),
@@ -271,11 +288,22 @@ fn mc_parse_field(field: &syn::Field) -> syn::Result<McFieldInfo> {
   })
 }
 
+/// Convert the `app_name` literal into the env-var prefix.
+///
+/// `example-server` → `example_server`.  Lowercase per POSIX §8.1: the
+/// namespace of env-var names containing lowercase letters is reserved
+/// for applications.  Hyphens become underscores because POSIX env-var
+/// names are restricted to letters, digits, and underscore.
+fn env_prefix(app_name: &LitStr) -> String {
+  app_name.value().to_lowercase().replace('-', "_")
+}
+
 fn mc_gen_cli_raw(
   fields: &[McFieldInfo],
   attrs: &McStructAttrs,
 ) -> proc_macro2::TokenStream {
   let app_name = &attrs.app_name;
+  let prefix = env_prefix(app_name);
 
   let field_defs: Vec<_> = fields
     .iter()
@@ -293,8 +321,15 @@ fn mc_gen_cli_raw(
         McShortFlag::None => {}
       }
       arg_parts.push(quote! { long });
-      if let Some(env_val) = &m.env {
-        arg_parts.push(quote! { env = #env_val });
+      match &m.env {
+        McEnv::None => {}
+        McEnv::Auto => {
+          let derived = ::std::format!("{}_{}", prefix, m.raw_name);
+          arg_parts.push(quote! { env = #derived });
+        }
+        McEnv::Literal(s) => {
+          arg_parts.push(quote! { env = #s });
+        }
       }
 
       let field_ty = if m.parse {
@@ -337,12 +372,34 @@ fn mc_gen_cli_raw(
     }
   });
 
+  // Common fields are inlined (rather than flattened from a shared
+  // `CommonCli` struct) so each app gets per-app-prefixed env-var
+  // names — `<prefix>_log_level`, etc.  A single shared struct can't
+  // do that, since clap bakes the env name into the struct's own
+  // attributes at the struct's compile site.
+  let log_level_env = ::std::format!("{}_log_level", prefix);
+  let log_format_env = ::std::format!("{}_log_format", prefix);
+  let config_env = ::std::format!("{}_config", prefix);
+
+  // NOTE: `Option<...>` is intentionally unqualified — clap's
+  // `_infer_ValueParser_for` derive matches on the syntactic form
+  // `Option<T>`, and a fully-qualified `::std::option::Option<T>`
+  // doesn't trigger the inference path.  `Option`, `String`, and
+  // `std::path::PathBuf` resolve via the user crate's prelude /
+  // standard library namespace.
   quote! {
     #[derive(::std::fmt::Debug, ::clap::Parser)]
     #[command(name = #app_name, version, about)]
     pub struct CliRaw {
-      #[command(flatten)]
-      pub common: ::rust_template_foundation::config::CommonCli,
+      /// Log level (trace, debug, info, warn, error).
+      #[arg(long, env = #log_level_env)]
+      pub log_level: Option<String>,
+      /// Log format (text, json).
+      #[arg(long, env = #log_format_env)]
+      pub log_format: Option<String>,
+      /// Path to configuration file.
+      #[arg(short, long, env = #config_env)]
+      pub config: Option<std::path::PathBuf>,
       #(#field_defs)*
       #subcommand_field
       #extra_field
@@ -447,8 +504,8 @@ fn mc_gen_from_cli_and_file(
     (Some(lvl), Some(fmt)) => quote! {
       let (#lvl, #fmt) =
         ::rust_template_foundation::config::resolve_log_settings(
-          cli.common.log_level.clone(),
-          cli.common.log_format.clone(),
+          cli.log_level.clone(),
+          cli.log_format.clone(),
           &file.common,
         )
         .map_err(ConfigError::Validation)?;
@@ -559,7 +616,7 @@ fn mc_gen_from_cli_and_file(
         let file: ConfigFileRaw =
           match ::rust_template_foundation::config::find_config_file(
             #app_name,
-            cli.common.config.as_deref(),
+            cli.config.as_deref(),
           ) {
             ::std::option::Option::Some(path) => {
               ::rust_template_foundation::config::load_toml(

@@ -7,8 +7,10 @@
 //!
 //! # Feature flags
 //!
-//! - **`cli`** — `CommonCli` / `CommonConfigFile` structs for `clap`
-//!   integration, CLI logging, `CliApp` trait, and `#[foundation_main]`.
+//! - **`cli`** — `CommonConfigFile` (file side of the CLI/file merge),
+//!   CLI logging, `CliApp` trait, the `MergeConfig` derive (which
+//!   generates `CliRaw` with per-app-prefixed env vars), and
+//!   `#[foundation_main]`.
 //! - **`server`** — Health registry, metrics endpoint, OpenAPI/Scalar
 //!   helpers, SPA fallback, systemd notify/watchdog, server logging.
 //! - **`auth`** (implies `server` + `cli`) — OIDC login/callback/logout

@@ -1,4 +1,3 @@
-use rust_template_foundation::config::CommonCli;
 use std::path::PathBuf;
 
 // ── config tests ────────────────────────────────────────────────────
@@ -8,11 +7,9 @@ async fn test_config_no_oidc() {
   use rust_template_server::config::{CliRaw, Config, OidcCliFields};
 
   let cli = CliRaw {
-    common: CommonCli {
-      log_level: None,
-      log_format: None,
-      config: None,
-    },
+    log_level: None,
+    log_format: None,
+    config: None,
     listen: None,
     frontend_path: None,
     base_url: Some("https://example.com".to_string()),
@@ -35,11 +32,9 @@ async fn test_config_full_oidc() {
     .join("tests/fixtures/oidc-client-secret");
 
   let cli = CliRaw {
-    common: CommonCli {
-      log_level: None,
-      log_format: None,
-      config: None,
-    },
+    log_level: None,
+    log_format: None,
+    config: None,
     listen: None,
     frontend_path: None,
     base_url: Some("https://example.com".to_string()),
@@ -62,11 +57,9 @@ async fn test_config_partial_oidc_errors() {
   use rust_template_server::config::{CliRaw, Config, OidcCliFields};
 
   let cli = CliRaw {
-    common: CommonCli {
-      log_level: None,
-      log_format: None,
-      config: None,
-    },
+    log_level: None,
+    log_format: None,
+    config: None,
     listen: None,
     frontend_path: None,
     base_url: Some("https://example.com".to_string()),

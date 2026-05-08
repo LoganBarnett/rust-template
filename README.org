@@ -176,8 +176,15 @@ Both CLI and server merge configuration from four sources in precedence
 order: command-line flags, environment variables, a TOML config file,
 and compiled defaults.  The config file is discovered from
 =$XDG_CONFIG_HOME/<app>/config.toml=, or pointed at explicitly via
-=--config= / =CONFIG_FILE=.  Every layer is optional; together they
+=--config= / =<app>_config=.  Every layer is optional; together they
 cover interactive use, CI, containers, and systemd.
+
+Environment-variable names follow ~<app>_<flag>~ in lowercase — POSIX
+§8.1 reserves the lowercase namespace for applications, and a per-app
+prefix avoids collisions with other processes' variables.  See
+[[file:crates/foundation/USAGE.org::*Environment variables][=USAGE.org= → Environment variables]] for the full rule, the POSIX
+citation, and the bare-~env~ vs.  ~env = "literal"~ distinction in the
+~MergeConfig~ derive.
 
 ** Semantic error types
 

@@ -13,7 +13,7 @@ pub struct Config {
   pub log_format: LogFormat,
   #[merge_config(
     cli_only,
-    env = "BASE_URL",
+    env,
     default = "\"https://example.com\".to_string()"
   )]
   pub base_url: String,

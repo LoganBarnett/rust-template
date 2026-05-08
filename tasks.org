@@ -84,8 +84,9 @@ Struct attributes:
 - ~extra_file = "Type"~ — optional type flattened into generated ~ConfigFileRaw~
 
 Field attributes:
-- ~common~ — resolved from ~CommonCli~ / ~CommonConfigFile~ via ~resolve_log_settings~
-- ~env = "VAR"~ — environment variable for clap
+- ~common~ — log_level / log_format; resolved via ~resolve_log_settings~ against ~CommonConfigFile~
+- ~env~ — derived env-var name ~<app>_<flag>~ (lowercase, POSIX §8.1)
+- ~env = "literal"~ — explicit env-var name (rare; for non-derivable contracts)
 - ~name = "field"~ — CLI/file field name (defaults to struct field name)
 - ~short = 'x'~ — short flag for clap
 - ~default = "expr"~ — default value expression
@@ -128,13 +129,13 @@ pub struct Config {
     pub log_level: LogLevel,
     #[merge_config(common)]
     pub log_format: LogFormat,
-    #[merge_config(name = "listen", env = "LISTEN",
+    #[merge_config(name = "listen", env,
                    default = "\"127.0.0.1:3000\".to_string()", parse)]
     pub listen_address: ListenerAddress,
-    #[merge_config(env = "FRONTEND_PATH",
+    #[merge_config(env,
                    default = "std::path::PathBuf::from(\"frontend/public\")")]
     pub frontend_path: std::path::PathBuf,
-    #[merge_config(env = "BASE_URL", required)]
+    #[merge_config(env, required)]
     pub base_url: String,
     #[merge_config(skip)]
     pub oidc: Option<OidcConfig>,
