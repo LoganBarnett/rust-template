@@ -34,6 +34,7 @@ struct McStructAttrs {
   app_name: LitStr,
   extra_cli: Option<syn::Path>,
   extra_file: Option<syn::Path>,
+  extra_error: Option<syn::Path>,
 }
 
 enum McShortFlag {
@@ -79,6 +80,7 @@ fn mc_parse_struct_attrs(
   let mut app_name: Option<LitStr> = None;
   let mut extra_cli: Option<syn::Path> = None;
   let mut extra_file: Option<syn::Path> = None;
+  let mut extra_error: Option<syn::Path> = None;
 
   for attr in attrs {
     if !attr.path().is_ident("merge_config") {
@@ -93,6 +95,9 @@ fn mc_parse_struct_attrs(
       } else if meta.path.is_ident("extra_file") {
         let s: LitStr = meta.value()?.parse()?;
         extra_file = Some(syn::parse_str(&s.value())?);
+      } else if meta.path.is_ident("extra_error") {
+        let s: LitStr = meta.value()?.parse()?;
+        extra_error = Some(syn::parse_str(&s.value())?);
       } else {
         return Err(meta.error("unknown merge_config attribute"));
       }
@@ -111,6 +116,7 @@ fn mc_parse_struct_attrs(
     app_name,
     extra_cli,
     extra_file,
+    extra_error,
   })
 }
 
@@ -391,65 +397,31 @@ fn mc_gen_config_file_raw(
   }
 }
 
-fn mc_gen_config_error() -> proc_macro2::TokenStream {
+fn mc_gen_config_error(attrs: &McStructAttrs) -> proc_macro2::TokenStream {
+  let extra_variant = attrs.extra_error.as_ref().map(|ty| {
+    quote! {
+      #[error(transparent)]
+      Extra(
+        #[from]
+        #ty,
+      ),
+    }
+  });
+
   quote! {
-    #[derive(::std::fmt::Debug)]
+    #[derive(
+      ::std::fmt::Debug,
+      ::rust_template_foundation::thiserror::Error,
+    )]
     pub enum ConfigError {
-      File(::rust_template_foundation::config::ConfigFileError),
-      Validation(::std::string::String),
-    }
-
-    impl ::std::fmt::Display for ConfigError {
-      fn fmt(
-        &self,
-        f: &mut ::std::fmt::Formatter<'_>,
-      ) -> ::std::fmt::Result {
-        match self {
-          ConfigError::File(e) => {
-            write!(
-              f,
-              "Failed to load configuration file: {}",
-              e
-            )
-          }
-          ConfigError::Validation(msg) => {
-            write!(
-              f,
-              "Configuration validation failed: {}",
-              msg
-            )
-          }
-        }
-      }
-    }
-
-    impl ::std::error::Error for ConfigError {
-      fn source(
-        &self,
-      ) -> ::std::option::Option<
-        &(dyn ::std::error::Error + 'static),
-      > {
-        match self {
-          ConfigError::File(e) => {
-            ::std::option::Option::Some(e)
-          }
-          ConfigError::Validation(_) => {
-            ::std::option::Option::None
-          }
-        }
-      }
-    }
-
-    impl
-      ::std::convert::From<
+      #[error("Failed to load configuration file: {0}")]
+      File(
+        #[from]
         ::rust_template_foundation::config::ConfigFileError,
-      > for ConfigError
-    {
-      fn from(
-        e: ::rust_template_foundation::config::ConfigFileError,
-      ) -> Self {
-        ConfigError::File(e)
-      }
+      ),
+      #[error("Configuration validation failed: {0}")]
+      Validation(::std::string::String),
+      #extra_variant
     }
   }
 }
@@ -731,7 +703,7 @@ fn mc_derive_impl(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
 
   let cli_raw = mc_gen_cli_raw(&field_infos, &attrs);
   let config_file_raw = mc_gen_config_file_raw(&field_infos, &attrs);
-  let config_error = mc_gen_config_error();
+  let config_error = mc_gen_config_error(&attrs);
   let from_cli = mc_gen_from_cli_and_file(struct_name, &field_infos, &attrs);
   let cli_app = mc_gen_cli_app_impl(struct_name, &field_infos, &attrs);
 

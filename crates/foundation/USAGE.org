@@ -408,6 +408,86 @@ passthrough field — the macro errors at compile time if any are present.
 
 At most one ~subcommand~ field is permitted per struct.
 
+** Extension points: ~extra_cli~, ~extra_file~, ~extra_error~
+
+The struct-level ~merge_config~ attribute accepts three optional paths
+that let a project widen the macro's surface without forking it.  Each
+takes a string-quoted Rust path:
+
+#+begin_src rustic :results none :exports code
+#[derive(MergeConfig)]
+#[merge_config(
+    app_name = "my-app",
+    extra_cli = "MyCliArgs",
+    extra_file = "MyFileArgs",
+    extra_error = "crate::MyError",
+)]
+pub struct Config { /* … */ }
+#+end_src
+
+*** ~extra_cli = "Type"~
+
+Flattens ~Type~ (a ~clap::Args~ struct) into the generated ~CliRaw~ via
+~#[command(flatten)]~.  Use this for groups of CLI-only arguments that
+do not belong on the merged ~Config~ — typically the inputs to a ~skip~
+field's ~resolve_<field>~ method.
+
+The flattened struct appears as ~cli.extra~ inside resolvers.
+
+*** ~extra_file = "Type"~
+
+Flattens ~Type~ (a ~serde::Deserialize~ struct) into the generated
+~ConfigFileRaw~ via ~#[serde(flatten)]~.  Companion to ~extra_cli~ for
+inputs that also need a config-file source.
+
+The flattened struct appears as ~file.extra~ inside resolvers.
+
+*** ~extra_error = "Type"~
+
+Adds an ~Extra(Type)~ variant to the generated ~ConfigError~ with
+~#[error(transparent)]~ and ~impl From<Type> for ConfigError~.  Without
+this, the only escape hatch for resolver failures is
+~ConfigError::Validation(String)~ — a flattened message that loses any
+structure the original error carried.  ~extra_error~ preserves the
+caller's error type intact, so ~Display~ output is unchanged and
+downstream code can still match on the original variants.
+
+A ~resolve_<field>~ method can then return ~Result<T, MyError>~
+directly, and the ~?~ inside the macro-generated ~from_cli_and_file~
+will convert it via the auto-generated ~From~:
+
+#+begin_src rustic :results none :exports code
+#[derive(thiserror::Error, Debug)]
+pub enum MyError {
+    #[error("widget catalogue is empty")]
+    EmptyCatalogue,
+}
+
+#[derive(MergeConfig)]
+#[merge_config(
+    app_name = "my-app",
+    extra_error = "crate::MyError",
+)]
+pub struct Config {
+    #[merge_config(common)] pub log_level: LogLevel,
+    #[merge_config(common)] pub log_format: LogFormat,
+    #[merge_config(skip)]   pub catalogue: Catalogue,
+}
+
+impl Config {
+    fn resolve_catalogue(
+        _cli: &CliRaw,
+        _file: &ConfigFileRaw,
+    ) -> Result<Catalogue, MyError> {
+        Err(MyError::EmptyCatalogue)
+    }
+}
+#+end_src
+
+Callers that need to discriminate get ~ConfigError::Extra(MyError::…)~
+back; callers that only print the error see the inner ~Display~
+verbatim, with no extra wrapper text.
+
 * Systemd integration
 
 Foundation provides built-in systemd integration:

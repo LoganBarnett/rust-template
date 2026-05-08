@@ -42,6 +42,12 @@ pub use rust_template_foundation_derive::foundation_main as main;
 #[cfg(feature = "cli")]
 pub use rust_template_foundation_derive::MergeConfig;
 
+// Re-exported for the `MergeConfig` derive macro to reference without
+// requiring downstream crates to depend on `thiserror` directly.  Not
+// part of the public API.
+#[doc(hidden)]
+pub use thiserror;
+
 // Re-export CliApp at crate root for CLI apps.
 #[cfg(feature = "cli")]
 pub use app::CliApp;
