@@ -29,7 +29,7 @@
   self,
   foundation,
 }:
-  foundation.lib.mkNixosService {
-    name = "rust-template-server";
-    inherit self;
-  }
+foundation.lib.mkNixosService {
+  name = "rust-template-server";
+  inherit self;
+}

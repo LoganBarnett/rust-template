@@ -14,3 +14,30 @@ jobs:
   # follow rust-template's main, not pin to their own checkout.
   ci:
     uses: ./.github/workflows/reusable-ci.yml
+
+  # Formatter coverage lives in this repo's CI rather than in
+  # `reusable-ci.yml` because it is a property of rust-template itself,
+  # not of spawned projects.  It exercises `new-project.sh` to produce
+  # a fresh spawn, then verifies every formatter declared in the
+  # template's `treefmt.toml` is on PATH inside the spawn's devShell
+  # and actually rewrites a known-malformed file.  Half-failures (a
+  # formatter declared but not in the devShell, or vice versa) both
+  # surface as a failed assertion.
+  #
+  # `install-nix-action` plus `magic-nix-cache-action` get treefmt and
+  # the per-language formatter binaries from the nixpkgs binary cache
+  # rather than reinstalling each formatter via apt/cargo/npm — that
+  # divergence between local-via-Nix and CI-via-ad-hoc is the class of
+  # bug the template is built to capture as code in the first place.
+  formatter-coverage:
+    name: Formatter coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: DeterminateSystems/nix-installer-action@main
+
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Run formatter-coverage test
+        run: ./test-formatters.sh

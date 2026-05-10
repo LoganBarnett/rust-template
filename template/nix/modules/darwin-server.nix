@@ -29,7 +29,7 @@
   self,
   foundation,
 }:
-  foundation.lib.mkDarwinService {
-    name = "rust-template-server";
-    inherit self;
-  }
+foundation.lib.mkDarwinService {
+  name = "rust-template-server";
+  inherit self;
+}
