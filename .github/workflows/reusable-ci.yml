@@ -34,6 +34,28 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
 
+  clippy:
+    name: Clippy (warnings denied)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      # `--deny warnings` upgrades every clippy warning — including
+      # the combinator-favoring lints configured at `warn` in
+      # `[workspace.lints.clippy]` — to a hard error.  Locally those
+      # remain warnings so iteration is not blocked; merge gating
+      # happens here, in a job distinct from `test` so a failure
+      # reads as "tests are fine, lint nitpicks remain" rather than
+      # being conflated with broken tests.
+      - name: Run clippy with warnings as errors
+        run: cargo clippy --workspace --all-targets -- --deny warnings
+
   changelog:
     name: Changelog entry required
     runs-on: ubuntu-latest

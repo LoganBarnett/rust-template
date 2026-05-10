@@ -21,3 +21,36 @@ all = { level = "deny", priority = -1 }
 unwrap_used = "deny"
 expect_used = "deny"
 panic = "deny"
+
+# ----------------------------------------------------------------------------
+# Combinator preference: nudge toward the least powerful construct that
+# fits.  These flag manual reimplementations of standard combinators —
+# match-on-Option that could be Option::map, if-let-else that could be
+# map_or, and so on.  See template/llms.org "Rule of least power" for
+# the principle behind the set.  Mirrored from template/Cargo.toml so
+# the rust-template repo holds itself to the same standards it ships.
+#
+# Configured at "warn" rather than "deny" because some imperative forms
+# are genuinely clearer (multi-line bodies, side effects, nested control
+# flow); humans can override site-locally with #[allow(...)] and a
+# one-line reason.  Note: this downgrades the style/complexity lints
+# from deny (via `all` above) to warn for this set specifically — same
+# behavior as the template emits into spawned projects.
+manual_map = "warn"
+manual_filter = "warn"
+manual_filter_map = "warn"
+manual_find = "warn"
+manual_find_map = "warn"
+manual_flatten = "warn"
+manual_let_else = "warn"
+manual_ok_or = "warn"
+manual_unwrap_or = "warn"
+manual_unwrap_or_default = "warn"
+option_if_let_else = "warn"
+map_unwrap_or = "warn"
+needless_collect = "warn"
+unnecessary_fold = "warn"
+question_mark = "warn"
+single_match_else = "warn"
+collapsible_match = "warn"
+redundant_pattern_matching = "warn"

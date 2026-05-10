@@ -1,0 +1,16 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # Local path (`./...`) rather than `LoganBarnett/rust-template/...@main`
+  # so that PRs modifying `reusable-ci.yml` are tested against the SHA in
+  # the PR, not whatever is on main.  Spawned projects use the `@main`
+  # form (see `template/.github/workflows/ci.yml`) since they want to
+  # follow rust-template's main, not pin to their own checkout.
+  ci:
+    uses: ./.github/workflows/reusable-ci.yml

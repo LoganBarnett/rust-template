@@ -297,6 +297,52 @@ instinct from Python and other exception-driven languages where ad-hoc
 discipline is: prove unreachability to the compiler, or propagate.  There
 is no third option for shipping code.
 
+*** Rule of least power
+
+Choose the least expressive construct that does the job.  The principle
+comes from Tim Berners-Lee: a more powerful construct can do more, and
+that capacity is a /liability/ for the reader, who has to verify what it
+actually does versus what a narrower construct would have constrained it
+to.  ~Option::map~ can only transform-if-present; ~match~ on ~Option~ can
+do anything, so the reader has to read both arms to be sure.  An iterator
+chain constrains the work to per-element transformation and aggregation;
+a ~for~ loop with mutation can do anything at all.  The narrower form
+carries an invariant the broader one does not.
+
+The Rust corollary is to prefer combinators and expressions over
+~match~, ~if let~, and ~for~ when the combinator form expresses the same
+control flow.  Concretely:
+
+- ~Option::map~, ~Option::and_then~, ~Option::or_else~ over ~match~ on
+  ~Option~.
+- ~Result::map~, ~Result::map_err~, and ~?~ over ~match~ on ~Result~ for
+  propagation.
+- Iterator chains (~map~, ~filter~, ~filter_map~, ~find~, ~fold~,
+  ~collect~) over ~for~ loops with mutation.
+- ~let~ over ~let mut~; pure expression over statement-with-side-effects.
+- ~Option::map_or~ / ~map_or_else~ over ~if let Some(x) = ... { ... } else
+  { ... }~ when both arms are pure transforms.
+- ~?~ over ~if cond { return Err(...) } else { ... }~ when the right
+  shape exists.  An early-return guard clause without an ~else~ is
+  /already/ the least-powerful form for that flow — leave it alone.
+
+The mechanical enforcement is a curated set of clippy lints in the
+~manual_*~ family (~manual_map~, ~manual_filter~, ~manual_find~,
+~manual_let_else~, etc.) plus ~option_if_let_else~, ~map_unwrap_or~,
+~question_mark~, ~single_match_else~, and friends.  These live under
+~[workspace.lints.clippy]~ in the root ~Cargo.toml~ at ~warn~ — they
+have teeth without becoming a hard block.  When the imperative form is
+genuinely clearer (multi-line bodies, side effects, nested control flow),
+override site-locally with ~#[allow(clippy::lint_name)]~ and a one-line
+comment explaining why.
+
+The bias to watch for: LLMs reach for ~match~, ~for~, and early ~return~
+because that is how most training-set Rust reads, and because imperative
+constructs are the most expressive available.  Maximum expressivity is
+the wrong default.  Reach for the narrowest construct that fits;
+escalate to ~match~ or a loop only when the combinator form distorts the
+meaning.
+
 *** Code Structure
 
 **** Files and modules
