@@ -180,6 +180,27 @@ jq --arg repo "$PROJECT_NAME" \
        }
    }' "$CONFIG" > "$CONFIG.tmp" && mv "$CONFIG.tmp" "$CONFIG"
 
+# ---------------------------------------------------------------------------
+# Format the emitted files.  Substitutions and crate-add expansions can
+# leave imports out of alphabetical order (e.g. `rust_template_lib::`
+# becomes `${project}_lib::` while `rust_template_foundation::` is
+# restored, so their relative ordering depends on the project's first
+# letter) and similar non-canonical residue that no amount of careful
+# template authoring can avoid.  Running treefmt here means spawned
+# projects come out formatter-clean, and `treefmt --fail-on-change` in
+# their CI does not trip on day-zero artifacts.
+#
+# `treefmt` and the per-language formatter binaries are expected on
+# PATH -- via the rust-template devShell, a system install, or however
+# the user manages tooling.  A warning is printed and the spawn
+# continues if treefmt is missing or fails; the user can re-run
+# `treefmt` manually under their own environment to clean up.
+# ---------------------------------------------------------------------------
+echo "Formatting emitted files ..."
+if ! (cd "$OUTPUT" && treefmt) > /dev/null 2>&1; then
+    echo "Warning: treefmt failed; emitted files may be unformatted." >&2
+fi
+
 echo "Done.  Next steps:"
 echo "  cd $OUTPUT"
 echo "  git init && git add . && git commit -m 'Initial commit'"

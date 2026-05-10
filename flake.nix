@@ -29,6 +29,15 @@
       };
     in [
       rust
+      # Unified formatter and the per-language binaries it invokes.
+      # `new-project.sh` runs `treefmt` as its final spawn step, so this
+      # devShell needs to provide them when users invoke the script from
+      # here.  Mirrors the set in template/flake.nix's extraDevPackages
+      # (minus org-fmt, which is paused for fixes).
+      pkgs.treefmt
+      pkgs.alejandra
+      pkgs.prettier
+      pkgs.elmPackages.elm-format
     ]);
   in {
 

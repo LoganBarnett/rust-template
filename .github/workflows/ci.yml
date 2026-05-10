@@ -39,5 +39,9 @@ jobs:
 
       - uses: DeterminateSystems/magic-nix-cache-action@main
 
+      # Run inside the rust-template devShell so `new-project.sh` (which
+      # the test invokes) has `treefmt` and the per-language formatter
+      # binaries on PATH -- the script itself does not bootstrap into a
+      # devShell; it expects the caller to have set up their environment.
       - name: Run formatter-coverage test
-        run: ./test-formatters.sh
+        run: nix develop --command ./test-formatters.sh
