@@ -78,7 +78,13 @@ echo "Creating $PROJECT_NAME in $OUTPUT ..."
 
 # Step 1: Copy template skeleton (without crate directories or build artifacts).
 mkdir -p "$OUTPUT"
-cp -r "$TEMPLATE_DIR/." "$OUTPUT/"
+# cp short flags (no long forms on BSD cp, so they cannot be spelled out):
+#   -R  recurse into directories
+#   -P  preserve symlinks instead of dereferencing them; required so that
+#       e.g. template/CLAUDE.md (a symlink to llms.org) ships as a symlink
+#       in the spawned project rather than as a duplicated file that can
+#       drift from its source.
+cp -RP "$TEMPLATE_DIR/." "$OUTPUT/"
 rm -rf "$OUTPUT/crates/cli" "$OUTPUT/crates/server" "$OUTPUT/crates/lib"
 rm -rf "$OUTPUT/target"
 

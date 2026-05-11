@@ -86,7 +86,11 @@ fi
 # Step 3: Copy the crate template.
 echo "  Adding crate: $CRATE_NAME (type: $CRATE_TYPE)"
 mkdir -p "$PROJECT_DIR/crates"
-cp -r "$TEMPLATE_DIR/crates/$CRATE_TYPE/" "$PROJECT_DIR/crates/$CRATE_NAME/"
+# cp short flags (no long forms on BSD cp, so they cannot be spelled out):
+#   -R  recurse into directories
+#   -P  preserve symlinks instead of dereferencing them, matching the
+#       symlink-preserving copy used in new-project.sh.
+cp -RP "$TEMPLATE_DIR/crates/$CRATE_TYPE/" "$PROJECT_DIR/crates/$CRATE_NAME/"
 
 # Remove the workspace-deps.toml from the copied crate — it is metadata for
 # this script, not a project file.
