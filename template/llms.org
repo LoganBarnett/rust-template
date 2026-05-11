@@ -52,6 +52,79 @@ punctuation.
 Only comment non-obvious intent, invariants, tradeoffs, or historical
 constraints; no restating of control flow.
 
+** Version Control
+*** Commit Messages
+
+A commit message logs a change that is suitable for a reviewer.  Generally
+speaking, we want to submit one commit per pull request.  Multiple commits can
+be presented in a pull request if somehow the changes are completely different
+yet required in order for the pull request to be considered complete.  Many git
+forge sites default the one-and-only-one commit as both a pull request title and
+description (from the commit summary and body).  We want to leverage that as
+much as we can.
+
+For the commit message content itself, the summary should be present tense with
+no prefixes and no "Conventional Commit" tagging.  Just tell us what happens if
+we apply the commit.  You can imagine a sentence starting with "Applying this
+commit will ..." an the commit message summary completes the sentence.  No
+punctuation at the end (this is our one and only one exception to the
+punctuation rule).
+
+Good:
+
+#+begin_example
+clarify documentation re: ritual summoning
+#+end_example
+
+#+begin_example
+simplify approach of detecting tachyons
+#+end_example
+
+#+begin_example
+add flux capacitor to front-end
+#+end_example
+
+Bad:
+
+#+begin_example
+(feat) Add a flux capacitor to the front-end in main.elm
+#+end_example
+
+The commit body is your opportunity to document the motivation for the changes
+(e.g. to fix a bug, to optimize a workflow, to add a new feature, and so on).
+This is the "why" part.  Why did were these changes necessary?  In addition,
+provide context for the change.  Does the bug fix come at some cost to
+performance?  Were other considerations made as part of the changes, and then
+discarded?  Is this the first commit in a series of similar refactors?
+
+A commit body that contains line numbers, file names, and symbol names
+(e.g. functions, variables, etc.) is a high scoring smell and should be avoided.
+
+One thing to be mindful of when crafting a commit is that whoever is viewing the
+commit _can always see what changed for themselves_.
+
+If you find yourself including critical information in the commit whose value
+extends outside of the commit (e.g. that this is a workaround or some surprising
+change), that should exist as a code comment.  It can be worth calling out such
+workarounds in the commit as well, but you don't need to specifically locate
+them (no line numbers, function names, and so on).
+
+Another reason not to include line numbers is that code formatters will change
+this as part of making the commit.
+
+*** History Hygiene
+
+We want to avoid commits that are essentially "I accomplished a task" and then
+later a "jk here's the rest of the task done".  When this happens, we should
+perform a fixup assuming the commits are unpublished.
+
+This tends to come up especially when you have a mega-commit for a bunch of
+unrelated work.  In these cases, the right thing to do is break up the work
+assuming the work can survive independently.
+
+In the event that you can't resolve these notions, halt and ask the operator for
+direction.
+
 ** Code
 
 *** Initialisms
