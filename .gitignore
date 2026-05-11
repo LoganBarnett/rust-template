@@ -16,3 +16,9 @@ target/
 
 # Local manifest of spawned projects (see config.template.json).
 config.json
+
+# The template ships a .claude/ directory (Stop hook + compliance subagent)
+# that must be emitted into every spawned project.  /etc/gitignore (or a
+# user-global ignore) excludes .claude/ wholesale; re-include the template's
+# copy so it tracks here.
+!template/.claude/
