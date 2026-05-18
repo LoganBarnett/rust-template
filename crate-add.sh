@@ -140,18 +140,18 @@ if [[ "$CRATE_TYPE" != "lib" ]]; then
         server) crate_description="Server process" ;;
     esac
 
-    # Indented to match the existing 8-space depth of `# CRATE_ENTRIES`
+    # Indented to match the existing 10-space depth of `# CRATE_ENTRIES`
     # in template/flake.nix.  The inserted block must be alejandra-clean
     # so spawned projects pass `treefmt --fail-on-change` out of the box;
     # the formatter-coverage test (test-formatters.sh) enforces this.
     sed_inplace "/# CRATE_ENTRIES/i\\
-        # CRATE:${CRATE_NAME}:begin\\
-        ${CRATE_NAME} = {\\
-          name = \"${PROJECT_NAME}-${CRATE_NAME}\";\\
-          binary = \"${PROJECT_NAME}-${CRATE_NAME}\";\\
-          description = \"${crate_description}\";\\
-        };\\
-        # CRATE:${CRATE_NAME}:end" "$PROJECT_DIR/flake.nix"
+          # CRATE:${CRATE_NAME}:begin\\
+          ${CRATE_NAME} = {\\
+            name = \"${PROJECT_NAME}-${CRATE_NAME}\";\\
+            binary = \"${PROJECT_NAME}-${CRATE_NAME}\";\\
+            description = \"${crate_description}\";\\
+          };\\
+          # CRATE:${CRATE_NAME}:end" "$PROJECT_DIR/flake.nix"
 fi
 
 # Step 7: Merge workspace dependencies from workspace-deps.toml.

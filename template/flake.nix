@@ -19,70 +19,84 @@
     changelog-roller,
     foundation,
   } @ inputs: let
-    project = foundation.lib.mkRustProject {
-      inherit self nixpkgs rust-overlay crane;
-      name = "rust-template";
-      crates = {
-        # CRATE_ENTRIES
-
-        # Note: The 'lib' crate is not included here as it doesn't
-        # produce a binary.
+    forAllSystems =
+      nixpkgs.lib.genAttrs nixpkgs.lib.systems.flakeExposed;
+    perSystem = forAllSystems (system: let
+      pkgs = import nixpkgs {
+        inherit system;
+        overlays = [(import rust-overlay)];
       };
-      extraDevPackages = system: pkgs: [
-        pkgs.cargo-sweep
-        pkgs.jq
-        # Elm toolchain
-        pkgs.elmPackages.elm
-        pkgs.elmPackages.elm-format
-        pkgs.elm2nix
-        # Unified formatter
-        pkgs.treefmt
-        pkgs.alejandra
-        pkgs.prettier
-        pkgs.just
-        changelog-roller.packages.${system}.default
-      ];
-      shellHook = _pkgs: ''
-        echo "Rust Template development environment"
-        echo ""
-        echo "Available Cargo packages (use 'cargo build -p <name>'):"
-        cargo metadata --no-deps --format-version 1 2>/dev/null | \
-          jq -r '.packages[].name' | \
-          sort | \
-          sed 's/^/  • /' || echo "  Run 'cargo init' to get started"
+      craneLib =
+        (crane.mkLib pkgs).overrideToolchain
+        (p: p.rust-bin.stable.latest.default);
+    in
+      foundation.lib.mkRustProject {
+        inherit self pkgs craneLib;
+        name = "rust-template";
+        crates = {
+          # CRATE_ENTRIES
 
-        echo ""
-        echo "Elm frontend (frontend/):"
-        echo "  Build:   cd frontend && elm make src/Main.elm --output public/elm.js"
-        echo "  Format:  treefmt"
-        echo "  After changing elm.json dependency versions, regenerate Nix files:"
-        echo "    cd frontend"
-        echo "    elm2nix convert 2>/dev/null > elm-srcs.nix"
-        echo "    elm2nix snapshot"
-        echo "    git add elm-srcs.nix registry.dat && git commit"
-      '';
-    };
-  in
-    project
-    // {
-      # ================================================================
-      # NIXOS MODULES
-      # ================================================================
-      nixosModules = {
-        server = import ./nix/modules/nixos-server.nix {
-          inherit self foundation;
+          # Note: The 'lib' crate is not included here as it doesn't
+          # produce a binary.
         };
-        default = self.nixosModules.server;
-      };
+        extraDevPackages = [
+          pkgs.cargo-sweep
+          pkgs.jq
+          # Elm toolchain
+          pkgs.elmPackages.elm
+          pkgs.elmPackages.elm-format
+          pkgs.elm2nix
+          # Unified formatter
+          pkgs.treefmt
+          pkgs.alejandra
+          pkgs.prettier
+          pkgs.just
+          changelog-roller.packages.${system}.default
+        ];
+        shellHook = ''
+          echo "Rust Template development environment"
+          echo ""
+          echo "Available Cargo packages (use 'cargo build -p <name>'):"
+          cargo metadata --no-deps --format-version 1 2>/dev/null | \
+            jq -r '.packages[].name' | \
+            sort | \
+            sed 's/^/  • /' || echo "  Run 'cargo init' to get started"
 
-      # ================================================================
-      # DARWIN MODULES
-      # ================================================================
-      darwinModules = {
-        server = import ./nix/modules/darwin-server.nix {
-          inherit self foundation;
-        };
-        default = self.darwinModules.server;
+          echo ""
+          echo "Elm frontend (frontend/):"
+          echo "  Build:   cd frontend && elm make src/Main.elm --output public/elm.js"
+          echo "  Format:  treefmt"
+          echo "  After changing elm.json dependency versions, regenerate Nix files:"
+          echo "    cd frontend"
+          echo "    elm2nix convert 2>/dev/null > elm-srcs.nix"
+          echo "    elm2nix snapshot"
+          echo "    git add elm-srcs.nix registry.dat && git commit"
+        '';
+      });
+  in {
+    devShells =
+      nixpkgs.lib.mapAttrs (_: p: {default = p.devShell;}) perSystem;
+    packages = nixpkgs.lib.mapAttrs (_: p: p.packages) perSystem;
+    apps = nixpkgs.lib.mapAttrs (_: p: p.apps) perSystem;
+
+    # ================================================================
+    # NIXOS MODULES
+    # ================================================================
+    nixosModules = {
+      server = import ./nix/modules/nixos-server.nix {
+        inherit self foundation;
       };
+      default = self.nixosModules.server;
     };
+
+    # ================================================================
+    # DARWIN MODULES
+    # ================================================================
+    darwinModules = {
+      server = import ./nix/modules/darwin-server.nix {
+        inherit self foundation;
+      };
+      default = self.darwinModules.server;
+    };
+  };
 }
