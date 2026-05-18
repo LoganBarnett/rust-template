@@ -189,7 +189,7 @@ that genuinely cannot be overridden (e.g. the =description= template
 that hardcodes =${name}=).  Apply the same change to
 =mkDarwinService=.
 
-* TODO Document the composition pattern for service helpers
+* DONE Document the composition pattern for service helpers
 The intent of =mkNixosService= / =mkDarwinService= is that downstream
 modules /compose/ with the helper rather than fork it — adding their
 own =options.services.<name>.foo= declarations under the same

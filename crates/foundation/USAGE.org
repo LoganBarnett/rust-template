@@ -674,3 +674,95 @@ let extra = Server::new(server.base_state().clone(), extra_config);
 | Post-listen cleanup        | Code after ~server.listen().await~ | Drain queues, close connections                |
 
 Every hook has a sensible default.  Touch only the hooks you need.
+
+* Service helpers (Nix)
+
+The ~mkNixosService~ and ~mkDarwinService~ flake helpers each emit a
+single module under ~services.<name>~.  They are designed to be
+/composed with/, not /forked from/ — spawned projects extend them by
+declaring additional options or overriding existing module values from
+a second module imported alongside.  No ~extraOptions~ parameter
+exists or is needed: the Nix module system's own merging is the
+extension point.
+
+The thin wrapper at ~nix/modules/nixos-server.nix~ (and its Darwin
+counterpart) is the natural place to add project-specific extensions.
+By default it forwards to the helper; turning it into a module
+function that imports the helper /and/ contributes its own options and
+config gives full composition with no additional plumbing.
+
+Every value the helpers set on ~serviceConfig~ / ~socketConfig~ /
+~launchd.servers.<name>.serviceConfig~ is wrapped in ~lib.mkDefault~,
+so plain assignment from a downstream module overrides cleanly.
+~lib.mkForce~ is needed only when overriding something the helper sets
+without ~mkDefault~ — typically lists like ~wantedBy~, ~after~, and
+~requires~, which the module system merges by concatenation anyway and
+so rarely benefit from a forced replacement.
+
+** Example: inject a generated TOML config file
+
+A common need is to render a configuration file from a Nix attribute
+and pass its path to the server via ~--config~.  After ~mkDefault~
+wrapping, plain assignment overrides the helper's ~ExecStart~ — no
+~mkForce~ required.
+
+#+begin_src nix :results none :exports code
+{
+  self,
+  foundation,
+}: {
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
+  cfg = config.services.rust-template-server;
+  rulesFile = (pkgs.formats.toml {}).generate "rules.toml" {
+    rules = cfg.rules;
+  };
+in {
+  imports = [
+    (foundation.lib.mkNixosService {
+      name = "rust-template-server";
+      inherit self;
+    })
+  ];
+
+  options.services.rust-template-server.rules = lib.mkOption {
+    type = lib.types.attrsOf lib.types.str;
+    default = {};
+    description = "Routing rules read by the server at startup.";
+  };
+
+  config = lib.mkIf cfg.enable {
+    systemd.services.rust-template-server.serviceConfig.ExecStart =
+      "${cfg.package}/bin/rust-template-server"
+      + (
+        if cfg.socket != null
+        then " --listen sd-listen"
+        else " --listen ${cfg.host}:${toString cfg.port}"
+      )
+      + " --frontend-path ${cfg.frontendPath}"
+      + " --config ${rulesFile}";
+  };
+}
+#+end_src
+
+** Lighter alternative: extend the environment
+
+Where the binary can read configuration through an environment
+variable, the override does not need to touch ~ExecStart~ at all — set
+the variable directly under the merged ~services.<name>~ environment.
+The helper applies ~mkDefault~ per key, so contributing a new key is
+pure addition with no override:
+
+#+begin_src nix :results none :exports code
+config = lib.mkIf cfg.enable {
+  systemd.services.rust-template-server.environment.rust_template_server_rules_path =
+    "${rulesFile}";
+};
+#+end_src
+
+The Darwin equivalent contributes to
+~launchd.servers.<name>.serviceConfig.EnvironmentVariables~ — same
+shape, different attribute path.
