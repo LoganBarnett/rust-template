@@ -115,14 +115,19 @@ in {
     systemd.sockets.${name} = lib.mkIf (cfg.socket != null) {
       description = "${name} Unix domain socket";
       wantedBy = ["sockets.target"];
+      # Scalar socketConfig entries are wrapped in lib.mkDefault so a
+      # downstream module can override individual fields with plain
+      # assignment.  Lists (wantedBy) are intentionally left plain so
+      # the NixOS module merger concatenates additions instead of
+      # treating downstream's list as a replacement.
       socketConfig = {
-        ListenStream = cfg.socket;
-        SocketUser = cfg.user;
-        SocketGroup = cfg.group;
+        ListenStream = lib.mkDefault cfg.socket;
+        SocketUser = lib.mkDefault cfg.user;
+        SocketGroup = lib.mkDefault cfg.group;
         # 0660: accessible to the service user and group only.  Add
         # the reverse proxy user to cfg.group to grant it access.
-        SocketMode = "0660";
-        Accept = false;
+        SocketMode = lib.mkDefault "0660";
+        Accept = lib.mkDefault false;
       };
     };
 
@@ -135,7 +140,10 @@ in {
       requires =
         lib.optional (cfg.socket != null) "${name}.socket";
 
-      environment =
+      # Per-key lib.mkDefault on environment.  The attrset itself is
+      # plain so downstream modules contributing new keys merge
+      # additively; existing keys remain overridable without mkForce.
+      environment = lib.mapAttrs (_: lib.mkDefault) (
         {
           "${envPrefix}_log_level" = cfg.logLevel;
           "${envPrefix}_log_format" = cfg.logFormat;
@@ -144,46 +152,51 @@ in {
         // lib.optionalAttrs (cfg.oidcIssuer != null) {
           "${envPrefix}_oidc_issuer" = cfg.oidcIssuer;
           "${envPrefix}_oidc_client_id" = cfg.oidcClientId;
-        };
+        }
+      );
 
+      # Every scalar serviceConfig value is wrapped in lib.mkDefault so
+      # downstream modules — for example, ones that need to inject a
+      # --config flag into ExecStart or pin a different User — can
+      # override with plain assignment instead of reaching for mkForce.
       serviceConfig = {
         # Type = notify causes systemd to wait for the binary to call
         # sd_notify(READY=1) before marking the unit active.  The
         # binary does this via the sd-notify crate immediately after
         # the listener is bound.  NotifyAccess = main restricts who
         # may send notifications to the main process only.
-        Type = "notify";
-        NotifyAccess = "main";
+        Type = lib.mkDefault "notify";
+        NotifyAccess = lib.mkDefault "main";
 
         # Restart if no WATCHDOG=1 heartbeat arrives within 30 s.
         # The binary reads WATCHDOG_USEC and pings at half this
-        # interval (15 s).  Override via
-        # systemd.services.<name>.serviceConfig.WatchdogSec.
+        # interval (15 s).
         WatchdogSec = lib.mkDefault "30s";
 
-        ExecStart =
+        ExecStart = lib.mkDefault (
           "${cfg.package}/bin/${name}"
           + (
             if cfg.socket != null
             then " --listen sd-listen"
             else " --listen ${cfg.host}:${toString cfg.port}"
           )
-          + " --frontend-path ${cfg.frontendPath}";
+          + " --frontend-path ${cfg.frontendPath}"
+        );
 
         LoadCredential =
           lib.mkIf (cfg.oidcClientSecretFile != null)
-          "oidc-client-secret:${cfg.oidcClientSecretFile}";
+          (lib.mkDefault "oidc-client-secret:${cfg.oidcClientSecretFile}");
 
-        User = cfg.user;
-        Group = cfg.group;
-        Restart = "on-failure";
-        RestartSec = "5s";
+        User = lib.mkDefault cfg.user;
+        Group = lib.mkDefault cfg.group;
+        Restart = lib.mkDefault "on-failure";
+        RestartSec = lib.mkDefault "5s";
 
         # Harden the service environment.
-        NoNewPrivileges = true;
-        PrivateTmp = true;
-        ProtectSystem = "strict";
-        ProtectHome = true;
+        NoNewPrivileges = lib.mkDefault true;
+        PrivateTmp = lib.mkDefault true;
+        ProtectSystem = lib.mkDefault "strict";
+        ProtectHome = lib.mkDefault true;
       };
     };
   };

@@ -168,9 +168,17 @@ in {
       chmod 0750 ${logDir}
     '';
 
+    # Every scalar serviceConfig value is wrapped in lib.mkDefault so
+    # downstream modules can override individual fields with plain
+    # assignment.  ProgramArguments and KeepAlive are also wrapped:
+    # they semantically represent "the launch command" and "the restart
+    # policy" — one value each, not lists of contributions — so a
+    # downstream replacement is the natural override shape.
+    # EnvironmentVariables is per-key mkDefault'd via mapAttrs so the
+    # attrset itself can still accept additive contributions.
     launchd.servers.${name} = {
       serviceConfig = {
-        ProgramArguments = let
+        ProgramArguments = lib.mkDefault (let
           sockSetup =
             lib.optionalString (cfg.socket != null)
             ("/bin/mkdir -p ${dirOf cfg.socket}"
@@ -186,15 +194,15 @@ in {
           (sockSetup
             + "/bin/wait4path ${cfg.package}"
             + " && exec /usr/bin/sudo -E -u ${cfg.user} ${execLine}")
-        ];
-        RunAtLoad = true;
-        KeepAlive = {
+        ]);
+        RunAtLoad = lib.mkDefault true;
+        KeepAlive = lib.mkDefault {
           Crashed = true;
           SuccessfulExit = false;
         };
-        ThrottleInterval = 30;
-        ProcessType = "Background";
-        EnvironmentVariables =
+        ThrottleInterval = lib.mkDefault 30;
+        ProcessType = lib.mkDefault "Background";
+        EnvironmentVariables = lib.mapAttrs (_: lib.mkDefault) (
           {
             "${envPrefix}_log_level" = cfg.logLevel;
             "${envPrefix}_log_format" = cfg.logFormat;
@@ -204,9 +212,10 @@ in {
             "${envPrefix}_oidc_issuer" = cfg.oidcIssuer;
             "${envPrefix}_oidc_client_id" = cfg.oidcClientId;
             "${envPrefix}_oidc_client_secret_file" = cfg.oidcClientSecretFile;
-          };
-        StandardOutPath = "${logDir}/stdout.log";
-        StandardErrorPath = "${logDir}/stderr.log";
+          }
+        );
+        StandardOutPath = lib.mkDefault "${logDir}/stdout.log";
+        StandardErrorPath = lib.mkDefault "${logDir}/stderr.log";
       };
     };
 
@@ -217,16 +226,16 @@ in {
       lib.mkIf cfg.healthCheck.enable
       {
         serviceConfig = {
-          ProgramArguments = [
+          ProgramArguments = lib.mkDefault [
             "/bin/sh"
             "-c"
             ''/usr/bin/curl -sf ${cfg.healthCheck.url} || /bin/kill $(/bin/cat /var/run/${name}/pid) 2>/dev/null''
           ];
-          StartInterval = 30;
-          RunAtLoad = false;
-          ProcessType = "Background";
-          StandardOutPath = "${logDir}/healthcheck-stdout.log";
-          StandardErrorPath = "${logDir}/healthcheck-stderr.log";
+          StartInterval = lib.mkDefault 30;
+          RunAtLoad = lib.mkDefault false;
+          ProcessType = lib.mkDefault "Background";
+          StandardOutPath = lib.mkDefault "${logDir}/healthcheck-stdout.log";
+          StandardErrorPath = lib.mkDefault "${logDir}/healthcheck-stderr.log";
         };
       };
   };
