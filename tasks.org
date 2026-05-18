@@ -168,6 +168,66 @@ pub struct Config {
    base_url.  User provides ~resolve_oidc~, ~Display~, and ~ServerApp~ impls
    manually.
 
+* TODO Service helpers should use mkDefault for overridable config
+=mkNixosService= and =mkDarwinService= currently assign most of the
+systemd / launchd configuration as plain values (=ExecStart=, =Type=,
+=User=, =Group=, =Restart=, =RestartSec=, =environment=, =wantedBy=,
+=after=, =requires=, the hardening flags, etc.).  Only =WatchdogSec=
+is wrapped in =lib.mkDefault=.
+
+This forces any downstream module that needs to extend the service —
+for example to inject a =--config <generated.toml>= flag into
+=ExecStart= or add a project-specific environment variable — to use
+=lib.mkForce=, which reads as "I'm fighting the helper" when the
+intent is just "extend it."  Composition is the Nix module system's
+native mechanism for this; the helper should make it the path of
+least resistance.
+
+Fix: wrap every value a downstream module might reasonably want to
+override in =lib.mkDefault=.  Keep plain assignment only for things
+that genuinely cannot be overridden (e.g. the =description= template
+that hardcodes =${name}=).  Apply the same change to
+=mkDarwinService=.
+
+* TODO Document the composition pattern for service helpers
+The intent of =mkNixosService= / =mkDarwinService= is that downstream
+modules /compose/ with the helper rather than fork it — adding their
+own =options.services.<name>.foo= declarations under the same
+namespace and overriding =ExecStart= (or other items, once mkDefault
+is in place) when the project needs additional flags or environment
+entries.  This is the standard Nix module merging behaviour, but the
+current USAGE.org doesn't show the pattern.
+
+Without a worked example, spawned projects either re-implement their
+own equivalent module from scratch or assume the helpers are
+non-extensible.  Either way the helper's value is unrealised.
+
+Fix: add a "Service helpers" section to =USAGE.org= with:
+- A note that =options.services.<name>= can be extended by any
+  downstream module — no formal =extraOptions= parameter exists or
+  is needed.
+- A worked example: a spawned project that declares
+  =services.<name>.someProjectOption=, generates a TOML config file
+  from it, and overrides =services.<name>.serviceConfig.ExecStart=
+  to inject =--config <path>=.
+
+* DONE Pre-commit hook skips renamed files
+The hook collects staged files with =git diff --staged --name-only
+--diff-filter=ACM=, which filters to *A*dded / *C*opied / *M*odified
+and silently excludes *R*enamed.  When =git mv= is followed by edits to
+the renamed file's content (the common case), git classifies the
+staged change as =R= rather than =M=, so the path never lands in
+=STAGED_FILES=.  treefmt is then invoked without that file, the
+re-stage loop skips it, and the commit captures whatever pre-format
+content the rename left behind.  The working tree later shows a diff
+against HEAD once anything else triggers treefmt over the affected
+file, which reads as "files get modified after the commit" — the
+artifact that surfaced this.
+
+Fix: change the filter to =ACMR= so renames are included.  Verify by
+staging a =git mv= + content edit and confirming the post-commit
+working tree matches HEAD.
+
 * DONE Nix mkNixosService / mkDarwinService helpers
 Extract the ~150-line NixOS and Darwin service modules into reusable helper
 functions exported from the template repo's flake.  Spawned projects add

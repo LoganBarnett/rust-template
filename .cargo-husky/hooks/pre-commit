@@ -9,8 +9,11 @@ set -e
 # Get list of staged Rust files
 # --staged: only files in the staging area
 # --name-only: show only filenames, not diffs
-# --diff-filter=ACM: only Added, Copied, or Modified files (not Deleted)
-STAGED_RS_FILES=$(git diff --staged --name-only --diff-filter=ACM | grep '\.rs$' || true)
+# --diff-filter=ACMR: Added, Copied, Modified, or Renamed.  Renames
+# must be included — git classifies a `git mv` + content edit as R,
+# not M, so omitting R silently skips the renamed file and the commit
+# captures pre-format content.
+STAGED_RS_FILES=$(git diff --staged --name-only --diff-filter=ACMR | grep '\.rs$' || true)
 
 if [ -z "$STAGED_RS_FILES" ]; then
   echo "No Rust files staged for commit."

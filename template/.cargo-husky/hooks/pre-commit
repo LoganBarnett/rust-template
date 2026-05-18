@@ -5,8 +5,11 @@
 
 set -e
 
-# Collect staged filenames (Added, Copied, or Modified only).
-STAGED_FILES=$(git diff --staged --name-only --diff-filter=ACM || true)
+# Collect staged filenames (Added, Copied, Modified, or Renamed).
+# Renames must be included — git classifies a `git mv` + content edit
+# as R, not M, so omitting R silently skips the renamed file and the
+# commit captures pre-format content.
+STAGED_FILES=$(git diff --staged --name-only --diff-filter=ACMR || true)
 
 if [ -z "$STAGED_FILES" ]; then
   exit 0
