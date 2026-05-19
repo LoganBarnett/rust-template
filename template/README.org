@@ -3,8 +3,7 @@
 
 * Introduction
 
-Briefly describe the problem this project solves and how it solves it.
-Cover:
+Briefly describe the problem this project solves and how it solves it.  Cover:
 
 - What pain point or workflow does this address?
 - How does this project fit into a user's existing toolchain?
@@ -18,40 +17,36 @@ Explain how to install the project.  Cover at minimum:
 
 - Installing from source (include any toolchain or system prerequisites).
 - Installing a pre-built release artifact, if applicable.
-- Installing the library crate via ~Cargo.toml~, if the project ships
-  one.
+- Installing the library crate via ~Cargo.toml~, if the project ships one.
 
 * Nix flake exports
 
-Document the flake outputs so consumers know what is available.
-The template flake provides these by default:
+Document the flake outputs so consumers know what is available.  The template
+flake provides these by default:
 
 - =packages.${system}.default= — full workspace build.
 - =packages.${system}.cli= — CLI binary only.
 - =apps.${system}.cli= — runnable app entry point.
 - =devShells.${system}.default= — development shell.
-- =nixosModules.server= / =nixosModules.default= — NixOS service
-  module.
-- =darwinModules.server= / =darwinModules.default= — nix-darwin
-  service module.
+- =nixosModules.server= / =nixosModules.default= — NixOS service module.
+- =darwinModules.server= / =darwinModules.default= — nix-darwin service module.
 
-Update this list as you add or remove flake outputs (overlays,
-additional modules, etc.).
+Update this list as you add or remove flake outputs (overlays, additional
+modules, etc.).
 
 * Usage
 
 Show the most common invocations with concrete, copy-pasteable
-examples.  Prefer real-looking inputs and outputs over abstract
-placeholders.
+examples. Prefer real-looking inputs and outputs over abstract placeholders.
 
-Organize sub-sections around the features a user is most likely to
-reach for first.  Avoid exhaustively listing every flag here — the
-~--help~ output covers that.
+Organize sub-sections around the features a user is most likely to reach for
+first.  Avoid exhaustively listing every flag here — the ~--help~ output covers
+that.
 
 * Gotchas and Tradeoffs
 
-Document the non-obvious behaviors and design decisions that a user
-is likely to trip over:
+Document the non-obvious behaviors and design decisions that a user is likely to
+trip over:
 
 - Default behaviors that differ from what users might expect.
 - Known limitations (finite color palette, heuristic detection, etc.).
@@ -64,11 +59,11 @@ Provide a brief tour of less-obvious knobs:
 
 - Environment variables that mirror CLI flags.
 - Flags that interact non-trivially with each other.
-- Edge cases worth demonstrating (empty input, special characters,
-  large input, etc.).
+- Edge cases worth demonstrating (empty input, special characters, large input,
+  etc.).
 
-This section can be more terse than the main Usage section — its
-purpose is discoverability, not a tutorial.
+This section can be more terse than the main Usage section — its purpose is
+discoverability, not a tutorial.
 
 * Contributing
 

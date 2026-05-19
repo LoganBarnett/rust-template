@@ -10,16 +10,15 @@ OpenAPI, OIDC authentication, systemd integration, and a managed entry point.
 The crate is organised behind feature flags so projects only pay for what they
 use:
 
-- *cli* — ~CommonConfigFile~ (file side of the CLI/file merge), CLI
-  logging, the ~CliApp~ trait, the ~MergeConfig~ derive (which generates
-  ~CliRaw~ inline with per-app-prefixed env vars), and the
-  ~#[foundation_main]~ proc macro.
+- *cli* — ~CommonConfigFile~ (file side of the CLI/file merge), CLI logging, the
+  ~CliApp~ trait, the ~MergeConfig~ derive (which generates ~CliRaw~ inline with
+  per-app-prefixed env vars), and the ~#[foundation_main]~ proc macro.
 - *server* — Health registry, metrics endpoint, OpenAPI/Scalar helpers, SPA
   fallback, systemd notify/watchdog, server logging.
 - *auth* (implies ~server~ + ~cli~) — OIDC login/callback/logout handlers,
   ~require_auth~ middleware, ~Server~ runner, ~ServerApp~ trait,
-  ~BaseServerState~, and JWT bearer-token validation for service /
-  automation callers (see [[*JWT bearer auth (automation callers)]]).
+  ~BaseServerState~, and JWT bearer-token validation for service / automation
+  callers (see [[*JWT bearer auth (automation callers)]]).
 
 * Quick start: server
 
@@ -170,8 +169,8 @@ Build the complete ~Router~ without binding a listener.  Uses
 
 ** ~.base_state()~
 
-Access the shared ~BaseServerState~.  Clone this to create additional servers
-on different ports/sockets.
+Access the shared ~BaseServerState~.  Clone this to create additional servers on
+different ports/sockets.
 
 * ~BaseServerState~
 
@@ -227,22 +226,20 @@ let protected = ApiRouter::new()
 
 * JWT bearer auth (automation callers)
 
-Browser users authenticate via the OIDC session flow above.  Service
-clients, scripts, and other automation authenticate by sending a
-signed JWT in ~Authorization: Bearer <token>~, validated against an
-issuer's JWKS.  This path is independent of ~require_auth~ — there is
-no session cookie involved — and is intended to make automation a
-first-class caller rather than an afterthought.
+Browser users authenticate via the OIDC session flow above.  Service clients,
+scripts, and other automation authenticate by sending a signed JWT in
+~Authorization: Bearer <token>~, validated against an issuer's JWKS.  This path
+is independent of ~require_auth~ — there is no session cookie involved — and is
+intended to make automation a first-class caller rather than an afterthought.
 
-The building blocks live in ~rust_template_foundation::auth::jwt~ and
-are intentionally not auto-wired into ~BaseServerState~: the claims
-type is application-specific, so apps embed a ~Decoder<T>~ in their
-own state.
+The building blocks live in ~rust_template_foundation::auth::jwt~ and are
+intentionally not auto-wired into ~BaseServerState~: the claims type is
+application-specific, so apps embed a ~Decoder<T>~ in their own state.
 
 ** Default claims (~ServiceClaims~)
 
-For the common case — registered claims plus a flattened map of
-extras — use the bundled ~ServiceClaims~ struct:
+For the common case — registered claims plus a flattened map of extras — use the
+bundled ~ServiceClaims~ struct:
 
 #+begin_src rustic :results none :exports code
 use axum::{Router, routing::get, extract::FromRef, Json};
@@ -271,16 +268,15 @@ let app = Router::new()
   .with_state(state);
 #+end_src
 
-~build_decoder~ performs the initial JWKS fetch synchronously — a
-misconfigured issuer surfaces as a startup error rather than a flood
-of 401s — and spawns a background refresh task whose lifetime is tied
-to the process.
+~build_decoder~ performs the initial JWKS fetch synchronously — a misconfigured
+issuer surfaces as a startup error rather than a flood of 401s — and spawns a
+background refresh task whose lifetime is tied to the process.
 
 ** Bringing your own claims struct
 
-When you need typed access to provider-specific claims (~scope~,
-~roles~, tenant identifiers, etc.), define your own struct and
-parameterise ~build_decoder~ over it:
+When you need typed access to provider-specific claims (~scope~, ~roles~, tenant
+identifiers, etc.), define your own struct and parameterise ~build_decoder~ over
+it:
 
 #+begin_src rustic :results none :exports code
 #[derive(Clone, serde::Deserialize)]
@@ -296,26 +292,25 @@ let decoder: Decoder<MyClaims> = build_decoder::<MyClaims>(&config).await?;
 // Pair with Claims<MyClaims> in handlers.
 #+end_src
 
-The only requirement is ~T: DeserializeOwned + Send + Sync + 'static~.
-The same ~RemoteJwksDecoder~ instance underneath supports any claims
-type — only the trait-object coercion picks ~T~.
+The only requirement is ~T: DeserializeOwned + Send + Sync + 'static~.  The same
+~RemoteJwksDecoder~ instance underneath supports any claims type — only the
+trait-object coercion picks ~T~.
 
 ** Validation rules
 
 ~JwtConfig::validation()~ produces a ~jsonwebtoken::Validation~ with:
 
-- ~algorithms~ set from the config (defaults to ~RS256~ if empty —
-  empty would otherwise disable algorithm checking, which is almost
-  never what you want).
+- ~algorithms~ set from the config (defaults to ~RS256~ if empty — empty would
+  otherwise disable algorithm checking, which is almost never what you want).
 - ~iss~ set to the configured issuer.
 - ~aud~ set to the configured audiences (skipped if empty).
-- Default ~jsonwebtoken~ behaviour for everything else — notably a
-  60-second leeway on ~exp~ / ~nbf~.
+- Default ~jsonwebtoken~ behaviour for everything else — notably a 60-second
+  leeway on ~exp~ / ~nbf~.
 
 The full ~Validation~ surface is exposed if you need to tweak it
-(~required_spec_claims~, ~leeway~, etc.) — construct one yourself and
-pass it to ~RemoteJwksDecoder::builder()~ directly instead of going
-through ~build_decoder~.
+(~required_spec_claims~, ~leeway~, etc.) — construct one yourself and pass it to
+~RemoteJwksDecoder::builder()~ directly instead of going through
+~build_decoder~.
 
 * Testing
 
@@ -350,8 +345,8 @@ the generated ~CliRaw~.  The field's type is forwarded verbatim, so required
 vs. optional follows the type:
 
 - ~pub command: Commands~ — clap requires a subcommand.
-- ~pub command: Option<Commands>~ — running the binary with no subcommand
-  yields ~None~.
+- ~pub command: Option<Commands>~ — running the binary with no subcommand yields
+  ~None~.
 
 #+begin_src rustic :results none :exports code
 #[derive(clap::Args)]
@@ -399,22 +394,22 @@ pub fn main(config: Config) -> Result<ExitCode, AppError> {
 
 Subcommand fields are *CLI-only*.  They are deliberately omitted from
 ~ConfigFileRaw~ — TOML has no clean tagged-enum mapping for clap-style
-subcommands, and "default subcommand pinned by config file" is not a goal
-of this macro.  Per-variant arg defaults from the config file remain a
-possible future addition; today, projects that want such defaults should
-layer them in the variant's own ~Args~ struct or via a wrapper script.
+subcommands, and "default subcommand pinned by config file" is not a goal of
+this macro.  Per-variant arg defaults from the config file remain a possible
+future addition; today, projects that want such defaults should layer them in
+the variant's own ~Args~ struct or via a wrapper script.
 
-The ~subcommand~ kind rejects ~default~, ~required~, ~env~, ~short~,
-~parse~, ~cli_only~, and ~name~.  Those attributes have no meaning for a
-passthrough field — the macro errors at compile time if any are present.
+The ~subcommand~ kind rejects ~default~, ~required~, ~env~, ~short~, ~parse~,
+~cli_only~, and ~name~.  Those attributes have no meaning for a passthrough
+field — the macro errors at compile time if any are present.
 
 At most one ~subcommand~ field is permitted per struct.
 
 ** Extension points: ~extra_cli~, ~extra_file~, ~extra_error~
 
-The struct-level ~merge_config~ attribute accepts three optional paths
-that let a project widen the macro's surface without forking it.  Each
-takes a string-quoted Rust path:
+The struct-level ~merge_config~ attribute accepts three optional paths that let
+a project widen the macro's surface without forking it.  Each takes a
+string-quoted Rust path:
 
 #+begin_src rustic :results none :exports code
 #[derive(MergeConfig)]
@@ -430,33 +425,32 @@ pub struct Config { /* … */ }
 *** ~extra_cli = "Type"~
 
 Flattens ~Type~ (a ~clap::Args~ struct) into the generated ~CliRaw~ via
-~#[command(flatten)]~.  Use this for groups of CLI-only arguments that
-do not belong on the merged ~Config~ — typically the inputs to a ~skip~
-field's ~resolve_<field>~ method.
+~#[command(flatten)]~.  Use this for groups of CLI-only arguments that do not
+belong on the merged ~Config~ — typically the inputs to a ~skip~ field's
+~resolve_<field>~ method.
 
 The flattened struct appears as ~cli.extra~ inside resolvers.
 
 *** ~extra_file = "Type"~
 
 Flattens ~Type~ (a ~serde::Deserialize~ struct) into the generated
-~ConfigFileRaw~ via ~#[serde(flatten)]~.  Companion to ~extra_cli~ for
-inputs that also need a config-file source.
+~ConfigFileRaw~ via ~#[serde(flatten)]~.  Companion to ~extra_cli~ for inputs
+that also need a config-file source.
 
 The flattened struct appears as ~file.extra~ inside resolvers.
 
 *** ~extra_error = "Type"~
 
 Adds an ~Extra(Type)~ variant to the generated ~ConfigError~ with
-~#[error(transparent)]~ and ~impl From<Type> for ConfigError~.  Without
-this, the only escape hatch for resolver failures is
-~ConfigError::Validation(String)~ — a flattened message that loses any
-structure the original error carried.  ~extra_error~ preserves the
-caller's error type intact, so ~Display~ output is unchanged and
-downstream code can still match on the original variants.
+~#[error(transparent)]~ and ~impl From<Type> for ConfigError~.  Without this,
+the only escape hatch for resolver failures is ~ConfigError::Validation(String)~
+— a flattened message that loses any structure the original error carried.
+~extra_error~ preserves the caller's error type intact, so ~Display~ output is
+unchanged and downstream code can still match on the original variants.
 
-A ~resolve_<field>~ method can then return ~Result<T, MyError>~
-directly, and the ~?~ inside the macro-generated ~from_cli_and_file~
-will convert it via the auto-generated ~From~:
+A ~resolve_<field>~ method can then return ~Result<T, MyError>~ directly, and
+the ~?~ inside the macro-generated ~from_cli_and_file~ will convert it via the
+auto-generated ~From~:
 
 #+begin_src rustic :results none :exports code
 #[derive(thiserror::Error, Debug)]
@@ -486,19 +480,18 @@ impl Config {
 }
 #+end_src
 
-Callers that need to discriminate get ~ConfigError::Extra(MyError::…)~
-back; callers that only print the error see the inner ~Display~
-verbatim, with no extra wrapper text.
+Callers that need to discriminate get ~ConfigError::Extra(MyError::…)~ back;
+callers that only print the error see the inner ~Display~ verbatim, with no
+extra wrapper text.
 
 * Environment variables
 
 ** Naming scheme
 
 Every env-var name read by an app generated through ~MergeConfig~ is
-*lowercase*, with the app name as a prefix and underscores between
-words: ~<app>_<flag>~.  Hyphens in the app name become underscores
-(POSIX env-var names are restricted to letters, digits, and
-underscore).
+*lowercase*, with the app name as a prefix and underscores between words:
+~<app>_<flag>~.  Hyphens in the app name become underscores (POSIX env-var names
+are restricted to letters, digits, and underscore).
 
 Concrete examples for ~app_name = "example-server"~:
 
@@ -512,11 +505,10 @@ Concrete examples for ~app_name = "example-server"~:
 
 ** Why lowercase?  POSIX §8.1
 
-The convention many projects reach for —
-~APP_THING_IN_SHOUTING_CASE~ — is the convention POSIX defines for
-its /own/ utility variables (~PATH~, ~HOME~, ~LANG~, …), not for
-application variables.  The relevant standard is IEEE Std 1003.1-2017
-(POSIX.1-2017), [[https://pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap08.html][Chapter 8 — Environment Variables]].
+The convention many projects reach for — ~APP_THING_IN_SHOUTING_CASE~ — is the
+convention POSIX defines for its /own/ utility variables (~PATH~, ~HOME~,
+~LANG~, …), not for application variables.  The relevant standard is IEEE Std
+1003.1-2017 (POSIX.1-2017), [[https://pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap08.html][Chapter 8 — Environment Variables]].
 
 §8.1 states (verbatim):
 
@@ -539,93 +531,80 @@ modifying the behavior of the standard utilities.
 The standard distinguishes /Standard Utilities/ from /Applications/.
 [[https://pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap03.html][Chapter 3 — Definitions]] gives:
 
-- *§3.17 Application:* "A computer program that performs some desired
-  function."
-- *§3.369 Standard Utilities:* "The utilities described in the Shell
-  and Utilities volume of POSIX.1-2017."
+- *§3.17 Application:* "A computer program that performs some desired function."
+- *§3.369 Standard Utilities:* "The utilities described in the Shell and
+  Utilities volume of POSIX.1-2017."
 
-Anything any of us writes is an /Application/ by §3.17 — utilities are
-the specific programs the standard itself describes.  So the
-namespace explicitly carved out for /our/ env vars is the one
-containing lowercase letters.  Using lowercase is what the standard
-asks for and is guaranteed not to collide with current or future
-POSIX utility variables.
+Anything any of us writes is an /Application/ by §3.17 — utilities are the
+specific programs the standard itself describes.  So the namespace explicitly
+carved out for /our/ env vars is the one containing lowercase letters.  Using
+lowercase is what the standard asks for and is guaranteed not to collide with
+current or future POSIX utility variables.
 
-The widespread instinct to write ~APP_FOO~ for application variables
-is a cargo-culted carry-over from the §8.1 utility rule.  It is not
-required by any tool in a normal Unix deployment path — POSIX shells
-(bash, zsh, dash), systemd ~Environment=~, Docker ~ENV~, Kubernetes
-env, clap's ~env = "..."~, and CI runners (GitHub Actions, GitLab CI)
-all preserve case and treat the name verbatim.
+The widespread instinct to write ~APP_FOO~ for application variables is a
+cargo-culted carry-over from the §8.1 utility rule.  It is not required by any
+tool in a normal Unix deployment path — POSIX shells (bash, zsh, dash), systemd
+~Environment=~, Docker ~ENV~, Kubernetes env, clap's ~env = "..."~, and CI
+runners (GitHub Actions, GitLab CI) all preserve case and treat the name
+verbatim.
 
 ** Why prefix?
 
-POSIX does not mandate a prefix, but it does warn that the lowercase
-namespace is shared across all applications on the system.  A bare
-name like ~listen~ or ~base_url~ is liable to collide with another
-process's variables or with a developer's shell environment, and
-~LISTEN~ specifically lives near systemd's ~LISTEN_FDS~ /
-~LISTEN_PID~ socket-activation contract.  Prefixing with the app name
-sidesteps both.
+POSIX does not mandate a prefix, but it does warn that the lowercase namespace
+is shared across all applications on the system.  A bare name like ~listen~ or
+~base_url~ is liable to collide with another process's variables or with a
+developer's shell environment, and ~LISTEN~ specifically lives near systemd's
+~LISTEN_FDS~ / ~LISTEN_PID~ socket-activation contract.  Prefixing with the app
+name sidesteps both.
 
 ** ~env~ vs ~env = "literal"~
 
-The ~MergeConfig~ derive accepts two forms of the ~env~ attribute on
-merged fields:
+The ~MergeConfig~ derive accepts two forms of the ~env~ attribute on merged
+fields:
 
-- *Bare ~env~* — derive the name as ~<app>_<flag>~, where ~flag~ is
-  the ~name = "..."~ override if present, otherwise the field
-  identifier.  Use this whenever the derivation gives the right
-  answer.
+- *Bare ~env~* — derive the name as ~<app>_<flag>~, where ~flag~ is the ~name =
+  "..."~ override if present, otherwise the field
+  identifier. Use this whenever the derivation gives the right answer.
 
-  #+begin_src rustic :results none :exports code
-  #[merge_config(env, required)]
-  pub base_url: String,
-  // → reads `<app>_base_url`
-  #+end_src
+#+begin_src rustic :results none :exports code #[merge_config(env, required)]
+pub base_url: String, // → reads `<app>_base_url` #+end_src
 
-- *~env = "literal"~* — use the literal verbatim, with no prefixing.
-  Reserved for genuine deviations: a name imposed by an external
-  contract, or the rare case where the derived form is wrong.  When
-  you reach for the literal form, leave a comment beside it that
-  explains *why* it deviates — the explicit form is now the
-  attention-getter, so it should earn the attention.
+- *~env = "literal"~* — use the literal verbatim, with no prefixing.  Reserved
+  for genuine deviations: a name imposed by an external contract, or the rare
+  case where the derived form is wrong.  When you reach for the literal form,
+  leave a comment beside it that explains *why* it deviates — the explicit form
+  is now the attention-getter, so it should earn the attention.
 
-  #+begin_src rustic :results none :exports code
-  // External: matches the legacy `MYORG_LICENCE_KEY` contract used
-  // by every other tool in the suite; do not rename without updating
-  // those callers.
-  #[merge_config(env = "MYORG_LICENCE_KEY", required)]
-  pub licence_key: String,
-  #+end_src
+#+begin_src rustic :results none :exports code // External: matches the legacy
+`MYORG_LICENCE_KEY` contract used // by every other tool in the suite; do not
+rename without updating // those callers.  #[merge_config(env =
+"MYORG_LICENCE_KEY", required)] pub licence_key: String, #+end_src
 
 Omit the attribute entirely on fields that should *not* read from the
-environment (subcommand selectors, secrets you want to source only
-from a credential file, etc.).
+environment (subcommand selectors, secrets you want to source only from a
+credential file, etc.).
 
 ** Consequences for tooling
 
-A field's env-var name is no longer a literal string in the source —
-it is derived at macro expansion.  Two ways to recover the spelling:
+A field's env-var name is no longer a literal string in the source — it is
+derived at macro expansion.  Two ways to recover the spelling:
 
-- Run the binary with ~--help~.  Clap prints each flag's env-var name
-  in the right-hand column ("[env: ~my_app_listen~]"), so a user
-  trying to find the right variable to set has the answer in front of
-  them with no source dive.
-- ~cargo expand~ shows the expanded ~CliRaw~ if you need to confirm
-  exactly what clap sees, or want to grep the post-expansion form.
+- Run the binary with ~--help~.  Clap prints each flag's env-var name in the
+  right-hand column ("[env: ~my_app_listen~]"), so a user trying to find the
+  right variable to set has the answer in front of them with no source dive.
+- ~cargo expand~ shows the expanded ~CliRaw~ if you need to confirm exactly what
+  clap sees, or want to grep the post-expansion form.
 
-When grepping the source itself, search by the field name (or, for a
-~name~ override, by the override) rather than by the env-var
-spelling.
+When grepping the source itself, search by the field name (or, for a ~name~
+override, by the override) rather than by the env-var spelling.
 
 * Systemd integration
 
 Foundation provides built-in systemd integration:
 
 - *~notify_ready()~* — sends ~READY=1~ to systemd when the server is listening.
-- *~spawn_watchdog()~* — sends heartbeats at half the configured
-  ~WATCHDOG_USEC~ interval.
+- *~spawn_watchdog()~* — sends heartbeats at half the configured ~WATCHDOG_USEC~
+  interval.
 - *Socket activation* — ~tokio-listener~ supports ~sd-listen~ for inheriting
   sockets from systemd.
 - *Credential loading* — ~credential_secret_path()~ reads OIDC client secrets
@@ -677,34 +656,31 @@ Every hook has a sensible default.  Touch only the hooks you need.
 
 * Service helpers (Nix)
 
-The ~mkNixosService~ and ~mkDarwinService~ flake helpers each emit a
-single module under ~services.<name>~.  They are designed to be
-/composed with/, not /forked from/ — spawned projects extend them by
-declaring additional options or overriding existing module values from
-a second module imported alongside.  No ~extraOptions~ parameter
-exists or is needed: the Nix module system's own merging is the
-extension point.
+The ~mkNixosService~ and ~mkDarwinService~ flake helpers each emit a single
+module under ~services.<name>~.  They are designed to be /composed with/, not
+/forked from/ — spawned projects extend them by declaring additional options or
+overriding existing module values from a second module imported alongside.  No
+~extraOptions~ parameter exists or is needed: the Nix module system's own
+merging is the extension point.
 
 The thin wrapper at ~nix/modules/nixos-server.nix~ (and its Darwin
-counterpart) is the natural place to add project-specific extensions.
-By default it forwards to the helper; turning it into a module
-function that imports the helper /and/ contributes its own options and
-config gives full composition with no additional plumbing.
+counterpart) is the natural place to add project-specific extensions.  By
+             default it forwards to the helper; turning it into a module
+             function that imports the helper /and/ contributes its own options
+             and config gives full composition with no additional plumbing.
 
 Every value the helpers set on ~serviceConfig~ / ~socketConfig~ /
-~launchd.servers.<name>.serviceConfig~ is wrapped in ~lib.mkDefault~,
-so plain assignment from a downstream module overrides cleanly.
-~lib.mkForce~ is needed only when overriding something the helper sets
-without ~mkDefault~ — typically lists like ~wantedBy~, ~after~, and
-~requires~, which the module system merges by concatenation anyway and
-so rarely benefit from a forced replacement.
+~launchd.servers.<name>.serviceConfig~ is wrapped in ~lib.mkDefault~, so plain
+assignment from a downstream module overrides cleanly.  ~lib.mkForce~ is needed
+only when overriding something the helper sets without ~mkDefault~ — typically
+lists like ~wantedBy~, ~after~, and ~requires~, which the module system merges
+by concatenation anyway and so rarely benefit from a forced replacement.
 
 ** Example: inject a generated TOML config file
 
-A common need is to render a configuration file from a Nix attribute
-and pass its path to the server via ~--config~.  After ~mkDefault~
-wrapping, plain assignment overrides the helper's ~ExecStart~ — no
-~mkForce~ required.
+A common need is to render a configuration file from a Nix attribute and pass
+its path to the server via ~--config~.  After ~mkDefault~ wrapping, plain
+assignment overrides the helper's ~ExecStart~ — no ~mkForce~ required.
 
 #+begin_src nix :results none :exports code
 {
@@ -750,11 +726,10 @@ in {
 
 ** Lighter alternative: extend the environment
 
-Where the binary can read configuration through an environment
-variable, the override does not need to touch ~ExecStart~ at all — set
-the variable directly under the merged ~services.<name>~ environment.
-The helper applies ~mkDefault~ per key, so contributing a new key is
-pure addition with no override:
+Where the binary can read configuration through an environment variable, the
+override does not need to touch ~ExecStart~ at all — set the variable directly
+under the merged ~services.<name>~ environment.  The helper applies ~mkDefault~
+per key, so contributing a new key is pure addition with no override:
 
 #+begin_src nix :results none :exports code
 config = lib.mkIf cfg.enable {
@@ -764,5 +739,5 @@ config = lib.mkIf cfg.enable {
 #+end_src
 
 The Darwin equivalent contributes to
-~launchd.servers.<name>.serviceConfig.EnvironmentVariables~ — same
-shape, different attribute path.
+~launchd.servers.<name>.serviceConfig.EnvironmentVariables~ — same shape,
+different attribute path.

@@ -10,8 +10,8 @@ automatically.
 
 ** Linting
 
-Run ~cargo clippy --workspace~ and resolve any warnings before opening
-a pull request.
+Run ~cargo clippy --workspace~ and resolve any warnings before opening a pull
+request.
 
 ** Testing
 
@@ -25,21 +25,20 @@ Tests and test scripts must exit with a proper error code.
 
 * Error handling
 
-This project uses *semantic error types* with ~thiserror~ rather than
-generic error wrapping with ~anyhow~.
+This project uses *semantic error types* with ~thiserror~ rather than generic
+error wrapping with ~anyhow~.
 
 ** Why not ~anyhow~?
 
-While ~anyhow~ is convenient, it encourages lazy error handling that
-loses important context.  When an error occurs in production you often
-only have logs to work with.  A bare "No such file or directory"
-message with no indication of /which/ file or /what/ operation failed
-is not actionable.
+While ~anyhow~ is convenient, it encourages lazy error handling that loses
+important context.  When an error occurs in production you often only have logs
+to work with.  A bare "No such file or directory" message with no indication of
+/which/ file or /what/ operation failed is not actionable.
 
 ** Core principle: always add context
 
-All errors must include sufficient context to diagnose the problem
-without access to the source code or the running environment.
+All errors must include sufficient context to diagnose the problem without
+access to the source code or the running environment.
 
 Use semantic error types that explain what went wrong and why:
 
@@ -71,15 +70,15 @@ pub enum ConfigError {
 
 ** Guidelines
 
-- Every error variant should explain what operation failed and include
-  relevant data (file paths, addresses, etc.).
+- Every error variant should explain what operation failed and include relevant
+  data (file paths, addresses, etc.).
 - Use ~#[source]~ to preserve the full error chain.
-- For file operations, include the path and (where useful) the current
-  working directory.
+- For file operations, include the path and (where useful) the current working
+  directory.
 - Never log sensitive data (passwords, tokens, connection strings with
   credentials).
-- ~anyhow~ is acceptable only in throwaway prototypes.  Once you know
-  what errors can occur, convert to semantic types.
+- ~anyhow~ is acceptable only in throwaway prototypes.  Once you know what
+  errors can occur, convert to semantic types.
 
 ** Error type hierarchy
 
@@ -95,9 +94,9 @@ Each layer adds context about what the application was trying to do.
 
 ** Flat selectors only
 
-Each selector targets exactly one element type.  No nesting, no
-combinators, no ~>~ or ~+~ chains.  If an element needs unique
-styling, use a class or ID — not a compound selector.
+Each selector targets exactly one element type.  No nesting, no combinators, no
+~>~ or ~+~ chains.  If an element needs unique styling, use a class or ID — not
+a compound selector.
 
 Good:
 
@@ -117,9 +116,9 @@ Bad — nested combinator creates implicit coupling between elements:
 
 ** CSS variables for shared values
 
-Use CSS custom properties (variables) defined on ~:root~ for any
-value shared between selectors.  Never hard-code colours, spacing
-scales, or font stacks directly in a selector.
+Use CSS custom properties (variables) defined on ~:root~ for any value shared
+between selectors.  Never hard-code colours, spacing scales, or font stacks
+directly in a selector.
 
 Good:
 
@@ -151,9 +150,9 @@ h1 {
 
 ** Light and dark mode
 
-Provide light-mode values in ~:root~ and override them inside
-~@media (prefers-color-scheme: dark)~.  Never create separate
-selectors per colour scheme — the variables handle the switch.
+Provide light-mode values in ~:root~ and override them inside ~@media
+(prefers-color-scheme: dark)~.  Never create separate selectors per colour
+scheme — the variables handle the switch.
 
 Good:
 
@@ -189,10 +188,9 @@ body {
 
 ** No inline styles in Elm
 
-All presentation belongs in the stylesheet.  Elm views must not use
-~style~ attributes.  Use semantic HTML elements (~main_~, ~nav~,
-~header~, ~section~) so that element selectors in CSS are sufficient
-and classes are rarely needed.
+All presentation belongs in the stylesheet.  Elm views must not use ~style~
+attributes.  Use semantic HTML elements (~main_~, ~nav~, ~header~, ~section~) so
+that element selectors in CSS are sufficient and classes are rarely needed.
 
 Good:
 
@@ -204,8 +202,8 @@ view model =
         ]
 #+end_src
 
-Bad — inline styles bypass the stylesheet and cannot respond to
-dark mode, media queries, or future design changes:
+Bad — inline styles bypass the stylesheet and cannot respond to dark mode, media
+queries, or future design changes:
 
 #+begin_src elm :results none :exports code
 view model =
@@ -217,9 +215,8 @@ view model =
 
 * Systemd secrets
 
-The NixOS module passes secrets via systemd's ~LoadCredential~.  The
-Rust binary automatically discovers credentials at runtime without
-extra configuration.
+The NixOS module passes secrets via systemd's ~LoadCredential~.  The Rust binary
+automatically discovers credentials at runtime without extra configuration.
 
 See [[file:docs/systemd.org][docs/systemd.org]] for the full pattern and how to add new secrets.
 

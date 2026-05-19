@@ -3,42 +3,37 @@
 
 * Overview
 
-The NixOS module uses systemd's ~LoadCredential~ to pass secret files
-to the service.  This avoids granting the service user direct read
-access to the secret on disk: systemd copies the file into a
-unit-scoped credential directory before the process starts.
+The NixOS module uses systemd's ~LoadCredential~ to pass secret files to the
+service.  This avoids granting the service user direct read access to the secret
+on disk: systemd copies the file into a unit-scoped credential directory before
+the process starts.
 
 * How it works
 
-1. The NixOS module declares a ~LoadCredential~ entry mapping a
-   credential name to the path on disk:
+1. The NixOS module declares a ~LoadCredential~ entry mapping a credential name
+   to the path on disk:
 
-   #+begin_example
-   LoadCredential = "oidc-client-secret:/run/agenix/oidc-secret";
-   #+end_example
+#+begin_example LoadCredential = "oidc-client-secret:/run/agenix/oidc-secret";
+#+end_example
 
-2. When the unit starts, systemd copies the file into a private
-   directory and sets the ~CREDENTIALS_DIRECTORY~ environment variable
-   to point at it.
+2. When the unit starts, systemd copies the file into a private directory and
+   sets the ~CREDENTIALS_DIRECTORY~ environment variable to point at it.
 
 3. The Rust binary resolves each secret with this priority:
    - An explicit path, if given via CLI flag or config file.
-   - ~$CREDENTIALS_DIRECTORY/<credential-name>~, if the variable is
-     set and the file exists.
+   - ~$CREDENTIALS_DIRECTORY/<credential-name>~, if the variable is set and the
+     file exists.
    - Error, explaining both options.
 
-   This means NixOS deployments work with zero extra configuration
-   (the module sets up ~LoadCredential~ automatically), while non-NixOS
-   deployments can pass the path explicitly.
+This means NixOS deployments work with zero extra configuration (the module sets
+up ~LoadCredential~ automatically), while non-NixOS deployments can pass the
+path explicitly.
 
 * Adding a new secret
 
 1. Add a ~LoadCredential~ entry in ~nix/modules/nixos-server.nix~.
-2. In ~crates/server/src/config.rs~, follow the existing pattern:
-   try the explicit option first, fall back to
-   ~credential_secret_path~, then error.
-3. On Darwin, pass the file path via ~<app>_oidc_client_secret_file~
-   (or the equivalent new variable, following the
-   ~<app>_<flag>~-lowercase scheme) in
-   ~nix/modules/darwin-server.nix~ — launchd has no ~LoadCredential~
-   equivalent.
+2. In ~crates/server/src/config.rs~, follow the existing pattern: try the
+   explicit option first, fall back to ~credential_secret_path~, then error.
+3. On Darwin, pass the file path via ~<app>_oidc_client_secret_file~ (or the
+   equivalent new variable, following the ~<app>_<flag>~-lowercase scheme) in
+   ~nix/modules/darwin-server.nix~ — launchd has no ~LoadCredential~ equivalent.

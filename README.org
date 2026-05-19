@@ -6,12 +6,12 @@
 An opinionated Rust workspace template.  Clone this repository once; use
 =new-project.sh= whenever you need a new project.
 
-The premise is simple: there is a large set of engineering practices that
-nobody would turn down if they came pre-wired.  Structured logging,
-automated formatting, integration tests, graceful shutdown, dark mode,
-branch protection — individually each is "nice to have", but together
-they represent weeks of setup that most projects skip and never circle
-back to.  This template turns all of it on from commit zero.
+The premise is simple: there is a large set of engineering practices that nobody
+would turn down if they came pre-wired.  Structured logging, automated
+formatting, integration tests, graceful shutdown, dark mode, branch protection —
+individually each is "nice to have", but together they represent weeks of setup
+that most projects skip and never circle back to.  This template turns all of it
+on from commit zero.
 
 * Features
 
@@ -19,187 +19,179 @@ back to.  This template turns all of it on from commit zero.
 
 *** Graceful shutdown
 
-The server handles =SIGTERM= and =SIGINT=, draining in-flight requests
-before exiting.  Rolling deployments and container orchestrators depend
-on this — without it, active connections are severed on every deploy.
+The server handles =SIGTERM= and =SIGINT=, draining in-flight requests before
+exiting.  Rolling deployments and container orchestrators depend on this —
+without it, active connections are severed on every deploy.
 
 *** Health checks
 
-=/healthz= returns a structured status response suitable for load
-balancer probes, Kubernetes liveness checks, and uptime monitors.  A
-health endpoint that exists from day one means the deployment pipeline
-never has to be retrofitted to support one.
+=/healthz= returns a structured status response suitable for load balancer
+probes, Kubernetes liveness checks, and uptime monitors.  A health endpoint that
+exists from day one means the deployment pipeline never has to be retrofitted to
+support one.
 
 *** Prometheus metrics
 
 =/metrics= exposes Prometheus-formatted counters (including
-=http_requests_total=) as plain text.  Grafana, Datadog, and every
-major observability platform can scrape this endpoint directly.
-Instrumenting after the fact means retroactively threading counters
-through code that was never designed for them — starting with metrics
-baked in avoids that.
+=http_requests_total=) as plain text.  Grafana, Datadog, and every major
+observability platform can scrape this endpoint directly.  Instrumenting after
+the fact means retroactively threading counters through code that was never
+designed for them — starting with metrics baked in avoids that.
 
 *** OIDC authentication
 
 A complete OpenID Connect Authorization Code Flow is wired up via
 =openidconnect=: login, callback, logout, and a =require_auth=
-middleware.  When no OIDC provider is configured, the server runs in
-implicit-admin mode — no code changes needed for local development.
+middleware. When no OIDC provider is configured, the server runs in
+            implicit-admin mode — no code changes needed for local development.
 
 *** OpenAPI documentation
 
-Routes are annotated with [[https://github.com/tamasfe/aide][aide]], which generates an OpenAPI 3 spec
-served at =/api-docs/openapi.json=.  A [[https://github.com/scalar/scalar][Scalar]] explorer UI is mounted
-at =/scalar=.  API documentation stays in sync with the code because it
-/is/ the code.
+Routes are annotated with [[https://github.com/tamasfe/aide][aide]], which generates an OpenAPI 3 spec served at
+=/api-docs/openapi.json=.  A [[https://github.com/scalar/scalar][Scalar]] explorer UI is mounted at =/scalar=.  API
+documentation stays in sync with the code because it /is/ the code.
 
 *** Systemd and launchd integration
 
 The server supports systemd socket activation (=--listen sd-listen=),
-=sd_notify= readiness signaling, and watchdog heartbeats.  Secrets are
-passed via =LoadCredential=, never environment variables.  NixOS and
-nix-darwin modules are included, complete with hardened service
-definitions, health checks, and socket units.
+=sd_notify= readiness signaling, and watchdog heartbeats.  Secrets are passed
+via =LoadCredential=, never environment variables.  NixOS and nix-darwin modules
+are included, complete with hardened service definitions, health checks, and
+socket units.
 
 ** Web UI
 
 *** Strongly typed frontend
 
-The frontend is [[https://elm-lang.org/][Elm]] — a statically typed, purely functional language
-that compiles to JavaScript.  Elm programs famously produce no runtime
-exceptions.  The Nix build compiles Elm hermetically and stamps a
-store-hash cache-busting query string into =index.html=, so deploys
-never serve stale assets.
+The frontend is [[https://elm-lang.org/][Elm]] — a statically typed, purely functional language that
+compiles to JavaScript.  Elm programs famously produce no runtime
+exceptions. The Nix build compiles Elm hermetically and stamps a store-hash
+            cache-busting query string into =index.html=, so deploys never serve
+            stale assets.
 
 *** Light and dark mode
 
-CSS custom properties defined on =:root= provide a full light/dark
-palette out of the box via =@media (prefers-color-scheme: dark)=.  Add
-your design tokens to the variables; the media query handles the rest.
+CSS custom properties defined on =:root= provide a full light/dark palette out
+of the box via =@media (prefers-color-scheme: dark)=.  Add your design tokens to
+the variables; the media query handles the rest.
 
 *** Simple CSS
 
-Flat selectors only — no nesting, no combinators, no specificity wars.
-Each selector targets exactly one element.  Shared values live in CSS
-variables on =:root=.  The result is a stylesheet you can read top to
-bottom without tracing inheritance chains.  Reuse is achieved through
-variables, not complex selector hierarchies.
+Flat selectors only — no nesting, no combinators, no specificity wars.  Each
+selector targets exactly one element.  Shared values live in CSS variables on
+=:root=.  The result is a stylesheet you can read top to bottom without tracing
+inheritance chains.  Reuse is achieved through variables, not complex selector
+hierarchies.
 
 ** Auto-formatted code
 
-A pre-commit hook runs [[https://github.com/numtide/treefmt][treefmt]], formatting Rust (=rustfmt=), Elm
-(=elm-format=), Nix (=alejandra=), and CSS (=prettier=) in a single
-pass.  CI enforces the same check.  Formatting debates are settled once
-in configuration, not revisited on every pull request.
+A pre-commit hook runs [[https://github.com/numtide/treefmt][treefmt]], formatting Rust (=rustfmt=), Elm (=elm-format=),
+Nix (=alejandra=), and CSS (=prettier=) in a single
+pass. CI enforces the same check.  Formatting debates are settled once in
+      configuration, not revisited on every pull request.
 
 ** Starter integration tests
 
-Both the CLI and server ship with integration tests.  Server tests
-exercise real HTTP routes via =tower::ServiceExt::oneshot= (no running
-server needed).  CLI tests invoke the compiled binary as a subprocess.
-If something works in the test suite, it works in production — no mocks
-standing in for real behavior.
+Both the CLI and server ship with integration tests.  Server tests exercise real
+HTTP routes via =tower::ServiceExt::oneshot= (no running server needed).  CLI
+tests invoke the compiled binary as a subprocess.  If something works in the
+test suite, it works in production — no mocks standing in for real behavior.
 
 ** Separated concerns with LLM guardrails
 
-The workspace splits into =crates/cli=, =crates/server=, and
-=crates/lib=.  An =llms.org= file ships with every generated project,
-instructing LLM agents on what belongs where and how to keep the
-boundaries clean.  Without this, LLM-assisted development tends to dump
-everything into =main.rs=.
+The workspace splits into =crates/cli=, =crates/server=, and =crates/lib=.  An
+=llms.org= file ships with every generated project, instructing LLM agents on
+what belongs where and how to keep the boundaries clean.  Without this,
+LLM-assisted development tends to dump everything into =main.rs=.
 
 ** Types as validation
 
-=llms.org= coaches LLM agents to use intermediate types for processing
-phases (=CliRaw= → =ConfigFileRaw= → =Config=) and to avoid =Option=
-for fields that must be present.  This eliminates entire classes of "is
-this field set yet?" bugs and the defensive =unwrap= / =if let= code
-that accompanies them.  The template's own configuration code
-demonstrates the pattern.
+=llms.org= coaches LLM agents to use intermediate types for processing phases
+(=CliRaw= → =ConfigFileRaw= → =Config=) and to avoid =Option= for fields that
+must be present.  This eliminates entire classes of "is this field set yet?"
+bugs and the defensive =unwrap= / =if let= code that accompanies them.  The
+template's own configuration code demonstrates the pattern.
 
 ** Selective crate generation
 
 =new-project.sh --crates server= emits only the server and lib crates.
-=--crates ""= emits a pure library.  Projects that do not need a CLI do
-not carry dead scaffolding; projects that do not need a server do not
-ship one.
+=--crates ""= emits a pure library.  Projects that do not need a CLI do not
+carry dead scaffolding; projects that do not need a server do not ship one.
 
 ** GitHub Actions
 
 *** Tests and formatting on every push
 
-The =Test= and =Formatting= jobs run on every push and pull request.
-Merges to =main= are blocked until both pass.  Catching breakage before
-merge is table stakes — this ensures it actually happens.
+The =Test= and =Formatting= jobs run on every push and pull request.  Merges to
+=main= are blocked until both pass.  Catching breakage before merge is table
+stakes — this ensures it actually happens.
 
 *** Declarative branch protection
 
-Branch protection rules live in =.github/branch-protection.json= and
-are applied automatically via a workflow whenever the file changes.  No
-manual Settings page clicks, no drift between what you think is
-protected and what actually is.
+Branch protection rules live in =.github/branch-protection.json= and are applied
+automatically via a workflow whenever the file changes.  No manual Settings page
+clicks, no drift between what you think is protected and what actually is.
 
 *** Dependabot with guarded auto-merge
 
-Dependabot opens PRs for Cargo and Actions dependency updates.  A
-workflow auto-merges them /only/ if every changed file is a
-=Cargo.toml=, =Cargo.lock=, or workflow YAML — unexpected files block
-the merge with a warning.  Dependencies stay current without
-rubber-stamping changes that touch application code.
+Dependabot opens PRs for Cargo and Actions dependency updates.  A workflow
+auto-merges them /only/ if every changed file is a =Cargo.toml=, =Cargo.lock=,
+or workflow YAML — unexpected files block the merge with a warning.
+Dependencies stay current without rubber-stamping changes that touch application
+code.
 
 *** Changelog enforcement
 
-Non-dependabot PRs must include a changelog entry.  The
-=changelog-roller= tool verifies this in CI.  Changelogs that are
-populated retroactively at release time are always incomplete; enforcing
-entries at PR time means the changelog writes itself.
+Non-dependabot PRs must include a changelog entry.  The =changelog-roller= tool
+verifies this in CI.  Changelogs that are populated retroactively at release
+time are always incomplete; enforcing entries at PR time means the changelog
+writes itself.
 
 *** Automatic version cutting and publishing
 
-On merge to =main=, the =publish= workflow bumps the minor version,
-stamps the changelog, commits with =[skip ci]=, and publishes the lib
-crate to crates.io.  No manual version dance, no forgotten publishes.
-(Requires =--public= at generation time.)
+On merge to =main=, the =publish= workflow bumps the minor version, stamps the
+changelog, commits with =[skip ci]=, and publishes the lib crate to crates.io.
+No manual version dance, no forgotten publishes.  (Requires =--public= at
+generation time.)
 
 ** Structured logging
 
 Logging uses =tracing= with structured fields, not interpolated
-strings.  On Linux with systemd, logs route directly to the journal —
-fields are preserved end-to-end through systems like ELK without
-parsing.  Elsewhere, logs emit to stderr in human-readable or JSON
-format.  Logs go to stderr so that captured CLI output (stdout) stays
-clean for piping.
+strings. On Linux with systemd, logs route directly to the journal — fields are
+         preserved end-to-end through systems like ELK without
+parsing. Elsewhere, logs emit to stderr in human-readable or JSON
+format. Logs go to stderr so that captured CLI output (stdout) stays clean for
+        piping.
 
 ** Staged configuration
 
-Both CLI and server merge configuration from four sources in precedence
-order: command-line flags, environment variables, a TOML config file,
-and compiled defaults.  The config file is discovered from
-=$XDG_CONFIG_HOME/<app>/config.toml=, or pointed at explicitly via
-=--config= / =<app>_config=.  Every layer is optional; together they
-cover interactive use, CI, containers, and systemd.
+Both CLI and server merge configuration from four sources in precedence order:
+command-line flags, environment variables, a TOML config file, and compiled
+defaults.  The config file is discovered from
+=$XDG_CONFIG_HOME/<app>/config.toml=, or pointed at explicitly via =--config= /
+=<app>_config=.  Every layer is optional; together they cover interactive use,
+CI, containers, and systemd.
 
-Environment-variable names follow ~<app>_<flag>~ in lowercase — POSIX
-§8.1 reserves the lowercase namespace for applications, and a per-app
-prefix avoids collisions with other processes' variables.  See
-[[file:crates/foundation/USAGE.org::*Environment variables][=USAGE.org= → Environment variables]] for the full rule, the POSIX
-citation, and the bare-~env~ vs.  ~env = "literal"~ distinction in the
-~MergeConfig~ derive.
+Environment-variable names follow ~<app>_<flag>~ in lowercase — POSIX §8.1
+reserves the lowercase namespace for applications, and a per-app prefix avoids
+collisions with other processes' variables.  See
+[[file:crates/foundation/USAGE.org::*Environment variables][=USAGE.org= → Environment variables]] for the full rule, the POSIX citation, and
+the bare-~env~ vs.  ~env = "literal"~ distinction in the ~MergeConfig~ derive.
 
 ** Semantic error types
 
-Errors use =thiserror= with domain-specific variants instead of
-=anyhow=.  Every error message names the operation that failed and the
-relevant context (file path, address, field name).  In production you
-often only have logs — "No such file or directory" is not actionable,
-but "Failed to read configuration file at /etc/myapp/config.toml" is.
+Errors use =thiserror= with domain-specific variants instead of =anyhow=.  Every
+error message names the operation that failed and the relevant context (file
+path, address, field name).  In production you often only have logs — "No such
+file or directory" is not actionable, but "Failed to read configuration file at
+/etc/myapp/config.toml" is.
 
 ** Nix development shell
 
-=nix develop= (or =direnv allow=) provides the Rust toolchain, Elm
-toolchain, formatters, =just=, and every other project dependency in a
-single command.  No global installs, no version drift between
-contributors, no "works on my machine."
+=nix develop= (or =direnv allow=) provides the Rust toolchain, Elm toolchain,
+formatters, =just=, and every other project dependency in a single command.  No
+global installs, no version drift between contributors, no "works on my
+machine."
 
 * Prerequisites
 
@@ -279,25 +271,23 @@ After running =new-project.sh=, a few things still need manual attention.
 If you passed =--public=, three things need to be done on GitHub before the
 workflows are fully operational:
 
-1. *Add the =CARGO_REGISTRY_TOKEN= secret.*  Generate a token at
-   [[https://crates.io/settings/tokens][crates.io/settings/tokens]] scoped to =publish-new= and =publish-update=,
-   then:
-   #+begin_src sh :exports code
-   echo "<token>" | gh secret set CARGO_REGISTRY_TOKEN
-   #+end_src
-   (Alternatively: Settings → Secrets and variables → Actions.)
+1. *Add the =CARGO_REGISTRY_TOKEN= secret.* Generate a token at
+   [[https://crates.io/settings/tokens][crates.io/settings/tokens]] scoped to =publish-new= and =publish-update=, then:
+   #+begin_src sh :exports code echo "<token>" | gh secret set
+   CARGO_REGISTRY_TOKEN #+end_src (Alternatively: Settings → Secrets and
+   variables → Actions.)
 
 2. *Enable branch protection on =main=* (Settings → Branches → Add rule).
    Require the =Test= and =Formatting= status checks to pass before merging.
    This enforces that tests pass and code is formatted on every PR.
 
-3. *Enable auto-merge* (Settings → General → Allow auto-merge).  The
-   dependabot workflow calls =gh pr merge --auto=, which only takes effect if
-   this setting is on.
+3. *Enable auto-merge* (Settings → General → Allow auto-merge).  The dependabot
+   workflow calls =gh pr merge --auto=, which only takes effect if this setting
+   is on.
 
-The publish workflow runs on every push to =main=, automatically bumps the
-minor version (=0.1.0= → =0.2.0=, etc.), commits the bump back with =[skip ci]=
-so it does not re-trigger itself, then publishes the lib crate to crates.io.
+The publish workflow runs on every push to =main=, automatically bumps the minor
+version (=0.1.0= → =0.2.0=, etc.), commits the bump back with =[skip ci]= so it
+does not re-trigger itself, then publishes the lib crate to crates.io.
 
 ** Update workspace metadata in Cargo.toml
 
@@ -313,8 +303,8 @@ repository = "https://github.com/yourusername/your-project"
 ** Update flake.nix workspaceCrates
 
 Edit the ~workspaceCrates~ section in ~flake.nix~ to match your actual crate
-descriptions.  The name and binary fields are already substituted by the
-script; update the human-readable descriptions:
+descriptions. The name and binary fields are already substituted by the script;
+              update the human-readable descriptions:
 
 #+begin_src nix :exports code
 workspaceCrates = {
@@ -333,8 +323,8 @@ workspaceCrates = {
 
 ** Rename crate directories (optional)
 
-The script preserves the original directory names (=crates/cli=, =crates/server=,
-=crates/lib=).  If you prefer project-namespaced directories:
+The script preserves the original directory names (=crates/cli=,
+=crates/server=, =crates/lib=).  If you prefer project-namespaced directories:
 
 #+begin_src sh :exports code
 mv crates/cli "crates/my-app-cli"
@@ -361,9 +351,9 @@ Replace the generated README content with text describing your project.
 
 Every invocation of =new-project.sh= registers the emitted project in a local
 =config.json= file so that forward-porting work can discover all downstream
-repos.  The file is *gitignored* — it contains absolute paths specific to the
-host machine.  A committed =config.template.json= provides the empty skeleton;
-the script copies it on first use.
+repos. The file is *gitignored* — it contains absolute paths specific to the
+       host machine.  A committed =config.template.json= provides the empty
+       skeleton; the script copies it on first use.
 
 ** Schema
 
@@ -414,9 +404,7 @@ types, integration tests, a Nix dev shell, and optional server scaffolding
 
 * Adding a new workspace crate
 
-1. Create the crate:
-   #+begin_src sh :exports code
-   cargo new --bin crates/worker
+1. Create the crate: #+begin_src sh :exports code cargo new --bin crates/worker
    #+end_src
 
 2. Add to ~[workspace] members~ in ~Cargo.toml~.
@@ -432,15 +420,13 @@ types, integration tests, a Nix dev shell, and optional server scaffolding
 
 1. Remove its entry from ~[workspace] members~ in ~Cargo.toml~.
 2. Remove its entry from ~workspaceCrates~ in ~flake.nix~.
-3. Delete the crate directory:
-   #+begin_src sh :exports code
-   rm -rf crates/server
+3. Delete the crate directory: #+begin_src sh :exports code rm -rf crates/server
    #+end_src
 
 * Enabling Nix package builds
 
-The ~packages~ section in ~flake.nix~ is commented out by default.  Uncomment
-it when you want ~nix build .#cli~ and friends to work.  Then:
+The ~packages~ section in ~flake.nix~ is commented out by default.  Uncomment it
+when you want ~nix build .#cli~ and friends to work.  Then:
 
 #+begin_src sh :exports code
 nix build .#cli
@@ -460,8 +446,8 @@ Or merge selectively and resolve conflicts, preserving your customizations.
 * LLM instructions
 
 This section describes what an LLM agent should do when asked to apply this
-template to a new project.  For bringing an existing project into alignment
-with the template (retroactive adoption or rolling out a template update), see
+template to a new project.  For bringing an existing project into alignment with
+the template (retroactive adoption or rolling out a template update), see
 =docs/compliance.org=.
 
 ** Read the project brief first
@@ -479,9 +465,9 @@ steps assume the names are already correct.
 
 - ~Cargo.toml~ :: Update ~[workspace.package]~ metadata (authors, license,
   repository).
-- ~flake.nix~ :: Update ~description~ and ~workspaceCrates~ descriptions.
-  Match the crate ~name~ and ~binary~ fields to the actual Cargo package and
-  binary names.
+- ~flake.nix~ :: Update ~description~ and ~workspaceCrates~ descriptions.  Match
+  the crate ~name~ and ~binary~ fields to the actual Cargo package and binary
+  names.
 - ~README.org~ :: Replace this file's content with a README that describes the
   /new/ project.
 - ~crates/*/src/main.rs~ :: Replace the placeholder business logic (~run()~

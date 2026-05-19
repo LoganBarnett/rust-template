@@ -46,8 +46,9 @@ An LLM performing compliance work must follow this discipline:
 
 * Crate mapping
 
-Each target repo has crates that play the roles the template names =cli=, =server=,
-and =lib=.  The names in the target repo will differ; the roles are what matter.
+Each target repo has crates that play the roles the template names =cli=,
+=server=, and =lib=.  The names in the target repo will differ; the roles are
+what matter.
 
 | Template role | Identifying signals |
 |---------------+-----------------------------------------------------|
@@ -55,19 +56,19 @@ and =lib=.  The names in the target repo will differ; the roles are what matter.
 | =cli=         | A binary crate that parses command-line arguments with Clap and exits after completing work. |
 | =server=      | A binary crate that binds a listener, serves HTTP, and runs indefinitely. |
 
-A target repo may have more crates than the template (workers, etc.).
-Extra crates are not non-compliant; they simply do not have a direct template
-counterpart.  Apply the general [[*Cross-role compliance items]] to them.
+A target repo may have more crates than the template (workers, etc.).  Extra
+crates are not non-compliant; they simply do not have a direct template
+counterpart. Apply the general [[*Cross-role compliance items]] to them.
 
 * Compliance items reference
 
 The tables below enumerate known compliance items for orientation and code
-review.  They are *not* the compliance checklist — the process in
-[[*Compliance process]] is.  A static list in this document will drift behind
-the template as it evolves, and feature-by-feature auditing is too easy to
-miss things.  Use the tables to recognise what kind of infrastructure belongs
-where; rely on the actual template output to decide what a given project is
-missing.
+review. They are *not* the compliance checklist — the process in
+        [[*Compliance process]] is.  A static list in this document will drift
+        behind the template as it evolves, and feature-by-feature auditing is
+        too easy to miss things.  Use the tables to recognise what kind of
+        infrastructure belongs where; rely on the actual template output to
+        decide what a given project is missing.
 
 Items marked *required* must be present in every compliant crate of that role.
 Items marked *conditional* apply only when the target crate uses the related
@@ -122,11 +123,10 @@ These apply to every crate regardless of role.
 * Compliance process
 
 Compliance work has two processes, selected by the derived repo's sync state.
-Both compare against the actual template output rather than a static
-checklist — any list in this document will drift behind the template as it
-evolves, and going feature by feature is too easy to miss things.  The
-tables in [[*Compliance items reference]] exist for orientation, not as the
-audit checklist.
+Both compare against the actual template output rather than a static checklist —
+any list in this document will drift behind the template as it evolves, and
+going feature by feature is too easy to miss things.  The tables in
+[[*Compliance items reference]] exist for orientation, not as the audit checklist.
 
 ** Determine the process
 
@@ -137,65 +137,54 @@ audit checklist.
 
 ** Diff-based compliance
 
-Used when a prior sync event has recorded a commit hash.  The diff between
-that hash and the template's current =HEAD= bounds the work precisely.
+Used when a prior sync event has recorded a commit hash.  The diff between that
+hash and the template's current =HEAD= bounds the work precisely.
 
-1. *Determine the base hash.*  Take the last entry in =template_sync_hashes=.
+1. *Determine the base hash.* Take the last entry in =template_sync_hashes=.
 
-2. *Diff the template.*  In the template repository:
-   #+begin_src sh :exports code
-   git diff <last-hash>..HEAD
-   #+end_src
-   Every changed file is a candidate for porting.  Ignore changes that are
-   clearly project-name substitutions or business logic unrelated to the
-   derived project's crates.
+2. *Diff the template.* In the template repository: #+begin_src sh :exports code
+   git diff <last-hash>..HEAD #+end_src Every changed file is a candidate for
+   porting.  Ignore changes that are clearly project-name substitutions or
+   business logic unrelated to the derived project's crates.
 
-3. *Map, enumerate, report, apply.*  Follow the [[*LLM role during compliance
-   work]] discipline: map each touched file to a crate role, enumerate gaps,
-   report them, then apply infrastructure only.  Consult [[*Crate mapping]]
-   when the diff touches role-specific files.
+3. *Map, enumerate, report, apply.* Follow the [[*LLM role during compliance work]]
+   discipline: map each touched file to a crate role, enumerate gaps, report
+   them, then apply infrastructure only.  Consult [[*Crate mapping]] when the diff
+   touches role-specific files.
 
-4. *Update the record.*  Append the current template =HEAD= to
-   =template_sync_hashes= in =rust-template.json= and commit the file
-   together with the ported changes:
-   #+begin_src sh :exports code
-   git -C <path-to-template-repo> rev-parse HEAD
-   #+end_src
+4. *Update the record.* Append the current template =HEAD= to
+   =template_sync_hashes= in =rust-template.json= and commit the file together
+   with the ported changes: #+begin_src sh :exports code git -C
+   <path-to-template-repo> rev-parse HEAD #+end_src
 
 ** Fresh-emission compliance
 
-Used when =rust-template.json= is absent or =template_sync_hashes= is empty
-— the derived project predates template provenance and there is no baseline
-to diff from.  A feature-by-feature walk of this document cannot catch
-everything the template emits; compare against a real emission instead.
+Used when =rust-template.json= is absent or =template_sync_hashes= is empty —
+the derived project predates template provenance and there is no baseline to
+diff from.  A feature-by-feature walk of this document cannot catch everything
+the template emits; compare against a real emission instead.
 
-1. *Emit a fresh project in a temporary directory.*
-   #+begin_src sh :exports code
-   ./new-project.sh \
-     --name <target-project-name> \
-     --output /tmp/<target-project-name>-fresh \
-     --crates <same crate set the target uses>
-   #+end_src
-   Include =--public= if the target is public.  Use the same
+1. *Emit a fresh project in a temporary directory.* #+begin_src sh :exports code
+   ./new-project.sh \ --name <target-project-name> \ --output
+   /tmp/<target-project-name>-fresh \ --crates <same crate set the target uses>
+   #+end_src Include =--public= if the target is public.  Use the same
    =--description= if one was recorded in the spawn manifest.
 
-2. *File-by-file comparison.*  Walk the fresh emission against the derived
-   repo.  For each file or directory in the emission:
+2. *File-by-file comparison.* Walk the fresh emission against the derived
+   repo. For each file or directory in the emission:
    - Absent from the derived repo → propose adding it.
-   - Present but divergent → propose reconciling.  Favor template content
-     except where the target has legitimate customisation (business logic,
+   - Present but divergent → propose reconciling.  Favor template content except
+     where the target has legitimate customisation (business logic,
      project-specific configuration fields, domain-specific dependencies).
    - Present and equivalent → skip.
 
-3. *Map, enumerate, report, apply.*  Follow the [[*LLM role during compliance
-   work]] discipline.
+3. *Map, enumerate, report, apply.* Follow the [[*LLM role during compliance work]]
+   discipline.
 
-4. *Establish provenance.*  After applying, create =rust-template.json=
-   with =template_sync_hashes= containing the current template =HEAD= so
-   subsequent compliance work can use the diff-based process:
-   #+begin_src sh :exports code
-   git -C <path-to-template-repo> rev-parse HEAD
-   #+end_src
+4. *Establish provenance.* After applying, create =rust-template.json= with
+   =template_sync_hashes= containing the current template =HEAD= so subsequent
+   compliance work can use the diff-based process: #+begin_src sh :exports code
+   git -C <path-to-template-repo> rev-parse HEAD #+end_src
 
 ** Verification
 
@@ -208,16 +197,17 @@ Both must succeed with no errors before declaring compliance work done.
 
 ** Future: CHANGELOG-driven hints
 
-A forthcoming =CHANGELOG.org= in the template will record
-compliance-relevant changes per release.  Once available, it will augment
-— not replace — the diff-based process above, making it easier to
-prioritise and group related changes during review.
+A forthcoming =CHANGELOG.org= in the template will record compliance-relevant
+changes per release.  Once available, it will augment — not replace — the
+diff-based process above, making it easier to prioritise and group related
+changes during review.
 
 * What compliance does not cover
 
 - Business logic, domain types, route handlers, or application-specific
   configuration fields.
-- Crate names or directory layout (=crates/server= vs =crates/my-app-server= etc.).
+- Crate names or directory layout (=crates/server= vs =crates/my-app-server=
+  etc.).
 - Whether to keep or remove a crate that has no template counterpart.
 - The content of =README.org= or other project documentation.
 - Any decision that requires understanding the project's domain.

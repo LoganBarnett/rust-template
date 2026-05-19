@@ -4,23 +4,23 @@
 * Read =template/llms.org= first
 
 The primary set of conventions lives in [[file:template/llms.org][=template/llms.org=]] — read it
-first.  Those are the conventions emitted into spawned projects, and
-the rust-template repo itself (the foundation crate, the
-foundation-derive proc-macro, the template generation scripts) holds
-itself to the same standards.
+first. Those are the conventions emitted into spawned projects, and the
+       rust-template repo itself (the foundation crate, the foundation-derive
+       proc-macro, the template generation scripts) holds itself to the same
+       standards.
 
-The whole point of rust-template is to /capture learnings as
-code and config/.  Exempting this repo from its own conventions would
-defeat that — so when in doubt, the template's rule applies here too.
+The whole point of rust-template is to /capture learnings as code and config/.
+Exempting this repo from its own conventions would defeat that — so when in
+doubt, the template's rule applies here too.
 
 * Repo-specific additions
 
-Guidance below applies specifically to work on the rust-template repo
-itself — the files under ~template/~ (which are emitted into spawned
-projects, not consumed directly), the foundation crates under
-~crates/~, the generation scripts (~new-project.sh~, ~crate-add.sh~,
-~compliance-check.sh~), and the ~config.json~ spawn registry.
+Guidance below applies specifically to work on the rust-template repo itself —
+the files under ~template/~ (which are emitted into spawned projects, not
+consumed directly), the foundation crates under ~crates/~, the generation
+scripts (~new-project.sh~, ~crate-add.sh~, ~compliance-check.sh~), and the
+~config.json~ spawn registry.
 
-(None yet.  Add specific guidance here as it accrues — anything that
-applies to the repo but /not/ to spawned projects, or that needs to be
-said about the template-emission machinery itself.)
+(None yet.  Add specific guidance here as it accrues — anything that applies to
+the repo but /not/ to spawned projects, or that needs to be said about the
+template-emission machinery itself.)

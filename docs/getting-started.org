@@ -1,6 +1,7 @@
 #+title: Getting Started with Rust Template
 
-This guide will help you get started using this Rust template for your new project.
+This guide will help you get started using this Rust template for your new
+project.
 
 * Prerequisites
 
@@ -53,7 +54,8 @@ Don't forget to update:
 nix develop
 #+end_src
 
-This will set up all necessary dependencies including Rust, cargo, and other tools.
+This will set up all necessary dependencies including Rust, cargo, and other
+tools.
 
 ** 4. Build the project
 
@@ -138,11 +140,10 @@ port = 3000
 
 ** Environment Variables
 
-Env-var names follow ~<app>_<flag>~ in lowercase — POSIX §8.1 reserves
-the lowercase namespace for applications, and the per-app prefix
-avoids cross-process collisions.  See [[file:../crates/foundation/USAGE.org::*Environment variables][=USAGE.org= → Environment
-variables]] for the full rule.  Substitute your spawned project's name
-(e.g. ~my_app_log_level~):
+Env-var names follow ~<app>_<flag>~ in lowercase — POSIX §8.1 reserves the
+lowercase namespace for applications, and the per-app prefix avoids
+cross-process collisions.  See [[file:../crates/foundation/USAGE.org::*Environment variables][=USAGE.org= → Environment variables]] for the full
+rule.  Substitute your spawned project's name (e.g. ~my_app_log_level~):
 
 #+begin_src sh :exports code
 # Set log level

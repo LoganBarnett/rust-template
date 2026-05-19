@@ -276,9 +276,8 @@ nix run .#server -- --host 0.0.0.0 --port 8080
 
 * Creating NixOS Modules
 
-The server uses separate ~--host~ and ~--port~ arguments (rather than
-a combined bind address) specifically to make it easier to create NixOS module
-options:
+The server uses separate ~--host~ and ~--port~ arguments (rather than a combined
+bind address) specifically to make it easier to create NixOS module options:
 
 #+begin_src nix :exports code
 # Example NixOS module options
@@ -346,26 +345,26 @@ specific-crate = "1.0"  # Not in workspace dependencies
 
 When the template is updated after your project was emitted, pull in the
 relevant infrastructure changes using =rust-template.json= at the project
-root.  =docs/compliance.org= owns the authoritative process; the summary
-below shows which of the two paths applies to your repo.
+root. =docs/compliance.org= owns the authoritative process; the summary below
+      shows which of the two paths applies to your repo.
 
 ** Diff-based — when =template_sync_hashes= is non-empty
 
-Take the last entry in =template_sync_hashes= as your base and diff the
-template repository:
+Take the last entry in =template_sync_hashes= as your base and diff the template
+repository:
 
 #+begin_src sh :exports code
 git diff <last-hash>..HEAD
 #+end_src
 
-Every changed file is a candidate to port.  Skip project-name substitutions
-and business logic; apply infrastructure changes to your project.
+Every changed file is a candidate to port.  Skip project-name substitutions and
+business logic; apply infrastructure changes to your project.
 
 ** Fresh-emission — when =template_sync_hashes= is empty or the file is absent
 
 Your project predates template provenance, so there is no commit to diff
-from.  Emit a fresh project from the current template into a temporary
-directory and compare against it file by file:
+from. Emit a fresh project from the current template into a temporary directory
+      and compare against it file by file:
 
 #+begin_src sh :exports code
 ./new-project.sh \
@@ -374,15 +373,15 @@ directory and compare against it file by file:
   --crates <same crates you use>
 #+end_src
 
-For every file or directory in the fresh emission, add it if absent from
-your repo and reconcile if divergent — favouring the template except
-where you have legitimate customisation (business logic, project-specific
-configuration, domain-specific dependencies).
+For every file or directory in the fresh emission, add it if absent from your
+repo and reconcile if divergent — favouring the template except where you have
+legitimate customisation (business logic, project-specific configuration,
+domain-specific dependencies).
 
 ** Finish the update
 
-After porting, append the current template HEAD to =template_sync_hashes=
-so the next forward-port starts from the correct position:
+After porting, append the current template HEAD to =template_sync_hashes= so the
+next forward-port starts from the correct position:
 
 #+begin_src sh :exports code
 # Get the current template HEAD
@@ -399,5 +398,5 @@ git -C <path-to-template-repo> rev-parse HEAD
 #+end_src
 
 Commit =rust-template.json= together with the ported changes.  See
-=docs/compliance.org= for the discipline expected when applying changes
-(what counts as compliance, what to leave alone, and how to verify).
+=docs/compliance.org= for the discipline expected when applying changes (what
+counts as compliance, what to leave alone, and how to verify).
