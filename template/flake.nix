@@ -9,6 +9,10 @@
     changelog-roller.url = "github:LoganBarnett/changelog-roller";
     foundation.url = "github:LoganBarnett/rust-template";
     foundation.inputs.nixpkgs.follows = "nixpkgs";
+    org-fmt.url = "github:LoganBarnett/org-fmt";
+    org-fmt.inputs.nixpkgs.follows = "nixpkgs";
+    org-fmt.inputs.rust-overlay.follows = "rust-overlay";
+    org-fmt.inputs.crane.follows = "crane";
   };
 
   outputs = {
@@ -18,6 +22,7 @@
     crane,
     changelog-roller,
     foundation,
+    org-fmt,
   } @ inputs: let
     forAllSystems =
       nixpkgs.lib.genAttrs nixpkgs.lib.systems.flakeExposed;
@@ -52,6 +57,7 @@
           pkgs.prettier
           pkgs.just
           changelog-roller.packages.${system}.default
+          org-fmt.packages.${system}.default
         ];
         shellHook = ''
           echo "Rust Template development environment"

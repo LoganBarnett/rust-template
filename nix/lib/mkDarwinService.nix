@@ -107,7 +107,8 @@ in {
       };
 
       healthCheck = {
-        enable = lib.mkEnableOption
+        enable =
+          lib.mkEnableOption
           "periodic health-check agent for the server";
 
         url = lib.mkOption {

@@ -47,10 +47,37 @@
         "type": "github"
       }
     },
+    "org-fmt": {
+      "inputs": {
+        "crane": [
+          "crane"
+        ],
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "rust-overlay": [
+          "rust-overlay"
+        ]
+      },
+      "locked": {
+        "lastModified": 1779148644,
+        "narHash": "sha256-EL+JZu3TlTwCgZI5fZoq/Cud0s7Jm4s702b/aPBJnsY=",
+        "owner": "LoganBarnett",
+        "repo": "org-fmt",
+        "rev": "cc98be0ca7fa4f16678d55e8268f8a4bda1a3536",
+        "type": "github"
+      },
+      "original": {
+        "owner": "LoganBarnett",
+        "repo": "org-fmt",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "crane": "crane",
         "nixpkgs": "nixpkgs",
+        "org-fmt": "org-fmt",
         "rust-overlay": "rust-overlay"
       }
     },

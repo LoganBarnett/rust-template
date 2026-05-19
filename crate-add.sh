@@ -140,18 +140,29 @@ if [[ "$CRATE_TYPE" != "lib" ]]; then
         server) crate_description="Server process" ;;
     esac
 
-    # Indented to match the existing 10-space depth of `# CRATE_ENTRIES`
-    # in template/flake.nix.  The inserted block must be alejandra-clean
-    # so spawned projects pass `treefmt --fail-on-change` out of the box;
-    # the formatter-coverage test (test-formatters.sh) enforces this.
+    # Sniff the sentinel's leading whitespace from the template's
+    # flake.nix so the inserted block matches the surrounding
+    # indentation regardless of how the template happens to be
+    # structured.  This insulates the script from future template
+    # refactors that move the sentinel to a different nesting depth.
+    # The inserted block must be alejandra-clean so spawned projects
+    # pass `treefmt --fail-on-change` out of the box; the
+    # formatter-coverage test (test-formatters.sh) enforces this.
+    sentinel_indent=$(awk '/# CRATE_ENTRIES/ {
+        match($0, /^[ \t]*/);
+        print substr($0, 1, RLENGTH);
+        exit;
+    }' "$PROJECT_DIR/flake.nix")
+    inner_indent="${sentinel_indent}  "
+
     sed_inplace "/# CRATE_ENTRIES/i\\
-          # CRATE:${CRATE_NAME}:begin\\
-          ${CRATE_NAME} = {\\
-            name = \"${PROJECT_NAME}-${CRATE_NAME}\";\\
-            binary = \"${PROJECT_NAME}-${CRATE_NAME}\";\\
-            description = \"${crate_description}\";\\
-          };\\
-          # CRATE:${CRATE_NAME}:end" "$PROJECT_DIR/flake.nix"
+${sentinel_indent}# CRATE:${CRATE_NAME}:begin\\
+${sentinel_indent}${CRATE_NAME} = {\\
+${inner_indent}name = \"${PROJECT_NAME}-${CRATE_NAME}\";\\
+${inner_indent}binary = \"${PROJECT_NAME}-${CRATE_NAME}\";\\
+${inner_indent}description = \"${crate_description}\";\\
+${sentinel_indent}};\\
+${sentinel_indent}# CRATE:${CRATE_NAME}:end" "$PROJECT_DIR/flake.nix"
 fi
 
 # Step 7: Merge workspace dependencies from workspace-deps.toml.

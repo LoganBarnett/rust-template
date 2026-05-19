@@ -87,6 +87,46 @@ assert_exit_code() {
     fi
 }
 
+# Assert that the emitted project's flake.nix evaluates cleanly against
+# the *current* state of the rust-template foundation library.
+#
+# Spawned projects normally pin foundation via flake.lock to a historical
+# commit, so they may continue to eval even when the template's emitted
+# flake.nix drifts out of sync with foundation's `lib.mkRustProject` API.
+# That drift only bites users when they run `nix flake update`.  Override
+# foundation to the rust-template git tree under test so this assertion
+# catches the drift before it ships.
+#
+# Uses `git+file:` (not `path:`) so the import is scoped to tracked
+# files only — target/ and .direnv/ are gitignored and would otherwise
+# bloat the store import with gigabytes of build artifacts.  Uncommitted
+# changes to tracked files are still picked up (with a "Git tree is
+# dirty" warning from nix), so iterative test-driven changes work.
+#
+# Skips cleanly on hosts without nix; CI installs nix and runs this.
+assert_flake_eval() {
+    local dir="$1"
+    if ! command -v nix &>/dev/null; then
+        echo "  (skipping flake-eval — nix not on PATH)"
+        return 0
+    fi
+    local nix_args=(
+        --extra-experimental-features 'nix-command flakes'
+    )
+    local show_args=(
+        --override-input foundation "git+file://$SCRIPT_DIR"
+        --no-update-lock-file
+        "$dir"
+    )
+    if ! nix "${nix_args[@]}" flake show "${show_args[@]}" \
+            >/dev/null 2>&1; then
+        echo "  assertion failed: nix flake show failed for $dir" >&2
+        nix "${nix_args[@]}" flake show "${show_args[@]}" 2>&1 \
+            | sed 's/^/    /' | head -30 >&2
+        return 1
+    fi
+}
+
 # ---------------------------------------------------------------------------
 # Test 1: new-project.sh with cli+server (default)
 # ---------------------------------------------------------------------------
@@ -120,6 +160,9 @@ test_new_project_default() {
     assert_file_contains "$dir/crates/server/Cargo.toml" 'name = "test-app-server"'
     assert_file_contains "$dir/crates/lib/Cargo.toml" 'name = "test-app-lib"'
 
+    # Flake-eval assertion: catches API drift between template and foundation.
+    assert_flake_eval "$dir" || return 1
+
     # Cargo check (nix-gated).
     if [[ "$RUN_CARGO_CHECK" == true ]]; then
         (cd "$dir" && nix develop --command cargo check) || return 1
@@ -147,6 +190,8 @@ test_new_project_cli_only() {
 
     assert_file_contains "$dir/flake.nix" '# CRATE:cli:begin'
     assert_file_not_contains "$dir/flake.nix" '# CRATE:server:begin'
+
+    assert_flake_eval "$dir" || return 1
 }
 
 # ---------------------------------------------------------------------------

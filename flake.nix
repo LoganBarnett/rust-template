@@ -9,15 +9,26 @@
     nixpkgs.url = "github:NixOS/nixpkgs/25.11";
     rust-overlay.url = "github:oxalica/rust-overlay";
     crane.url = "github:ipetkov/crane";
+    org-fmt.url = "github:LoganBarnett/org-fmt";
+    org-fmt.inputs.nixpkgs.follows = "nixpkgs";
+    org-fmt.inputs.rust-overlay.follows = "rust-overlay";
+    org-fmt.inputs.crane.follows = "crane";
   };
 
-  outputs = { self, nixpkgs, rust-overlay, crane }@inputs: let
+  outputs = {
+    self,
+    nixpkgs,
+    rust-overlay,
+    crane,
+    org-fmt,
+  } @ inputs: let
     forAllSystems = nixpkgs.lib.genAttrs nixpkgs.lib.systems.flakeExposed;
     overlays = [
       (import rust-overlay)
     ];
-    pkgsFor = system: import nixpkgs { inherit overlays system; };
-    packages = (pkgs: let
+    pkgsFor = system: import nixpkgs {inherit overlays system;};
+    packages = system: let
+      pkgs = pkgsFor system;
       rust = pkgs.rust-bin.stable.latest.default.override {
         extensions = [
           # For rust-analyzer and others.  See
@@ -32,18 +43,17 @@
       # Unified formatter and the per-language binaries it invokes.
       # `new-project.sh` runs `treefmt` as its final spawn step, so this
       # devShell needs to provide them when users invoke the script from
-      # here.  Mirrors the set in template/flake.nix's extraDevPackages
-      # (minus org-fmt, which is paused for fixes).
+      # here.  Mirrors the set in template/flake.nix's extraDevPackages.
       pkgs.treefmt
       pkgs.alejandra
       pkgs.prettier
       pkgs.elmPackages.elm-format
-    ]);
+      org-fmt.packages.${system}.default
+    ];
   in {
-
     devShells = forAllSystems (system: {
       default = (pkgsFor system).mkShell {
-        buildInputs = (packages (pkgsFor system));
+        buildInputs = packages system;
       };
     });
 

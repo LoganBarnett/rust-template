@@ -1,6 +1,9 @@
-# treefmt.toml — unified formatter configuration.
-# Run `treefmt` to format all files, or `treefmt <file>` for a single file.
-# All formatters must be present in PATH (provided by the Nix devShell).
+# treefmt.toml — unified formatter configuration for the rust-template
+# repo itself.  Mirrors template/treefmt.toml so files in template/ are
+# formatted the same whether treefmt runs from this root or from inside
+# a spawned project.  Run `treefmt` to format every tracked file, or
+# `treefmt <path>` for a single file.  All formatter binaries are
+# provided by the Nix devShell defined in flake.nix.
 
 [formatter.rustfmt]
 command = "rustfmt"

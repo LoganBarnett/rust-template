@@ -13,11 +13,6 @@
 #     -> treefmt errors or skips, file unchanged.
 #   * binary in devShell but no [formatter.X] block in treefmt.toml
 #     -> treefmt never invokes it, file unchanged.
-#
-# org-fmt is intentionally omitted while the tool is paused for fixes (the
-# `--in-place` output collapses double-space sentence terminators in
-# violation of the project's prose convention; see CLAUDE.md / llms.org).
-# Add a stanza below when org-fmt's wiring lands.
 
 set -euo pipefail
 
@@ -75,11 +70,21 @@ main  =  Html.text   "hello"
 EOF
 }
 
+# Single long prose paragraph that org-fmt's reflower must wrap (the
+# tool's stated scope per README: "only plain prose paragraphs are
+# reflowed").  Two-space sentence terminators are present on purpose
+# to exercise the upstream fix that preserves them across reflow.
+write_bad_org_fmt() {
+    cat > "$1" <<'EOF'
+This is a single overly long line of plain prose that runs well past the eighty-column limit and must therefore be reflowed by the formatter.  The fixture also carries a second sentence so the two-space terminator survives.
+EOF
+}
+
 # ── Formatter table ─────────────────────────────────────────────────────
 # Parallel arrays so the elm-format hyphen does not break shell tokenizing.
-FORMATTER_NAMES=(rustfmt alejandra prettier elm-format)
-FORMATTER_EXTS=(rs       nix       css      elm)
-FORMATTER_WRITERS=(write_bad_rustfmt write_bad_alejandra write_bad_prettier write_bad_elm_format)
+FORMATTER_NAMES=(rustfmt alejandra prettier elm-format org-fmt)
+FORMATTER_EXTS=(rs       nix       css      elm        org)
+FORMATTER_WRITERS=(write_bad_rustfmt write_bad_alejandra write_bad_prettier write_bad_elm_format write_bad_org_fmt)
 
 # ── Spawn the test project ──────────────────────────────────────────────
 echo "Spawning test project at $SPAWN ..."
