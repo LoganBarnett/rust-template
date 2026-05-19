@@ -92,7 +92,7 @@ assert_exit_code() {
 #
 # Spawned projects normally pin foundation via flake.lock to a historical
 # commit, so they may continue to eval even when the template's emitted
-# flake.nix drifts out of sync with foundation's `lib.mkRustProject` API.
+# flake.nix drifts out of sync with foundation's `lib.mkRustPackages` API.
 # That drift only bites users when they run `nix flake update`.  Override
 # foundation to the rust-template git tree under test so this assertion
 # catches the drift before it ships.

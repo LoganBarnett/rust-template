@@ -62,7 +62,8 @@
     lib = {
       mkNixosService = import ./nix/lib/mkNixosService.nix;
       mkDarwinService = import ./nix/lib/mkDarwinService.nix;
-      mkRustProject = import ./nix/lib/mkRustProject.nix;
+      mkRustPackages = import ./nix/lib/mkRustPackages.nix;
+      cargoHuskyHookSnippet = import ./nix/lib/cargoHuskyHookSnippet.nix;
     };
   };
 }

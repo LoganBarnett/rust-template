@@ -34,17 +34,43 @@
       craneLib =
         (crane.mkLib pkgs).overrideToolchain
         (p: p.rust-bin.stable.latest.default);
-    in
-      foundation.lib.mkRustProject {
-        inherit self pkgs craneLib;
-        name = "rust-template";
-        crates = {
-          # CRATE_ENTRIES
+      rust = pkgs.rust-bin.stable.latest.default.override {
+        extensions = [
+          # For rust-analyzer and others.  See
+          # https://nixos.wiki/wiki/Rust#Shell.nix_example for details.
+          "rust-src"
+          "rust-analyzer"
+          "rustfmt"
+        ];
+      };
+      crates = {
+        # CRATE_ENTRIES
 
-          # Note: The 'lib' crate is not included here as it doesn't
-          # produce a binary.
+        # Note: The 'lib' crate is not included here as it doesn't
+        # produce a binary.
+      };
+      commonArgs = {
+        src = craneLib.cleanCargoSource self;
+        # Run only unit tests (--lib --bins), skip integration tests in
+        # tests/ directories.  Integration tests may require external
+        # services not available in the Nix sandbox.
+        cargoTestExtraArgs = "--lib --bins";
+      };
+      rustPackages = foundation.lib.mkRustPackages {
+        inherit self pkgs craneLib crates commonArgs;
+      };
+      packages =
+        rustPackages.packages
+        // {
+          default =
+            craneLib.buildPackage (commonArgs // {pname = "rust-template";});
         };
-        extraDevPackages = [
+    in {
+      inherit packages;
+      inherit (rustPackages) apps;
+      devShell = pkgs.mkShell {
+        buildInputs = [
+          rust
           pkgs.cargo-sweep
           pkgs.jq
           # Elm toolchain
@@ -60,6 +86,7 @@
           org-fmt.packages.${system}.default
         ];
         shellHook = ''
+          ${foundation.lib.cargoHuskyHookSnippet pkgs}
           echo "Rust Template development environment"
           echo ""
           echo "Available Cargo packages (use 'cargo build -p <name>'):"
@@ -78,7 +105,8 @@
           echo "    elm2nix snapshot"
           echo "    git add elm-srcs.nix registry.dat && git commit"
         '';
-      });
+      };
+    });
   in {
     devShells =
       nixpkgs.lib.mapAttrs (_: p: {default = p.devShell;}) perSystem;
