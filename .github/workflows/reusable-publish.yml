@@ -14,9 +14,6 @@ on:
       changelog-file:
         type: string
         default: "CHANGELOG.org"
-    secrets:
-      CARGO_REGISTRY_TOKEN:
-        required: true
 
 jobs:
   publish:
@@ -24,6 +21,12 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      # Required for the crates.io trusted-publishing OIDC exchange:
+      # GitHub mints an ID token, the auth action trades it for a
+      # short-lived crates.io publish token, and the post-step
+      # revokes that token when the job ends.  No long-lived secret
+      # is involved.
+      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -38,10 +41,15 @@ jobs:
       - name: Bump minor version
         id: bump
         run: |
-          CURRENT=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          CURRENT=$(grep '^version = ' Cargo.toml | head --lines=1 | sed 's/version = "\(.*\)"/\1/')
+          # `read -r` has no long-form equivalent — it is a bash
+          # builtin whose option syntax accepts short flags only.
+          # `-r` suppresses backslash-escape interpretation so a
+          # version string containing a backslash would round-trip
+          # intact rather than being silently transformed.
           IFS='.' read -r MAJOR MINOR _PATCH <<< "$CURRENT"
           NEW="${MAJOR}.$((MINOR + 1)).0"
-          sed -i "s/^version = \"${CURRENT}\"/version = \"${NEW}\"/" Cargo.toml
+          sed --in-place "s/^version = \"${CURRENT}\"/version = \"${NEW}\"/" Cargo.toml
           # The version bump above left Cargo.lock pinning the old version
           # of this workspace member.  Rewrite the lockfile so it agrees
           # with Cargo.toml before the subsequent commit and `cargo
@@ -54,9 +62,9 @@ jobs:
       - name: Roll changelog
         run: >
           nix develop --command
-          changelog-roller
+          changelog-roller roll
           --input-file ${{ inputs.changelog-file }}
-          --add-version "v${{ steps.bump.outputs.version }}"
+          --version "v${{ steps.bump.outputs.version }}"
           --in-place
 
       - name: Commit and push release
@@ -64,10 +72,18 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Cargo.toml Cargo.lock ${{ inputs.changelog-file }}
-          git commit -m "chore: release v${{ steps.bump.outputs.version }} [skip ci]"
+          git commit --message "chore: release v${{ steps.bump.outputs.version }} [skip ci]"
           git push
+
+      # Runs on the runner's node, not under nix — the action just
+      # does the GitHub-OIDC-to-crates.io-token HTTP exchange and
+      # writes `token` as a step output.  The cargo step below
+      # consumes it via $CARGO_REGISTRY_TOKEN; nix develop inherits
+      # the parent environment so the variable crosses the boundary.
+      - uses: rust-lang/crates-io-auth-action@v1
+        id: auth
 
       - name: Publish to crates.io
         run: nix develop --command cargo publish --package ${{ inputs.crate-name }}
         env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}

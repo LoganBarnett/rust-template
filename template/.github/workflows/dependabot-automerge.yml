@@ -1,14 +1,38 @@
 name: Dependabot auto-merge
 
+# Listens for the CI workflow to finish rather than firing on the
+# pull_request event directly.  Two reasons:
+#
+#   1. The `pull_request` event for Dependabot PRs gives the
+#      workflow a read-only `GITHUB_TOKEN`, which cannot merge.
+#      `workflow_run` runs in the default-branch context, where the
+#      token has its normal write permissions.
+#
+#   2. Listening on CI completion lets us merge only after every
+#      required check has passed, in a single synchronous step,
+#      rather than relying on the `--auto` queue and the cascade
+#      that `GITHUB_TOKEN`-initiated merges do not trigger.
 on:
-  pull_request:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
 
 permissions:
+  # Push the changelog commit to main after the squash-merge.
   contents: write
+  # Perform the merge itself.
   pull-requests: write
+  # Dispatch `publish.yml` once the merge lands.  `workflow_dispatch`
+  # is exempt from the `GITHUB_TOKEN` no-cascade rule, so this is
+  # how publish actually gets to run.
+  actions: write
 
 jobs:
   automerge:
-    if: github.actor == 'dependabot[bot]'
+    # The upstream CI run needs to have actually been triggered by a
+    # pull_request and to have succeeded; everything else (pushes to
+    # main, failed runs, re-runs of unrelated branches) is ignored.
+    if: >
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success'
     uses: LoganBarnett/rust-template/.github/workflows/reusable-dependabot-automerge.yml@main
-    secrets: inherit

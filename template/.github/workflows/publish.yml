@@ -3,14 +3,24 @@ name: Publish
 on:
   push:
     branches: [main]
+  # Allows the dependabot-automerge workflow to fire publish after a
+  # successful auto-merge.  `workflow_dispatch` is one of the two
+  # events exempted from the no-cascade rule that otherwise prevents
+  # `GITHUB_TOKEN`-initiated activity from triggering downstream
+  # workflows.
+  workflow_dispatch:
 
 permissions:
   contents: write
+  # Granted at the workflow level so the called reusable workflow
+  # can mint a GitHub OIDC token for the crates.io trusted-
+  # publishing exchange.  Token issuance is gated at the run level,
+  # so the permission has to be declared by the caller — the
+  # reusable workflow cannot grant it to itself.
+  id-token: write
 
 jobs:
   publish:
     uses: LoganBarnett/rust-template/.github/workflows/reusable-publish.yml@main
     with:
       crate-name: rust-template-lib
-    secrets:
-      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

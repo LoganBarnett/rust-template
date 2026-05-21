@@ -1,39 +1,210 @@
 name: Dependabot auto-merge (reusable)
 
+# Invoked by a consumer wrapper that triggers on `workflow_run`
+# completing for the CI workflow.  All gating decisions happen here
+# so the wrapper stays a one-liner.
+#
+# The flow takes two passes over the same PR.  On the first pass
+# (PR has not yet been touched by this workflow), we add a changelog
+# entry as a regular commit on the Dependabot branch and exit.  That
+# push retriggers CI; when CI passes again, `workflow_run` fires a
+# second time and we land in the merge branch.  Squash-merging then
+# combines the bump and the changelog into a single commit on main,
+# which is the only commit that needs to exist there.  Publish is
+# dispatched via `workflow_dispatch` (the only event exempt from the
+# `GITHUB_TOKEN` no-cascade rule) once the merge lands.
+
 on:
   workflow_call:
+    inputs:
+      changelog-file:
+        type: string
+        default: "CHANGELOG.org"
+      publish-workflow:
+        description: >-
+          File name of the publish workflow to dispatch after merge.
+          Set to an empty string to skip the dispatch step entirely
+          (e.g. for repositories that have no publish step).
+        type: string
+        default: "publish.yml"
+
+# Serialize per PR so the two passes can't race against each other
+# (a second CI run completing while the first pass is still pushing
+# its changelog commit would otherwise try to merge an incomplete
+# PR).  `cancel-in-progress: false` so we never abort a pass that's
+# already past the gating checks.
+concurrency:
+  group: dependabot-automerge-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
 
 jobs:
   automerge:
     name: Auto-merge
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
     steps:
-      - name: Fetch changed files
-        id: files
+      - name: Resolve PR from workflow_run head
+        id: pr
         run: |
-          FILES=$(gh pr diff "$PR_URL" --name-only)
-          echo "$FILES"
-          # Only auto-merge if the PR touches expected Dependabot files:
-          # Cargo ecosystem: Cargo.toml, Cargo.lock
-          # GitHub Actions ecosystem: .github/workflows/*.yml
-          UNEXPECTED=$(echo "$FILES" | grep -v \
-            -e '^Cargo\.\(toml\|lock\)$' \
-            -e '^\.github/workflows/.*\.yml$' \
-            || true)
-          if [ -n "$UNEXPECTED" ]; then
-            echo "unexpected_files=true" >> "$GITHUB_OUTPUT"
-            echo "::warning::Dependabot touched unexpected files — skipping auto-merge"
-            echo "$UNEXPECTED"
+          NUMBER=$(gh pr list \
+            --repo "$REPO" \
+            --head "$HEAD_BRANCH" \
+            --state open \
+            --json number \
+            --jq '.[0].number // empty')
+          if [ -z "$NUMBER" ]; then
+            echo "No open PR for branch $HEAD_BRANCH; nothing to do."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
           else
-            echo "unexpected_files=false" >> "$GITHUB_OUTPUT"
+            echo "number=$NUMBER" >> "$GITHUB_OUTPUT"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
         env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
+          REPO: ${{ github.repository }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Enable auto-merge
-        if: steps.files.outputs.unexpected_files == 'false'
-        run: gh pr merge --auto --squash "$PR_URL"
+      - name: Fetch PR metadata
+        id: meta
+        if: steps.pr.outputs.skip == 'false'
+        run: |
+          gh pr view "$PR_NUMBER" --repo "$REPO" \
+            --json author,title,labels,url,headRefName,mergeStateStatus \
+            > pr.json
+          AUTHOR=$(jq --raw-output '.author.login' pr.json)
+          TITLE=$(jq --raw-output '.title' pr.json)
+          URL=$(jq --raw-output '.url' pr.json)
+          HEAD_REF=$(jq --raw-output '.headRefName' pr.json)
+          MERGE_STATE=$(jq --raw-output '.mergeStateStatus' pr.json)
+          IS_SECURITY=$(jq --raw-output \
+            '[.labels[].name] | any(. == "security")' pr.json)
+          {
+            echo "author=$AUTHOR"
+            echo "title=$TITLE"
+            echo "url=$URL"
+            echo "head_ref=$HEAD_REF"
+            echo "merge_state=$MERGE_STATE"
+            echo "is_security=$IS_SECURITY"
+          } >> "$GITHUB_OUTPUT"
         env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Gate on author and file list
+        id: gate
+        if: steps.pr.outputs.skip == 'false'
+        run: |
+          if [ "$AUTHOR" != "dependabot[bot]" ]; then
+            echo "PR author is $AUTHOR, not dependabot[bot]; skipping."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          FILES=$(gh pr diff "$PR_NUMBER" --repo "$REPO" --name-only)
+          echo "$FILES"
+          # CHANGELOG.org is allowed because we add it ourselves on
+          # the first pass.  Anything outside this set means a human
+          # touched the PR and we should stay out of it.
+          UNEXPECTED=$(echo "$FILES" | grep --invert-match \
+            --regexp='^Cargo\.\(toml\|lock\)$' \
+            --regexp='^\.github/workflows/.*\.yml$' \
+            --regexp="^${CHANGELOG_FILE//./\\.}\$" \
+            || true)
+          if [ -n "$UNEXPECTED" ]; then
+            echo "::warning::PR touches unexpected files — skipping"
+            echo "$UNEXPECTED"
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if echo "$FILES" | grep --quiet --line-regexp "$CHANGELOG_FILE"; then
+            echo "phase=merge" >> "$GITHUB_OUTPUT"
+          else
+            echo "phase=changelog" >> "$GITHUB_OUTPUT"
+          fi
+          echo "proceed=true" >> "$GITHUB_OUTPUT"
+        env:
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          AUTHOR: ${{ steps.meta.outputs.author }}
+          CHANGELOG_FILE: ${{ inputs.changelog-file }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # --- First pass: insert the changelog entry on the PR branch ---
+
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.phase == 'changelog'
+        with:
+          ref: ${{ steps.meta.outputs.head_ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: DeterminateSystems/nix-installer-action@main
+        if: steps.gate.outputs.phase == 'changelog'
+
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+        if: steps.gate.outputs.phase == 'changelog'
+
+      - name: Append changelog entry and push to PR branch
+        if: steps.gate.outputs.phase == 'changelog'
+        run: |
+          if [ "$IS_SECURITY" = "true" ]; then
+            HEADING=Security
+          else
+            HEADING=Maintenance
+          fi
+          BODY="${TITLE} (${URL})"
+          nix develop --command changelog-roller insert-item \
+            --input-file "$CHANGELOG_FILE" \
+            --heading "$HEADING" \
+            --body "$BODY" \
+            --in-place
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "$CHANGELOG_FILE"
+          git commit --message "changelog for #${PR_NUMBER}"
+          git push origin "HEAD:$HEAD_REF"
+        env:
+          CHANGELOG_FILE: ${{ inputs.changelog-file }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          TITLE: ${{ steps.meta.outputs.title }}
+          URL: ${{ steps.meta.outputs.url }}
+          IS_SECURITY: ${{ steps.meta.outputs.is_security }}
+          HEAD_REF: ${{ steps.meta.outputs.head_ref }}
+
+      # --- Second pass: merge and dispatch publish ---
+
+      # `mergeStateStatus == CLEAN` rolls all required checks plus
+      # up-to-date-with-base and approvals into a single signal.  It
+      # is the right gate whether or not the repo has explicit
+      # branch protection — for unprotected repos, CLEAN still
+      # requires checks to have passed.
+      - name: Squash-merge the PR
+        id: merge
+        if: >
+          steps.gate.outputs.phase == 'merge' &&
+          steps.meta.outputs.merge_state == 'CLEAN'
+        run: |
+          if gh pr merge "$PR_NUMBER" \
+              --repo "$REPO" \
+              --squash \
+              --delete-branch; then
+            echo "merged=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "merged=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Dispatch publish
+        if: >
+          steps.merge.outputs.merged == 'true' &&
+          inputs.publish-workflow != ''
+        run: gh workflow run "$WORKFLOW" --repo "$REPO" --ref main
+        env:
+          REPO: ${{ github.repository }}
+          WORKFLOW: ${{ inputs.publish-workflow }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

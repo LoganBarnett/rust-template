@@ -85,6 +85,6 @@ jobs:
       - name: Check for new changelog entries
         run: >
           nix develop --command
-          changelog-roller
+          changelog-roller check-additions
           --input-file ${{ inputs.changelog-file }}
-          --diff-range origin/main
+          --base origin/main
