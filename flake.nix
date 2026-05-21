@@ -9,6 +9,7 @@
     nixpkgs.url = "github:NixOS/nixpkgs/25.11";
     rust-overlay.url = "github:oxalica/rust-overlay";
     crane.url = "github:ipetkov/crane";
+    changelog-roller.url = "github:LoganBarnett/changelog-roller";
     org-fmt.url = "github:LoganBarnett/org-fmt";
     org-fmt.inputs.nixpkgs.follows = "nixpkgs";
     org-fmt.inputs.rust-overlay.follows = "rust-overlay";
@@ -20,6 +21,7 @@
     nixpkgs,
     rust-overlay,
     crane,
+    changelog-roller,
     org-fmt,
   } @ inputs: let
     forAllSystems = nixpkgs.lib.genAttrs nixpkgs.lib.systems.flakeExposed;
@@ -49,6 +51,10 @@
       pkgs.prettier
       pkgs.elmPackages.elm-format
       org-fmt.packages.${system}.default
+      # Used by the reusable CI workflow's `changelog` job; pulled in here
+      # so `nix develop --command changelog-roller ...` works when the
+      # workflow runs against this repository as well as spawned projects.
+      changelog-roller.packages.${system}.default
     ];
   in {
     devShells = forAllSystems (system: {

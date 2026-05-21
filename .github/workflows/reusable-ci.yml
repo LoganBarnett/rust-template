@@ -1,5 +1,13 @@
 name: CI (reusable)
 
+# Every job runs inside `nix develop --command`, so the toolchain and
+# auxiliary binaries (rustfmt, clippy, changelog-roller, treefmt, ...)
+# come from the consumer's `flake.nix` devShell rather than being
+# reinstalled per-job via `dtolnay/rust-toolchain` or `cargo install`.
+# That collapses "works locally" and "works in CI" into a single
+# environment, which is the divergence that historically broke
+# spawned projects.
+
 on:
   workflow_call:
     inputs:
@@ -14,12 +22,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: DeterminateSystems/nix-installer-action@main
 
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+
+      # `Swatinem/rust-cache` caches `~/.cargo/registry` and `target/`
+      # — orthogonal to the Nix store cache above, which holds the
+      # toolchain and devShell inputs.
       - uses: Swatinem/rust-cache@v2
 
       - name: Run tests
-        run: cargo test --workspace
+        run: nix develop --command cargo test --workspace
 
   format:
     name: Formatting
@@ -27,12 +40,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
+      - uses: DeterminateSystems/nix-installer-action@main
+
+      - uses: DeterminateSystems/magic-nix-cache-action@main
 
       - name: Check formatting
-        run: cargo fmt --all -- --check
+        run: nix develop --command cargo fmt --all -- --check
 
   clippy:
     name: Clippy (warnings denied)
@@ -40,9 +53,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
+      - uses: DeterminateSystems/nix-installer-action@main
+
+      - uses: DeterminateSystems/magic-nix-cache-action@main
 
       - uses: Swatinem/rust-cache@v2
 
@@ -54,7 +67,7 @@ jobs:
       # reads as "tests are fine, lint nitpicks remain" rather than
       # being conflated with broken tests.
       - name: Run clippy with warnings as errors
-        run: cargo clippy --workspace --all-targets -- --deny warnings
+        run: nix develop --command cargo clippy --workspace --all-targets -- --deny warnings
 
   changelog:
     name: Changelog entry required
@@ -65,12 +78,13 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: DeterminateSystems/nix-installer-action@main
 
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Install changelog-roller
-        run: cargo install changelog-roller
+      - uses: DeterminateSystems/magic-nix-cache-action@main
 
       - name: Check for new changelog entries
-        run: changelog-roller --input-file ${{ inputs.changelog-file }} --diff-range origin/main
+        run: >
+          nix develop --command
+          changelog-roller
+          --input-file ${{ inputs.changelog-file }}
+          --diff-range origin/main
