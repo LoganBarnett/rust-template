@@ -1,6 +1,19 @@
 #+title:     rust-template Tasks
 #+language:  en
 
+* TODO Reusable CI checks should gate branch pushes, not just pull requests
+The reusable workflow's ~changelog~ and ~abi~ jobs both gate on
+~github.event_name == 'pull_request'~, so a contributor who pushes directly to a
+long-lived branch (or to ~main~ via a non-PR flow) bypasses both the
+changelog-entry requirement and the ABI / Upcoming → Breaking
+gate. CI should fail the build in those cases too — the asymmetric "ABI break ⇒
+      Breaking entry" rule is only useful if it holds on every path into ~main~.
+
+Decide on the right base ref to diff against when the trigger is a ~push~
+(probably ~origin/main~ for branch pushes; for pushes to ~main~ itself, either
+the previous commit on ~main~ or skip with a clear reason), then drop the
+~pull_request~ gate from both jobs in =.github/workflows/reusable-ci.yml=.
+
 * TODO Publish crates for public projects
 For projects marked as public, add mechanisms to publish crates via GitHub
 Actions. Use a =0.x.0= versioning pattern, incrementing =x= by 1 on every push
@@ -146,10 +159,11 @@ pub struct Config {
 
 ** DONE Implement MergeConfig derive in foundation-derive
 Replace the placeholder in ~crates/foundation-derive/src/lib.rs~ with the full
-implementation.  Parse struct-level and field-level attributes, generate
-~CliRaw~, ~ConfigFileRaw~, ~ConfigError~, ~from_cli_and_file~, and ~CliApp~
-trait impl.  Add ~clap~ and ~serde~ as dependencies of the derive crate if
-needed (for path references in generated code).
+implementation. Parse struct-level and field-level attributes, generate
+                ~CliRaw~, ~ConfigFileRaw~, ~ConfigError~, ~from_cli_and_file~,
+                and ~CliApp~ trait impl.  Add ~clap~ and ~serde~ as dependencies
+                of the derive crate if needed (for path references in generated
+                code).
 
 ** DONE Update example-cli config to use MergeConfig
 Simplest test case: ~common~ log fields + one field with a default.  Validates
@@ -276,8 +290,8 @@ configuration, module outputs.  Document the contract.
 ** DONE Implement mkRustProject.nix
 Create ~nix/lib/mkRustProject.nix~ that generates: packages (via crane with
 per-crate overrides), apps, devShells (with common + project-specific packages),
-overlays.  Support the ~# CRATE_ENTRIES~ sentinel pattern for ~crate-add.sh~
-compatibility.
+overlays. Support the ~# CRATE_ENTRIES~ sentinel pattern for ~crate-add.sh~
+          compatibility.
 
 ** DONE Export from root flake.nix
 Add ~lib.mkRustProject~ to the template repo's flake outputs.

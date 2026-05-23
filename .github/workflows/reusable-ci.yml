@@ -88,3 +88,75 @@ jobs:
           changelog-roller check-additions
           --input-file ${{ inputs.changelog-file }}
           --base origin/main
+
+  abi:
+    name: ABI compatibility
+    runs-on: ubuntu-latest
+    # PR-only — pushes to main have nothing to gate, and Dependabot PRs
+    # never touch the public API surface (they bump dependencies, not
+    # workspace crate versions).  Excluding Dependabot also lets the
+    # reusable-dependabot-automerge.yml flow finish on its own schedule
+    # without this job racing the changelog-injection commit.
+    if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: DeterminateSystems/nix-installer-action@main
+
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - uses: Swatinem/rust-cache@v2
+
+      # `cargo-semver-checks` compares the workspace's current public API
+      # against the version of each crate published on crates.io.  Three
+      # outcomes are possible:
+      #
+      #   1. No breaking changes — exit 0; the job finishes without
+      #      consulting the changelog.
+      #   2. Breaking changes detected — exit non-zero with a "requires
+      #      new major version" line in the output; the follow-up step
+      #      then requires an Upcoming → Breaking changelog entry.
+      #   3. No baseline available (crate has never been published, or
+      #      crates.io can't be reached) — exit non-zero with no such
+      #      marker; treated as a soft skip, since the asymmetric rule is
+      #      "ABI break implies Breaking entry," not "first publish
+      #      requires one."  An explicit Breaking entry the contributor
+      #      added by hand still lands fine; we just don't force one.
+      - name: Run cargo-semver-checks against crates.io baseline
+        id: semver
+        run: |
+          LOG=$(mktemp)
+          set +o pipefail
+          nix develop --command cargo semver-checks --workspace 2>&1 \
+            | tee "$LOG"
+          EXIT=${PIPESTATUS[0]}
+          set -o pipefail
+          if [ "$EXIT" -eq 0 ]; then
+            echo "No ABI-breaking changes detected."
+            echo "breaking=false" >> "$GITHUB_OUTPUT"
+          elif grep --quiet --extended-regexp \
+              'semver requires new major version|breaking changes detected' \
+              "$LOG"; then
+            echo "ABI-breaking changes detected; an Upcoming → Breaking changelog entry is required."
+            echo "breaking=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::cargo-semver-checks exited non-zero without reporting breaking changes (e.g. no published baseline on crates.io).  Skipping the Upcoming → Breaking gate."
+            echo "breaking=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The asymmetry the user spec'd: a Breaking entry *can* be added
+      # without an ABI break (e.g. a behavioural change that doesn't show
+      # up in the type signature), but an ABI break *must* be accompanied
+      # by one.  This step only runs when semver-checks proved an ABI
+      # break, so a missing entry here is unambiguously a documentation
+      # gap and not a false positive.
+      - name: Require Upcoming → Breaking changelog entry
+        if: steps.semver.outputs.breaking == 'true'
+        run: >
+          nix develop --command
+          changelog-roller check-additions
+          --input-file ${{ inputs.changelog-file }}
+          --base origin/main
+          --under Breaking

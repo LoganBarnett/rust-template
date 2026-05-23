@@ -84,6 +84,20 @@
           pkgs.just
           changelog-roller.packages.${system}.default
           org-fmt.packages.${system}.default
+          # ABI baseline check used by the reusable CI workflow's `abi`
+          # job.  Compares the workspace's current public API against the
+          # previous version on crates.io and reports breaking changes;
+          # the job then gates on an Upcoming → Breaking changelog entry
+          # when a break is detected.  Provided here so contributors can
+          # run `nix develop --command cargo semver-checks ...` locally
+          # before opening a PR.
+          #
+          # `doCheck = false` skips upstream's `target_feature_*`
+          # snapshot tests, which assert against snapshots recorded on
+          # x86_64 and therefore fail when building on aarch64-darwin.
+          # We only ship the binary, not its test suite, so disabling
+          # the check phase does not affect what the workflow runs.
+          (pkgs.cargo-semver-checks.overrideAttrs (_: {doCheck = false;}))
         ];
         shellHook = ''
           ${foundation.lib.cargoHuskyHookSnippet pkgs}

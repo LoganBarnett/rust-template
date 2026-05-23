@@ -7,11 +7,11 @@
         "rust-overlay": "rust-overlay"
       },
       "locked": {
-        "lastModified": 1779388084,
-        "narHash": "sha256-M/WmqOlQt1xha2vgWXIZJtihszxjlU5U33mpYaOPk0w=",
+        "lastModified": 1779403595,
+        "narHash": "sha256-aNYTigHOQZL2+2oKyTfgT+3k3DfKcgtQFF/beebFnls=",
         "owner": "LoganBarnett",
         "repo": "changelog-roller",
-        "rev": "d610a8247d566548413d3fa7b2cf144265662b4e",
+        "rev": "8aadb03134bc93fd2288f4df7407c21237dab467",
         "type": "github"
       },
       "original": {

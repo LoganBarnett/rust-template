@@ -55,6 +55,20 @@
       # so `nix develop --command changelog-roller ...` works when the
       # workflow runs against this repository as well as spawned projects.
       changelog-roller.packages.${system}.default
+      # ABI baseline check used by the reusable CI workflow's `abi` job.
+      # Compares the workspace's current public API against the previous
+      # version published to crates.io and reports breaking changes; the
+      # job then gates on an Upcoming → Breaking changelog entry when a
+      # break is detected.  Provided here so the same `nix develop
+      # --command cargo semver-checks ...` invocation works locally for
+      # contributors auditing a change before opening the PR.
+      #
+      # `doCheck = false` skips upstream's `target_feature_*` snapshot
+      # tests, which assert against snapshots recorded on x86_64 and
+      # therefore fail when building on aarch64-darwin.  We only ship
+      # the binary, not its test suite, so disabling the check phase
+      # does not affect what the workflow runs.
+      (pkgs.cargo-semver-checks.overrideAttrs (_: {doCheck = false;}))
     ];
   in {
     devShells = forAllSystems (system: {
