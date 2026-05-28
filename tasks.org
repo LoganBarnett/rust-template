@@ -23,6 +23,88 @@ The =public= flag already lives in the spawn manifest (=config.json=) under each
 project's =args.public=.  The publishing workflow in spawned projects should key
 off this value.  Document how this flag is used.
 
+* TODO Automate crates.io trusted-publishing setup across the fleet
+Setting up trusted publishing on crates.io is a per-crate operation: each crate
+must be claimed (initial publish) and then have a publisher config registered at
+=https://crates.io/crates/<name>/settings/new-trusted-publisher=.  For a single
+project with one crate this is fine; for ~22 projects averaging 3-4 crates each
+(60+ configs total) the UI click-through is untenable.
+
+Both halves of the setup are scriptable via a single API token scoped to
+=publish-new= and =trusted-publishing= (with crate scope left unrestricted so it
+covers every crate the user owns):
+
+- Claiming names: =cargo publish -p <crate>= using the token.
+- Registering trust configs: =POST /api/v1/trustpub/github_configs= with body
+  =github_config: { krate, repository_owner, repository_name, workflow_filename,
+  environment? }=.
+
+Write a helper script (e.g. =trusted-publish-setup.sh= at the repo root, or a
+sub-command of an existing tool) that takes a project directory, reads its
+workspace crate names from =Cargo.toml=, derives the GitHub =owner/repo= from
+the project's git remote, and loops over the crates running both the publish and
+the API call.  The token comes from an env var and is never persisted.
+
+Cross-reference: depends on the existing [[*Publish crates for public projects][Publish crates for public projects]] task
+for the =publish.yml= workflow the trust configs authorize.
+
+** Follow-up: backfill existing public projects
+Once the helper exists, walk every project that should be public and run the
+script against it to claim crate names and register trust configs.  Current
+fleet is about 22 projects and growing.
+
+The trustworthy signal for "is this project public" is the GitHub repository
+visibility itself (via =gh repo view --json visibility=), not the spawn
+manifest's =args.public=.  At least one historical project (sonify-health) was
+spawned without =--public= despite being intended as public, so the manifest is
+known-stale in places.  Reconcile each project's manifest entry against live
+GitHub visibility before running the setup script — fix the manifest where it
+diverges so future forward-ports treat the project correctly.
+
+* DONE Reusable publish workflow should create an annotated tag per release
+The reusable publish workflow (=reusable-publish.yml=) does version bump →
+changelog roll → release commit ("chore: release vX.Y.Z [skip ci]") → cargo
+publish, but never creates a git tag.  Downstream consumers lose the
+conventional way to refer to a release: =git checkout v0.3.0=, GitHub Releases
+binding, =git describe=, and signing/verification tools that expect a tag
+object.
+
+Add a tagging step that creates an *annotated* tag — =git tag --annotate
+v${VERSION} --message "Release v${VERSION}"= — and pushes it.  Annotated
+specifically, not a lightweight tag pointing at the commit object directly: =git
+describe= only walks annotated tags by default, GitHub's Releases UI
+distinguishes them, and tools that inspect tag metadata read the annotation
+payload.
+
+Open design question: tag before or after =cargo publish=?  Tagging first
+reserves the version even if the publish fails (which leaves a tag pointing at a
+version that never made it to crates.io); tagging after means a brief window
+where the crate is live but no tag exists yet.  Pick whichever failure mode is
+less bad.
+
+* TODO Reusable publish workflow should skip cargo publish when publish = false
+The reusable publish workflow (=reusable-publish.yml=) always runs =cargo
+publish= as its final step.  When the target crate is marked =publish = false=
+in its =Cargo.toml=, cargo exits 101 with "package.publish must be set to true
+or a non-empty list", and the whole workflow run turns red — once per merge to
+main, indefinitely, until the consumer flips the flag.
+
+For a downstream project that uses =publish = false= as the "not ready to
+publish yet" signal but still wants the version bump → changelog roll → release
+commit half of the workflow on every merge, every run is a false
+alarm. Add a guard before the publish step that reads =package.publish= for the
+       target crate and skips =cargo publish= when the crate is not publishable.
+
+Detection is clean via =cargo metadata --format-version 1 --no-deps=: =.publish=
+is =null= for default-publishable crates, an empty array =[]= when =publish =
+false=, and a list like =["crates-io"]= when restricted to specific registries.
+A jq one-liner: not-publishable when =(.packages[] | select(.name == "<crate>")
+| .publish) == []=.
+
+The bump/changelog/release-commit steps stay unguarded — that is the whole
+point; consumers want the release cadence even before they're ready to publish
+to crates.io.
+
 * TODO Darwin services must log to /var/log/<service>/ with rotation
 All darwin launchd services should write ~StandardOutPath~ and
 ~StandardErrorPath~ to ~/var/log/<service>/~ rather than ~/tmp/~ or
