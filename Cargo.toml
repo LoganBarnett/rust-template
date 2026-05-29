@@ -1,8 +1,8 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/foundation",
     "crates/foundation-derive",
+    "crates/foundation",
 ]
 
 # Project-wide lint policy, enforced via clippy.  Test code is exempted

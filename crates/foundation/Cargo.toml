@@ -5,7 +5,6 @@ edition = "2021"
 license = "AGPL-3.0-or-later"
 repository = "https://github.com/LoganBarnett/rust-template"
 description = "Shared infrastructure for projects spawned from rust-template."
-publish = false
 
 [features]
 default = []
@@ -36,7 +35,7 @@ auth = [
 
 [dependencies]
 # Always present
-rust-template-foundation-derive = { path = "../foundation-derive" }
+rust-template-foundation-derive = { path = "../foundation-derive", version = "0.1.0" }
 tracing = "0.1"
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "2.0"
