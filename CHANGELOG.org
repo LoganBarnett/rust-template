@@ -3,6 +3,8 @@
 
 * Upcoming
 ** Added
+* v0.2.0
+** Added
 - Multi-crate workspace publishing via =cargo publish --workspace= in the
   reusable publish workflow.
 - =[workspace.dependencies]= pattern with lockstep version bumping for
