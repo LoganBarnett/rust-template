@@ -72,7 +72,13 @@ jobs:
   changelog:
     name: Changelog entry required
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
+    # Runs on PRs and on pushes (direct-to-main as well as branch
+    # pushes) so the changelog-entry requirement holds on every path
+    # into main, not only the PR-merge path.  Dependabot PRs stay
+    # exempt: the reusable-dependabot-automerge.yml flow injects the
+    # changelog entry just before merging, and excluding Dependabot
+    # here keeps that flow from racing this job.
+    if: github.actor != 'dependabot[bot]'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -82,22 +88,38 @@ jobs:
 
       - uses: DeterminateSystems/magic-nix-cache-action@main
 
+      # Diff target depends on the event:
+      # - PR or push to a non-main branch: `origin/main` (the merge
+      #   target / long-lived reference contributors are working
+      #   away from).
+      # - Push to main: `github.event.before`, the SHA before the
+      #   push.  PR-merge pushes still pass since the merged diff
+      #   contains the entry that gated the PR; direct pushes to
+      #   main are caught here instead of slipping through.
       - name: Check for new changelog entries
-        run: >
-          nix develop --command
-          changelog-roller check-additions
-          --input-file ${{ inputs.changelog-file }}
-          --base origin/main
+        run: |
+          if [ "${{ github.event_name }}" = "push" ] \
+              && [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            base="${{ github.event.before }}"
+          else
+            base="origin/main"
+          fi
+          nix develop --command \
+            changelog-roller check-additions \
+            --input-file "${{ inputs.changelog-file }}" \
+            --base "$base"
 
   abi:
     name: ABI compatibility
     runs-on: ubuntu-latest
-    # PR-only — pushes to main have nothing to gate, and Dependabot PRs
-    # never touch the public API surface (they bump dependencies, not
-    # workspace crate versions).  Excluding Dependabot also lets the
-    # reusable-dependabot-automerge.yml flow finish on its own schedule
-    # without this job racing the changelog-injection commit.
-    if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
+    # Runs on PRs and on pushes so the asymmetric "ABI break ⇒
+    # Breaking entry" rule holds on every path into main, including
+    # direct pushes that bypass the PR flow.  Dependabot PRs stay
+    # exempt: they bump dependencies, not workspace API, and
+    # excluding them lets the reusable-dependabot-automerge.yml flow
+    # finish on its own schedule without this job racing the
+    # changelog-injection commit.
+    if: github.actor != 'dependabot[bot]'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -152,11 +174,20 @@ jobs:
       # by one.  This step only runs when semver-checks proved an ABI
       # break, so a missing entry here is unambiguously a documentation
       # gap and not a false positive.
+      # Same base-ref selection as the `changelog` job above: pushes
+      # to main diff against `github.event.before` so direct pushes
+      # are gated; everything else diffs against `origin/main`.
       - name: Require Upcoming → Breaking changelog entry
         if: steps.semver.outputs.breaking == 'true'
-        run: >
-          nix develop --command
-          changelog-roller check-additions
-          --input-file ${{ inputs.changelog-file }}
-          --base origin/main
-          --under Breaking
+        run: |
+          if [ "${{ github.event_name }}" = "push" ] \
+              && [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            base="${{ github.event.before }}"
+          else
+            base="origin/main"
+          fi
+          nix develop --command \
+            changelog-roller check-additions \
+            --input-file "${{ inputs.changelog-file }}" \
+            --base "$base" \
+            --under Breaking

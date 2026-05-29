@@ -1,7 +1,7 @@
 #+title:     rust-template Tasks
 #+language:  en
 
-* TODO Reusable CI checks should gate branch pushes, not just pull requests
+* DONE Reusable CI checks should gate branch pushes, not just pull requests
 The reusable workflow's ~changelog~ and ~abi~ jobs both gate on
 ~github.event_name == 'pull_request'~, so a contributor who pushes directly to a
 long-lived branch (or to ~main~ via a non-PR flow) bypasses both the
