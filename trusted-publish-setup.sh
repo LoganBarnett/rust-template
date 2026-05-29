@@ -104,7 +104,13 @@ fi
 # the GitHub remote is configured under another name.  Handles both
 # `git@github.com:owner/repo(.git)` and
 # `https://github.com/owner/repo(.git)` forms.
-remote=$(git -C "$PROJECT_DIR" remote --verbose 2>/dev/null \
+#
+# Important: read raw config rather than `git remote --verbose`.  A
+# global `url.<other>.insteadOf = https://github.com/...` rewrite
+# transparently swaps the displayed URL for `git remote` output, which
+# would hide a github-stored remote behind whatever the rewrite points
+# at.  `git config --get-regexp` returns the stored value untouched.
+remote=$(git -C "$PROJECT_DIR" config --get-regexp '^remote\..*\.url$' 2>/dev/null \
     | awk '$2 ~ /github\.com/ {print $2; exit}')
 if [[ -z "$remote" ]]; then
     echo "Error: no remote pointing at github.com is configured in $PROJECT_DIR." >&2
