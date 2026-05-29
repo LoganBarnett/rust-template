@@ -1,0 +1,11 @@
+#+title:     Changelog
+#+language:  en
+
+* Upcoming
+** Added
+- Multi-crate workspace publishing via =cargo publish --workspace= in the
+  reusable publish workflow.
+- =[workspace.dependencies]= pattern with lockstep version bumping for
+  inter-crate path deps.
+- =trusted-publish-setup.sh= for crates.io trusted-publishing configuration,
+  with a =pass= fallback for the API token.
