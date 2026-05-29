@@ -44,16 +44,21 @@ project's publish workflow.
                    trust config to.  Leave unset for repo-wide scope.
   --dry-run        Print what would happen without doing it.
 
-CARGO_REGISTRY_TOKEN must be set in the environment.  The token needs
-both \`publish-new\` and \`trusted-publishing\` scopes, with crate scope
-left unrestricted so it covers every crate the user owns.
+CARGO_REGISTRY_TOKEN must be set in the environment, or the token must
+be stored in \`pass\` under the entry \`cargo-crates-io-api-token\` —
+the script reads from there as a fallback so the typical invocation
+needs no wrapper.  The token needs both \`publish-new\` and
+\`trusted-publishing\` scopes, with crate scope left unrestricted so it
+covers every crate the user owns.
 
 Requires \`cargo\`, \`git\`, \`jq\`, and \`curl\` on PATH — the
-rust-template devShell provides all four.
+rust-template devShell provides all four.  \`pass\` is required only
+when falling back to the password-store entry.
 
 Examples:
+  $(basename "$0") --project-dir ~/dev/my-app
+  $(basename "$0") --project-dir ~/dev/my-app --dry-run
   CARGO_REGISTRY_TOKEN=... $(basename "$0") --project-dir ~/dev/my-app
-  CARGO_REGISTRY_TOKEN=... $(basename "$0") --project-dir ~/dev/my-app --dry-run
 EOF
     exit 1
 }
@@ -72,8 +77,21 @@ done
 [[ -z "$PROJECT_DIR" ]] && { echo "Error: --project-dir is required." >&2; usage; }
 [[ ! -d "$PROJECT_DIR" ]] && { echo "Error: $PROJECT_DIR is not a directory." >&2; exit 1; }
 
+# Fall back to `pass` so the token lives in the password store rather
+# than the devShell environment, where it would otherwise be inherited
+# by every subprocess in the session even though it is only needed for
+# the duration of this script.  Explicit env var still wins for ad-hoc
+# overrides and CI use.
+PASS_ENTRY="cargo-crates-io-api-token"
+if [[ -z "${CARGO_REGISTRY_TOKEN:-}" ]] && command -v pass &>/dev/null; then
+    if token=$(pass show "$PASS_ENTRY" 2>/dev/null); then
+        export CARGO_REGISTRY_TOKEN="$token"
+    fi
+fi
+
 if [[ -z "${CARGO_REGISTRY_TOKEN:-}" ]]; then
-    echo "Error: CARGO_REGISTRY_TOKEN must be set in the environment." >&2
+    echo "Error: CARGO_REGISTRY_TOKEN must be set in the environment," >&2
+    echo "       or stored in pass under '$PASS_ENTRY'." >&2
     exit 1
 fi
 
