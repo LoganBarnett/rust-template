@@ -105,7 +105,16 @@ The bump/changelog/release-commit steps stay unguarded — that is the whole
 point; consumers want the release cadence even before they're ready to publish
 to crates.io.
 
-* TODO Darwin services must log to /var/log/<service>/ with rotation
+* DONE Darwin services must log to /var/log/<service>/ with rotation
+Implemented in =nix/lib/mkDarwinService.nix=: log directory creation lives in
+~system.activationScripts.postActivation~, ~StandardOutPath~ /
+~StandardErrorPath~ on both the main service and the optional health-check agent
+point at =/var/log/<service>/=, and
+~environment.etc."newsyslog.d/<service>.conf"~ adds newsyslog rotation rules for
+stdout, stderr, and (when enabled) the healthcheck log pair.  Notes preserved
+below for future reference and for any new darwin-only services that don't go
+through ~mkDarwinService~.
+
 All darwin launchd services should write ~StandardOutPath~ and
 ~StandardErrorPath~ to ~/var/log/<service>/~ rather than ~/tmp/~ or
 nowhere. ~/tmp/~ is cleared on reboot and is not where service logs

@@ -162,12 +162,41 @@ in {
 
     # Create the log directory.  The socket directory is created by the
     # service itself (see ProgramArguments) to avoid coupling with
-    # activation.
+    # activation.  mkdir is qualified to GNU coreutils because BSD mkdir
+    # (/bin/mkdir) lacks --parents — only -p — and global convention is
+    # to use long-form CLI arguments wherever they exist.
     system.activationScripts.postActivation.text = ''
-      mkdir -p ${logDir}
+      ${pkgs.coreutils}/bin/mkdir --parents ${logDir}
       chown ${cfg.user}:${cfg.group} ${logDir}
       chmod 0750 ${logDir}
     '';
+
+    # Rotate launchd-captured logs via newsyslog.  Without this, stdout
+    # and stderr grow without bound — launchd does not rotate the files
+    # it opens for StandardOutPath / StandardErrorPath.  Flags:
+    #   N — no signal.  The service is not syslogd and does not handle
+    #       SIGHUP for log re-open; launchd owns the file descriptors
+    #       and continues writing to the rotated file's inode until the
+    #       service restarts.  Acceptable for low-volume launchd logs;
+    #       high-volume services should restart on rotation or write
+    #       their own logs via a rotating sink.
+    #   J — bzip2-compress archived rotations.
+    # size is in KB (10240 = 10 MB); count is archives retained.
+    environment.etc."newsyslog.d/${name}.conf".text = let
+      rotateLine = file: "${file} ${cfg.user}:${cfg.group} 640 5 10240 * NJ";
+    in
+      lib.concatStringsSep "\n" (
+        [
+          "# logfilename [owner:group] mode count size when flags"
+          (rotateLine "${logDir}/stdout.log")
+          (rotateLine "${logDir}/stderr.log")
+        ]
+        ++ lib.optionals cfg.healthCheck.enable [
+          (rotateLine "${logDir}/healthcheck-stdout.log")
+          (rotateLine "${logDir}/healthcheck-stderr.log")
+        ]
+      )
+      + "\n";
 
     # Every scalar serviceConfig value is wrapped in lib.mkDefault so
     # downstream modules can override individual fields with plain
