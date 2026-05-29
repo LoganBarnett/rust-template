@@ -82,7 +82,7 @@ version that never made it to crates.io); tagging after means a brief window
 where the crate is live but no tag exists yet.  Pick whichever failure mode is
 less bad.
 
-* TODO Reusable publish workflow should skip cargo publish when publish = false
+* DONE Reusable publish workflow should skip cargo publish when publish = false
 The reusable publish workflow (=reusable-publish.yml=) always runs =cargo
 publish= as its final step.  When the target crate is marked =publish = false=
 in its =Cargo.toml=, cargo exits 101 with "package.publish must be set to true
