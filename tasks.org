@@ -14,7 +14,7 @@ Decide on the right base ref to diff against when the trigger is a ~push~
 the previous commit on ~main~ or skip with a clear reason), then drop the
 ~pull_request~ gate from both jobs in =.github/workflows/reusable-ci.yml=.
 
-* TODO Publish crates for public projects
+* DONE Publish crates for public projects
 For projects marked as public, add mechanisms to publish crates via GitHub
 Actions. Use a =0.x.0= versioning pattern, incrementing =x= by 1 on every push
          to the main branch, at which point a release is cut.
