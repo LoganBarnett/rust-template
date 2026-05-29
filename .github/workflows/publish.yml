@@ -21,4 +21,8 @@ permissions:
 
 jobs:
   publish:
-    uses: LoganBarnett/rust-template/.github/workflows/reusable-publish.yml@main
+    # Self-reference: this repo's own publish workflow consumes the
+    # reusable workflow it ships.  Pin to `@main` so the latest
+    # template-level change applies on the very next merge, the same
+    # contract spawned projects get.
+    uses: ./.github/workflows/reusable-publish.yml

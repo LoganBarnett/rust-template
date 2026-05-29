@@ -5,6 +5,17 @@ members = [
     "crates/foundation",
 ]
 
+# Shared metadata for workspace members.  Each crate inherits these
+# with `.workspace = true` so a release bumps the version in exactly
+# one place — the linear minor-bump cadence assumes lockstep
+# versioning across the workspace.  Fields that vary per crate
+# (`name`, `description`, `publish`) stay declared on each member.
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+repository = "https://github.com/LoganBarnett/rust-template"
+
 # Project-wide lint policy, enforced via clippy.  Test code is exempted
 # from the panicking-variant bans by clippy.toml's
 # allow-unwrap-in-tests / allow-expect-in-tests / allow-panic-in-tests,

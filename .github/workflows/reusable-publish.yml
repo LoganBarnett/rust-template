@@ -8,9 +8,6 @@ name: Publish (reusable)
 on:
   workflow_call:
     inputs:
-      crate-name:
-        required: true
-        type: string
       changelog-file:
         type: string
         default: "CHANGELOG.org"
@@ -76,33 +73,23 @@ jobs:
           git push
 
       # The trusted-publishing OIDC exchange and `cargo publish` are
-      # only useful when the target crate is actually publishable.
-      # When `publish = false` is set in the crate's Cargo.toml,
-      # cargo exits 101 with a clear error — but that turns the
-      # workflow run red on every merge to main until the flag flips.
-      # Detect non-publishable crates up front and skip the OIDC +
-      # publish steps; the bump/changelog/release-commit/tag steps
-      # still run, so the release cadence is intact even before
-      # crates.io is wired up.
+      # only useful when at least one workspace crate is actually
+      # publishable.  When every crate has `publish = false` set, the
+      # workflow still bumps versions, rolls the changelog, commits,
+      # and tags — the release cadence stays intact even before
+      # crates.io is wired up for any crate.
       #
       # `.publish` in `cargo metadata` is `null` for default-
       # publishable crates, `[]` for `publish = false`, and a list
       # like `["crates-io"]` when restricted to specific registries.
       # `null != []` and `[<x>, ...] != []` both evaluate to `true`;
-      # only `publish = false` evaluates to `false`.  An empty jq
-      # result (unknown crate-name input) falls through to `true` so
-      # `cargo publish` produces the canonical "no such package"
-      # error rather than silently skipping.
-      - name: Determine whether the crate is publishable
+      # only `publish = false` evaluates to `false`.
+      - name: Determine whether any workspace crate is publishable
         id: publishable
         run: |
           publishable=$(nix develop --command cargo metadata \
             --format-version 1 --no-deps \
-            | jq --arg name "${{ inputs.crate-name }}" \
-              '(.packages[] | select(.name == $name) | .publish) != []')
-          if [[ -z "$publishable" ]]; then
-            publishable=true
-          fi
+            | jq '[.packages[] | select(.publish != [])] | length > 0')
           echo "publishable=${publishable}" >> "$GITHUB_OUTPUT"
 
       # Runs on the runner's node, not under nix — the action just
@@ -110,13 +97,22 @@ jobs:
       # writes `token` as a step output.  The cargo step below
       # consumes it via $CARGO_REGISTRY_TOKEN; nix develop inherits
       # the parent environment so the variable crosses the boundary.
+      # The exchanged token's scope is the union of every crate the
+      # workflow holds a trust config for, so a single auth round
+      # covers a multi-crate workspace publish.
       - uses: rust-lang/crates-io-auth-action@v1
         id: auth
         if: steps.publishable.outputs.publishable == 'true'
 
-      - name: Publish to crates.io
+      # `--workspace` publishes every member whose `publish` field is
+      # not `false`, in dependency order, waiting for each to appear
+      # in the registry index before starting the next.  Crates marked
+      # `publish = false` are silently skipped, so a workspace mixing
+      # publishable libraries with non-publishable binaries needs no
+      # additional plumbing here.
+      - name: Publish workspace to crates.io
         if: steps.publishable.outputs.publishable == 'true'
-        run: nix develop --command cargo publish --package ${{ inputs.crate-name }}
+        run: nix develop --command cargo publish --workspace
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
 
