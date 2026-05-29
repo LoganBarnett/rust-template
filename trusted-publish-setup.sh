@@ -95,13 +95,22 @@ if [[ -z "${CARGO_REGISTRY_TOKEN:-}" ]]; then
     exit 1
 fi
 
-# Resolve the GitHub `owner/repo` from the project's `origin` remote
-# rather than the local directory name.  Trust configs key publishing
-# rights to the remote on GitHub's side, so the remote URL is the
-# authoritative identifier even when the local directory has been
-# renamed.  Handles both `git@github.com:owner/repo(.git)` and
+# Resolve the GitHub `owner/repo` from whichever configured remote
+# actually points at github.com, rather than assuming `origin`.  Trust
+# configs key publishing rights to the remote on GitHub's side, so the
+# remote URL is the authoritative identifier even when the local
+# directory has been renamed.  Searching all remotes also accommodates
+# fleets where `origin` is a different host (e.g. a gitea mirror) and
+# the GitHub remote is configured under another name.  Handles both
+# `git@github.com:owner/repo(.git)` and
 # `https://github.com/owner/repo(.git)` forms.
-remote=$(git -C "$PROJECT_DIR" remote get-url origin)
+remote=$(git -C "$PROJECT_DIR" remote --verbose 2>/dev/null \
+    | awk '$2 ~ /github\.com/ {print $2; exit}')
+if [[ -z "$remote" ]]; then
+    echo "Error: no remote pointing at github.com is configured in $PROJECT_DIR." >&2
+    echo "       Trusted publishing requires the project to be hosted on GitHub." >&2
+    exit 1
+fi
 owner_repo=$(printf '%s\n' "$remote" \
     | sed --regexp-extended \
         --expression 's|^git@[^:]+:||' \
