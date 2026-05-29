@@ -127,11 +127,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1779148644,
-        "narHash": "sha256-EL+JZu3TlTwCgZI5fZoq/Cud0s7Jm4s702b/aPBJnsY=",
+        "lastModified": 1780088241,
+        "narHash": "sha256-MRZUj/uZBhIvPJmOIjGzM9PlU+H/of72DNrnwnCwzOw=",
         "owner": "LoganBarnett",
         "repo": "org-fmt",
-        "rev": "cc98be0ca7fa4f16678d55e8268f8a4bda1a3536",
+        "rev": "25c865b87f50f8e4633c18570af387dd5708d925",
         "type": "github"
       },
       "original": {
