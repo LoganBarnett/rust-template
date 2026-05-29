@@ -23,7 +23,7 @@ The =public= flag already lives in the spawn manifest (=config.json=) under each
 project's =args.public=.  The publishing workflow in spawned projects should key
 off this value.  Document how this flag is used.
 
-* TODO Automate crates.io trusted-publishing setup across the fleet
+* DONE Automate crates.io trusted-publishing setup across the fleet
 Setting up trusted publishing on crates.io is a per-crate operation: each crate
 must be claimed (initial publish) and then have a publisher config registered at
 =https://crates.io/crates/<name>/settings/new-trusted-publisher=.  For a single
@@ -48,10 +48,10 @@ the API call.  The token comes from an env var and is never persisted.
 Cross-reference: depends on the existing [[*Publish crates for public projects][Publish crates for public projects]] task
 for the =publish.yml= workflow the trust configs authorize.
 
-** Follow-up: backfill existing public projects
-Once the helper exists, walk every project that should be public and run the
-script against it to claim crate names and register trust configs.  Current
-fleet is about 22 projects and growing.
+* TODO Backfill trusted-publishing across existing public projects
+Walk every public project in the fleet and run =trusted-publish-setup.sh=
+against it to claim crate names and register trust configs.  Current fleet is
+about 22 projects and growing.
 
 The trustworthy signal for "is this project public" is the GitHub repository
 visibility itself (via =gh repo view --json visibility=), not the spawn

@@ -280,6 +280,13 @@ workflows are fully operational:
    set the repository to =<owner>/<project-name>=, the workflow filename to
    =publish.yml=, and leave the environment blank.
 
+   For multi-crate projects or rolling out across several projects at once, the
+   repo ships =trusted-publish-setup.sh= which claims crate names and registers
+   trust configs for every publishable workspace crate in one pass.  Set
+   =CARGO_REGISTRY_TOKEN= (with =publish-new= and =trusted-publishing= scopes)
+   and run =trusted-publish-setup.sh --project-dir <path>=.  Pass =--dry-run=
+   first to see what it will do.
+
 2. *Enable auto-merge* (Settings → General → Allow auto-merge).  The dependabot
    automerge workflow calls =gh pr merge --auto=, which only takes effect if
    this setting is on.
