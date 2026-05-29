@@ -7,8 +7,9 @@ set -euo pipefail
 #   1. Claims the crate name by running `cargo publish --package <name>`
 #      (skipped if the crate already exists on crates.io).
 #   2. POSTs a GitHub Actions trust configuration to
-#      `/api/v1/trustpub/github_configs`, authorizing the project's
-#      publish workflow to mint short-lived crates.io tokens via OIDC.
+#      `/api/v1/trusted_publishing/github_configs`, authorizing the
+#      project's publish workflow to mint short-lived crates.io tokens
+#      via OIDC.
 #
 # Inputs come from the project's own state — workspace crate names
 # from `cargo metadata`, GitHub `owner/repo` from the `origin` remote
@@ -157,6 +158,12 @@ echo "Crates:   ${crates[*]}"
 echo
 
 API_BASE="https://crates.io/api/v1"
+# crates.io blocks API requests that omit a `User-Agent`, returning
+# 403 with an "API data access policy" message regardless of token
+# scope or endpoint correctness.  Send a self-identifying UA on every
+# request so that policy gate never trips, per crates.io's published
+# crawler etiquette guidance.
+USER_AGENT="trusted-publish-setup (https://github.com/LoganBarnett/rust-template)"
 
 # Returns 0 if the crate exists on crates.io, 1 otherwise.  The
 # `GET /api/v1/crates/<name>` endpoint is public, so no token is
@@ -166,8 +173,35 @@ crate_exists() {
     local name="$1"
     local code
     code=$(curl --silent --output /dev/null --write-out '%{http_code}' \
+        --user-agent "$USER_AGENT" \
         "$API_BASE/crates/$name")
     [[ "$code" == "200" ]]
+}
+
+# Returns 0 if a trust config matching (crate, owner, repo, workflow,
+# environment) is already registered, 1 otherwise.  crates.io does not
+# treat duplicate POSTs as conflicts — it happily creates a second
+# identical config row — so the caller must check first to keep
+# re-runs idempotent.
+trust_config_exists() {
+    local crate="$1" owner="$2" repo="$3" workflow="$4" env="$5"
+    local count
+    count=$(curl --silent \
+        --user-agent "$USER_AGENT" \
+        --header "Authorization: $CARGO_REGISTRY_TOKEN" \
+        "$API_BASE/trusted_publishing/github_configs?crate=$crate" \
+        | jq --arg owner "$owner" --arg repo "$repo" \
+              --arg workflow "$workflow" --arg env "$env" \
+            '[
+                .github_configs[]?
+                | select(
+                    .repository_owner == $owner
+                    and .repository_name == $repo
+                    and .workflow_filename == $workflow
+                    and ((.environment // "") == $env)
+                )
+            ] | length')
+    [[ "${count:-0}" -gt 0 ]]
 }
 
 for crate in "${crates[@]}"; do
@@ -192,8 +226,18 @@ for crate in "${crates[@]}"; do
         fi
     fi
 
+    if trust_config_exists "$crate" "$owner" "$repo" "$WORKFLOW_FILE" "$ENVIRONMENT"; then
+        echo "  Trust config already registered; skipping POST."
+        echo
+        continue
+    fi
+
+    # The wire field is `crate`, not `krate` — the latter would only
+    # be necessary if crates.io's deserialiser were itself written in
+    # Rust and had to dodge the keyword, but the public API uses the
+    # plain English name.
     body=$(jq --null-input \
-        --arg krate "$crate" \
+        --arg crate "$crate" \
         --arg owner "$owner" \
         --arg repo "$repo" \
         --arg workflow "$WORKFLOW_FILE" \
@@ -201,7 +245,7 @@ for crate in "${crates[@]}"; do
         '{
             github_config: (
                 {
-                    krate: $krate,
+                    crate: $crate,
                     repository_owner: $owner,
                     repository_name: $repo,
                     workflow_filename: $workflow
@@ -223,10 +267,11 @@ for crate in "${crates[@]}"; do
     # error cases).
     response=$(curl --silent --show-error \
         --write-out '\n%{http_code}' \
+        --user-agent "$USER_AGENT" \
         --header "Authorization: $CARGO_REGISTRY_TOKEN" \
         --header "Content-Type: application/json" \
         --data "$body" \
-        "$API_BASE/trustpub/github_configs")
+        "$API_BASE/trusted_publishing/github_configs")
     http_code=$(printf '%s\n' "$response" | tail --lines=1)
     response_body=$(printf '%s\n' "$response" | sed '$d')
 
