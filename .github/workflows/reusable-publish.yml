@@ -47,6 +47,17 @@ jobs:
           IFS='.' read -r MAJOR MINOR _PATCH <<< "$CURRENT"
           NEW="${MAJOR}.$((MINOR + 1)).0"
           sed --in-place "s/^version = \"${CURRENT}\"/version = \"${NEW}\"/" Cargo.toml
+          # Bump every workspace-internal path-dep's version specifier
+          # in lockstep.  Without this, an inter-crate `path = "...",
+          # version = "<current>"` declaration keeps requiring the
+          # pre-bump version while the local sibling has just moved to
+          # the post-bump one, and `cargo update --workspace` fails to
+          # resolve the requirement.  Constraining the sed to lines
+          # that also contain `path = ` keeps it from touching external
+          # deps that happen to share the current version literal.
+          sed --in-place --regexp-extended \
+            "/path[[:space:]]*=/s|version[[:space:]]*=[[:space:]]*\"${CURRENT}\"|version = \"${NEW}\"|" \
+            Cargo.toml
           # The version bump above left Cargo.lock pinning the old version
           # of this workspace member.  Rewrite the lockfile so it agrees
           # with Cargo.toml before the subsequent commit and `cargo
