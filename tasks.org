@@ -172,7 +172,7 @@ inference server) need more generous limits than one-shot helpers.
 See =dotfiles= commit =a223015e= (~fix(ollama): add launchd log output with
 newsyslog rotation~) for a working example applied to the Ollama darwin module.
 
-* TODO MergeConfig derive macro
+* DONE MergeConfig derive macro
 Auto-generate the ~CliRaw -> ConfigFileRaw -> Config~ merge from a single type
 definition. The ~#[derive(MergeConfig)]~ macro should produce the ~CliRaw~ (clap
             Parser), ~ConfigFileRaw~ (serde Deserialize), ~ConfigError~, the
