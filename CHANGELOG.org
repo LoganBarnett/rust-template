@@ -3,6 +3,21 @@
 
 * Upcoming
 ** Added
+- =--all-features= on the reusable CI workflow's =cargo test= and =cargo clippy=
+  steps so feature-gated code paths actually get exercised rather than passing
+  by not being compiled.
+- =required-features= declarations on the foundation crate's MergeConfig
+  integration tests so they compile under the =cli= feature and are skipped
+  without it.
+** Changed
+- Bumped org-fmt to pick up the list-marker recognizer fix (it no longer
+  mistakes any =word.= at line start for an ordered-list marker) and the
+  idempotent =--in-place= mode (no rewrite when content is unchanged), which
+  together unblock the formatter-coverage CI job.
+** Fixed
+- Combinator-preference clippy violations across foundation's auth and server
+  modules and the MergeConfig derive macro, surfaced once the org-fmt SSH
+  dependency no longer masked the clippy step in CI.
 * v0.2.0
 ** Added
 - Multi-crate workspace publishing via =cargo publish --workspace= in the
