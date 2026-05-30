@@ -110,7 +110,11 @@ else
     echo "  FAIL spawn       emitted code is not treefmt-clean.  Files needing format:"
     grep -E "^ERRO file has changed" "$clean_log" \
         | sed 's|.*path=|    |;s| prev_size.*||' \
-        || echo "    (no per-file detail; see $clean_log)"
+        || echo "    (no ERRO per-file lines — full treefmt --ci output follows)"
+    echo
+    echo "─── spawn-clean.log ───"
+    cat "$clean_log"
+    echo "─── end ───"
     echo
     echo "Fix: format the offending source(s) under template/, or fix the"
     echo "spawn-time expansion in new-project.sh / crate-add.sh that emits"
