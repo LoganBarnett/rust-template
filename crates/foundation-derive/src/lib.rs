@@ -266,8 +266,7 @@ fn mc_parse_field(field: &syn::Field) -> syn::Result<McFieldInfo> {
 
     let raw_name = name
       .as_ref()
-      .map(|n| Ident::new(&n.value(), n.span()))
-      .unwrap_or_else(|| ident.clone());
+      .map_or_else(|| ident.clone(), |n| Ident::new(&n.value(), n.span()));
 
     McFieldKind::Merged(Box::new(McMerged {
       raw_name,
@@ -561,6 +560,11 @@ fn mc_gen_from_cli_and_file(
         quote! { .or(file.#raw_name) }
       };
 
+      // Three-arm chain (default / required / otherwise) — collapsing
+      // this to map_or_else would force a nested closure picking
+      // between two quote!{} blocks, which reads worse than the
+      // explicit if/else if ladder.
+      #[allow(clippy::option_if_let_else)]
       let unwrap = if let Some(default_expr) = &m.default {
         quote! { .unwrap_or_else(|| #default_expr) }
       } else if m.required {
@@ -703,17 +707,15 @@ fn mc_derive_impl(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
 
   let attrs = mc_parse_struct_attrs(&input.attrs)?;
 
-  let named = match &input.data {
-    Data::Struct(DataStruct {
-      fields: Fields::Named(FieldsNamed { named, .. }),
-      ..
-    }) => named,
-    _ => {
-      return Err(syn::Error::new_spanned(
-        &input,
-        "MergeConfig requires a struct with named fields",
-      ))
-    }
+  let Data::Struct(DataStruct {
+    fields: Fields::Named(FieldsNamed { named, .. }),
+    ..
+  }) = &input.data
+  else {
+    return Err(syn::Error::new_spanned(
+      &input,
+      "MergeConfig requires a struct with named fields",
+    ));
   };
 
   let field_infos: Vec<McFieldInfo> = named
@@ -906,8 +908,7 @@ fn type_is_server(ty: &Type) -> bool {
       .path
       .segments
       .last()
-      .map(|seg| seg.ident == "Server")
-      .unwrap_or(false),
+      .is_some_and(|seg| seg.ident == "Server"),
     Type::Tuple(tuple) => {
       // A tuple of Servers is also a server param.
       !tuple.elems.is_empty() && tuple.elems.iter().all(type_is_server)
@@ -923,6 +924,11 @@ fn generate_server_main(
   config_type: &Type,
   tuple_len: Option<usize>,
 ) -> proc_macro2::TokenStream {
+  // Each arm builds a multi-line `quote!{}` block whose shape differs
+  // entirely between the tuple and single-server cases — folding this
+  // into Option::map_or_else would push both quote bodies inside
+  // closures and obscure the structural difference between them.
+  #[allow(clippy::option_if_let_else)]
   let call_expr = if let Some(n) = tuple_len {
     // Tuple of N servers: create N servers and pass as tuple.
     let server_creates: Vec<_> = (0..n)

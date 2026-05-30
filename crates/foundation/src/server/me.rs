@@ -34,8 +34,7 @@ pub async fn me_handler(
 
   let name = auth::current_user(&session)
     .await
-    .map(|u| u.name)
-    .unwrap_or_else(|| "anonymous".to_string());
+    .map_or_else(|| "anonymous".to_string(), |u| u.name);
 
   Json(MeResponse {
     name,

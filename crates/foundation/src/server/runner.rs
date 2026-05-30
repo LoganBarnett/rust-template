@@ -103,12 +103,11 @@ impl BaseServerState {
     )?;
     registry.register(Box::new(request_counter.clone()))?;
 
-    let oidc_client = match &config.oidc {
-      Some(oidc) => Some(auth::discover_oidc(oidc, &config.base_url).await?),
-      None => {
-        info!("OIDC not configured — running unauthenticated");
-        None
-      }
+    let oidc_client = if let Some(oidc) = &config.oidc {
+      Some(auth::discover_oidc(oidc, &config.base_url).await?)
+    } else {
+      info!("OIDC not configured — running unauthenticated");
+      None
     };
 
     Ok(Self {
