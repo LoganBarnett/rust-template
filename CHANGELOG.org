@@ -9,6 +9,8 @@
   location for declarations that should apply on both platforms, with no
   restructuring required when the first shared bit lands.
 ** Changed
+* v0.6.0
+** Changed
 - Backfilled the v0.4.0 and v0.5.0 sections, which the release workflow had
   emitted empty because their pushes carried no Upcoming entries.
 - =template/flake.nix= and =compliance-check.sh= now invoke =jq= with
