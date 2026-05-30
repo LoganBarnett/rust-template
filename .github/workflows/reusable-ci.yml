@@ -31,8 +31,13 @@ jobs:
       # toolchain and devShell inputs.
       - uses: Swatinem/rust-cache@v2
 
+      # `--all-features` so tests gated by optional features (cli,
+      # server, auth) actually compile and run.  Without this they
+      # silently skip, which reads as a passing test suite but means
+      # the feature-gated code paths are never exercised — a false-
+      # green that is worse than the broken-test alternative.
       - name: Run tests
-        run: nix develop --command cargo test --workspace
+        run: nix develop --command cargo test --workspace --all-features
 
   format:
     name: Formatting
@@ -67,7 +72,7 @@ jobs:
       # reads as "tests are fine, lint nitpicks remain" rather than
       # being conflated with broken tests.
       - name: Run clippy with warnings as errors
-        run: nix develop --command cargo clippy --workspace --all-targets -- --deny warnings
+        run: nix develop --command cargo clippy --workspace --all-targets --all-features -- --deny warnings
 
   changelog:
     name: Changelog entry required

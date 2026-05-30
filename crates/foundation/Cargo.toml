@@ -79,5 +79,18 @@ http-body-util = "0.1"
 axum = "0.8"
 jsonwebtoken = "10"
 
+# Integration tests that exercise the MergeConfig derive use the
+# clap-driven CliRaw / ConfigFileRaw / Config pipeline, which is only
+# compiled when the cli feature is enabled.  Declaring the required
+# feature here makes cargo skip these tests with default features
+# instead of failing the build with unresolved imports.
+[[test]]
+name = "extra_error_test"
+required-features = ["cli"]
+
+[[test]]
+name = "subcommand_test"
+required-features = ["cli"]
+
 [lints]
 workspace = true
