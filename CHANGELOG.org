@@ -3,6 +3,10 @@
 
 * Upcoming
 ** Added
+** Changed
+** Fixed
+* v0.3.0
+** Added
 - =--all-features= on the reusable CI workflow's =cargo test= and =cargo clippy=
   steps so feature-gated code paths actually get exercised rather than passing
   by not being compiled.
