@@ -5,6 +5,7 @@
 ** Added
 ** Changed
 ** Fixed
+* v0.4.0
 * v0.3.0
 ** Added
 - =--all-features= on the reusable CI workflow's =cargo test= and =cargo clippy=
