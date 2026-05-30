@@ -2,11 +2,19 @@
 #+language:  en
 
 * Upcoming
-** Added
 ** Changed
-** Fixed
+- Backfilled the v0.4.0 and v0.5.0 sections, which the release workflow had
+  emitted empty because their pushes carried no Upcoming entries.
 * v0.5.0
+** Changed
+- Bumped template's top-level =changelog-roller= input past the SSH-to-HTTPS
+  orgize fix so freshly-spawned projects no longer re-evaluate a build that
+  fails on clean CI runners without a github SSH key.
 * v0.4.0
+** Fixed
+- =test-formatters.sh= now dumps the spawn-clean treefmt log on failure so a CI
+  Formatter-coverage red surfaces the actual error instead of a path to a
+  per-run tmp file no one outside the runner can read.
 * v0.3.0
 ** Added
 - =--all-features= on the reusable CI workflow's =cargo test= and =cargo clippy=
