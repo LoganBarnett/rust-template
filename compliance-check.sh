@@ -192,7 +192,7 @@ check_foundation_flake_input() {
 filter_project="${1:-}"
 
 # Get list of project names.
-projects=$(jq -r '.templateSpawns | keys[]' "$CONFIG")
+projects=$(jq --raw-output '.templateSpawns | keys[]' "$CONFIG")
 
 for project in $projects; do
     # Filter to single project if specified.
@@ -200,9 +200,9 @@ for project in $projects; do
         continue
     fi
 
-    archived=$(jq -r ".templateSpawns[\"$project\"].archived" "$CONFIG")
-    dir=$(jq -r ".templateSpawns[\"$project\"].dir" "$CONFIG")
-    crates=$(jq -r ".templateSpawns[\"$project\"].args.crates" "$CONFIG")
+    archived=$(jq --raw-output ".templateSpawns[\"$project\"].archived" "$CONFIG")
+    dir=$(jq --raw-output ".templateSpawns[\"$project\"].dir" "$CONFIG")
+    crates=$(jq --raw-output ".templateSpawns[\"$project\"].args.crates" "$CONFIG")
 
     if [[ "$archived" == "true" ]]; then
         printf "${YELLOW}SKIP${RESET} %s (archived)\n" "$project"

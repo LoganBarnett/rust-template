@@ -105,7 +105,7 @@
           echo ""
           echo "Available Cargo packages (use 'cargo build -p <name>'):"
           cargo metadata --no-deps --format-version 1 2>/dev/null | \
-            jq -r '.packages[].name' | \
+            jq --raw-output '.packages[].name' | \
             sort | \
             sed 's/^/  • /' || echo "  Run 'cargo init' to get started"
 

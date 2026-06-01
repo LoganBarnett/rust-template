@@ -7,6 +7,10 @@
 ** Changed
 - Backfilled the v0.4.0 and v0.5.0 sections, which the release workflow had
   emitted empty because their pushes carried no Upcoming entries.
+- =template/flake.nix= and =compliance-check.sh= now invoke =jq= with
+  =--raw-output= rather than =-r=, matching the long-form convention in
+  =template/llms.org=.  Newly spawned projects inherit the long-form invocation;
+  existing spawns can pick it up via a forward-port.
 * v0.5.0
 ** Changed
 - Bumped template's top-level =changelog-roller= input past the SSH-to-HTTPS
