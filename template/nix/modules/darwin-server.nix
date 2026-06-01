@@ -1,6 +1,15 @@
 # Darwin (macOS/launchd) module for the rust-template-server service.
-# Thin wrapper around the foundation's mkDarwinService helper.
-# See mkNixosService for the Linux/systemd equivalent.
+# Thin wrapper around the foundation's mkDarwinService helper.  See
+# mkNixosService for the Linux/systemd equivalent.  Cross-platform
+# declarations live in `./common.nix`, which is imported below so
+# anything added there merges into both platform modules via the
+# module-merge system.
+#
+# This file is the seam where nix-darwin-only declarations (e.g.
+# launchd drop-ins, defaults.NSGlobalDomain entries) belong.  Adding
+# to the `imports` list or declaring `config.launchd.…` here merges
+# with the foundation-generated service module — no restructuring
+# needed to introduce a platform-specific bit.
 #
 # Minimal usage (defaults to Unix domain socket):
 #
@@ -28,8 +37,12 @@
 {
   self,
   foundation,
-}:
-foundation.lib.mkDarwinService {
-  name = "rust-template-server";
-  inherit self;
+}: {
+  imports = [
+    ./common.nix
+    (foundation.lib.mkDarwinService {
+      name = "rust-template-server";
+      inherit self;
+    })
+  ];
 }
