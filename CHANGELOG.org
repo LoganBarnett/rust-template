@@ -3,6 +3,7 @@
 
 * Upcoming
 ** Added
+* v0.8.0
 * v0.7.0
 ** Added
 - =template/nix/modules/common.nix= as the cross-platform seam for the spawned
