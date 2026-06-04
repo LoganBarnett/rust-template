@@ -3,6 +3,8 @@
 
 * Upcoming
 ** Added
+* v0.7.0
+** Added
 - =template/nix/modules/common.nix= as the cross-platform seam for the spawned
   project's NixOS and nix-darwin modules.  The file is intentionally near-empty
   at spawn time; it exists so the project author has a single well-known
