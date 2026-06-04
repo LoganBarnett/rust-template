@@ -13,7 +13,7 @@ repository = "https://github.com/yourusername/rust-template"
 
 [workspace.dependencies]
 # Foundation infrastructure crate (config, logging, health, metrics, auth).
-rust-template-foundation = { git = "https://github.com/LoganBarnett/rust-template.git" }
+rust-template-foundation = { git = "ssh://git@github.com/LoganBarnett/rust-template.git" }
 
 # Logging and tracing
 tracing = "0.1"
