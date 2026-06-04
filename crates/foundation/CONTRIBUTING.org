@@ -1,0 +1,39 @@
+#+title:     Contributing to rust-template-foundation
+#+language:  en
+
+The =rust-template-foundation= crate ships as part of the [[https://github.com/LoganBarnett/rust-template][rust-template]]
+repository.  General contribution conventions — formatting, testing,
+error-handling style, commit workflow — live in the repository-root
+[[../../CONTRIBUTING.org][CONTRIBUTING.org]].  Read that first.
+
+The conventions below apply to the foundation crate specifically.
+
+* Changelog conventions
+
+=CHANGELOG.org='s =* Upcoming= section uses three subheadings:
+
+- =** Added= — features or behavior added.  This is the loose "what's new"
+  section: anything an adopter would describe as "the next release does X now"
+  belongs here, even when previous releases also did something different in the
+  same surface.
+- =** Fixes= — bug fixes.
+- =** Breaking= — backward-incompatible changes.  Required when the ABI check
+  proves a public-signature break; recommended whenever behavioral breakage
+  shipped that downstream consumers should know about, even when signatures are
+  preserved.
+
+A single change may appear under more than one subheading when it fits more than
+one.  A fix that also adds an option to opt out of the broken behavior belongs
+under both =** Added= and =** Fixes=.
+
+Each entry should be a complete sentence-or-two written for an adopter reading
+the release notes, not a reviewer reading the diff.  Name what changed in terms
+of the surface the adopter sees, not the implementation.
+
+Omit subheadings with no entries — do not scaffold empty =** Added=, =** Fixes=,
+or =** Breaking= sections under =* Upcoming=.
+
+The foundation crate is a published library; its public API is the surface
+adopters consume.  When in doubt about whether a change is breaking, run =cargo
+semver-checks= against the previous published version — the CI gate does the
+same.
