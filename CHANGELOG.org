@@ -2,7 +2,15 @@
 #+language:  en
 
 * Upcoming
-** Added
+** Fixed
+- =template/Cargo.toml= reverts =rust-template-foundation= to =https://= from
+  the =ssh://git@github.com/...= tried in v0.8.0.  The =spawn-ssh-fetch= probe
+  added in v0.9.0 proved a clean GitHub-hosted runner cannot clone
+  =ssh://git@github.com= keylessly — cargo reports "attempted ssh-agent
+  authentication, but no usernames succeeded" / "no authentication methods
+  succeeded", because hosted runners carry the HTTPS =GITHUB_TOKEN=, not a
+  github SSH key.  HTTPS remains the working keyless form; the now-moot
+  =spawn-ssh-fetch= job is removed.
 * v0.9.0
 ** Added
 - A =spawn-ssh-fetch= CI job that spawns a project and =cargo fetch=es it on a
