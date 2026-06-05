@@ -3,7 +3,17 @@
 
 * Upcoming
 ** Added
+- A =spawn-ssh-fetch= CI job that spawns a project and =cargo fetch=es it on a
+  clean runner, exercising the =ssh://= =rust-template-foundation= dependency so
+  the keyless-fetch assumption stays guarded — a red there means the =https://=
+  workaround is still required.
 * v0.8.0
+** Added
+- =template/Cargo.toml= now references =rust-template-foundation= over
+  =ssh://git@github.com/...= rather than =https://...=.  The HTTPS form was a
+  workaround for the git fetch failing on clean CI runners that lack a github
+  SSH key; GitHub-hosted runners can clone github.com through their own
+  infrastructure, so =ssh://= should resolve keylessly.
 * v0.7.0
 ** Added
 - =template/nix/modules/common.nix= as the cross-platform seam for the spawned
