@@ -11,7 +11,7 @@ members = [
 # versioning across the workspace.  Fields that vary per crate
 # (`name`, `description`, `publish`) stay declared on each member.
 [workspace.package]
-version = "0.9.0"
+version = "0.10.0"
 edition = "2021"
 license = "AGPL-3.0-or-later"
 repository = "https://github.com/LoganBarnett/rust-template"
@@ -21,7 +21,7 @@ repository = "https://github.com/LoganBarnett/rust-template"
 # by sed-ing every `version = "<x>"` literal on a line containing a
 # `path = ` reference.  Members consume these as `{ workspace = true }`.
 [workspace.dependencies]
-rust-template-foundation-derive = { path = "crates/foundation-derive", version = "0.9.0" }
+rust-template-foundation-derive = { path = "crates/foundation-derive", version = "0.10.0" }
 
 # Project-wide lint policy, enforced via clippy.  Test code is exempted
 # from the panicking-variant bans by clippy.toml's
