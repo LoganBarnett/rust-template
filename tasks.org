@@ -473,3 +473,70 @@ confirms both equal each other and equal the hash in ~rust-template.json~.  Fail
 when any of the three diverge, since that is exactly the half-finished-sync
 state described above.  This belongs alongside the existing structural checks in
 the [[*Compliance test suite for spawned repos][compliance test suite]].
+
+* TODO Emission tests must run the full CI suite against a fresh spawn
+Template-emitted scaffolding has been shipping checks-failing code that only
+surfaces after spawning, because emission testing today only covers formatters.
+Whatever CI gates a real spawn at merge time should also gate a fresh emission —
+that is the only honest definition of "this template emits valid code."  Today
+that suite is formatters, clippy under =-D warnings=, the unit test suite, and
+the integration test suite (per =reusable-ci.yml='s jobs).  As that list grows
+it should continue to be the same list both places.
+
+Concrete cases this would have caught up front instead of in production spawns:
+
+- =template/crates/cli/tests/integration_test.rs= has a bare
+  =std::env::current_exe().expect(...)= in the =get_binary_path= helper.  The
+  =allow-{unwrap,expect}-in-tests= clippy options do *not* extend the exemption
+  to free helpers in an integration-test binary — clippy's =is_in_test=
+  heuristic only matches code inside =#[test]= functions and =#[cfg(test)]=
+  modules.  Caught by =cargo clippy --workspace --all-targets -- -D warnings=
+  but not by formatter coverage.
+- =template/crates/cli/src/main.rs= declares an =AppError::Execution= variant
+  that is never constructed.  Under =-D warnings= the =dead_code= lint becomes a
+  hard error.  Same scope as above.
+- =template/crates/cli/tests/integration_test.rs::test_version_flag= asserts the
+  =--version= output contains the binary crate name (=<project>-cli=), but
+  =foundation_main= derives the app name by stripping the =-cli= suffix.  Caught
+  by =cargo test --workspace=, not by clippy or formatters.
+
+All three have shipped through every existing spawn.  The gap is that emission
+tests check less than CI does.
+
+This work must land in two steps, in the order below — the broken build the
+first step produces is the harness the second step (and the followups) are
+anchored against.
+
+** TODO Run the same CI suite against a fresh emission (do first)
+Add an emission test (a new =test-ci.sh= alongside =test-formatters.sh=, or fold
+the existing one in) that spawns a fresh project via =new-project.sh= and runs,
+inside the spawn, the same sequence =reusable-ci.yml= runs:
+
+- =treefmt --fail-on-change= (formatters)
+- =cargo clippy --workspace --all-targets --all-features -- -D warnings=
+- =cargo test --workspace=
+
+ABI and changelog gates are scoped to "previous published version exists" / "=*
+Upcoming= has entries," which a fresh spawn satisfies for neither, so those CI
+jobs sit out — but every other CI job is in scope.
+
+Cover both the =--public= and the no-flag default variants of =new-project.sh=
+so divergence in their emitted surface is caught.  Cover at least the =cli=-only
+and =cli,server= crate sets if both still exist.  Fail the test on the first
+diagnostic from any subcommand.
+
+This will fail on at least the three issues called out above.  That failure is
+intentional — it is the breaking build the followup subtask and the related
+followup tasks turn green.  This subtask therefore must be merged first.
+
+** TODO Inject the file-level lint allow at the top of =integration_test.rs=
+Once the emission CI test is in place and red, add
+=#![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]= at the top
+of =template/crates/cli/tests/integration_test.rs= with a one-line comment
+referencing the CLAUDE.md policy that integration tests under =tests/= may use
+the panicking variants freely.  This expresses the same policy clippy's narrower
+=is_in_test= heuristic refuses to apply.
+
+After this subtask lands the emission CI test is still red — the
+=AppError::Execution= dead-code violation and the =test_version_flag= assertion
+bug remain, each as its own task.
