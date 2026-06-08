@@ -1,0 +1,31 @@
+[package]
+name = "rust-template-compliance-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[[bin]]
+name = "rust-template-compliance-cli"
+path = "src/main.rs"
+
+[dependencies]
+# CLI entry-point macro (foundation_main) and config staging for the front-end.
+rust-template-foundation = { workspace = true, features = ["cli"] }
+# The compliance engine this front-end drives.
+rust-template-compliance-lib = { workspace = true }
+# Parses the checker's command-line arguments and env-var fallbacks.
+clap = { workspace = true }
+# Structured, level-based diagnostics for the run.
+tracing = { workspace = true }
+# Config staging models, and serialization of the JSON report output.
+serde = { workspace = true }
+# Semantic, per-operation error types for the front-end.
+thiserror = { workspace = true }
+# Method chaining that avoids intermediate locals that only name a value once.
+tap = { workspace = true }
+
+[lints]
+workspace = true

@@ -3,6 +3,8 @@ resolver = "2"
 members = [
     "crates/foundation-derive",
     "crates/foundation",
+    "crates/compliance-lib",
+    "crates/compliance-cli",
 ]
 
 # Shared metadata for workspace members.  Each crate inherits these
@@ -13,6 +15,7 @@ members = [
 [workspace.package]
 version = "0.10.0"
 edition = "2021"
+authors = ["Logan Barnett <logustus@gmail.com>"]
 license = "AGPL-3.0-or-later"
 repository = "https://github.com/LoganBarnett/rust-template"
 
@@ -21,7 +24,37 @@ repository = "https://github.com/LoganBarnett/rust-template"
 # by sed-ing every `version = "<x>"` literal on a line containing a
 # `path = ` reference.  Members consume these as `{ workspace = true }`.
 [workspace.dependencies]
+# The foundation-derive proc-macro crate (MergeConfig, foundation_main).
 rust-template-foundation-derive = { path = "crates/foundation-derive", version = "0.10.0" }
+# Shared infrastructure (config staging, logging, CLI entry point) consumed by
+# the compliance crates the same way a spawned project consumes it.
+rust-template-foundation = { path = "crates/foundation", version = "0.10.0" }
+# The compliance engine library, consumed by the compliance cli front-end.
+rust-template-compliance-lib = { path = "crates/compliance-lib", version = "0.10.0" }
+
+# External dependencies shared by the compliance crates.  Those crates were
+# dogfooded from the template archetypes, which consume shared deps as
+# `{ workspace = true }`; declaring them here keeps the archetype crate files
+# unmodified.  Unlike the inter-workspace path deps above, these carry no
+# `path =`, so the reusable publish workflow's version-bump sed leaves them
+# alone.
+# Structured, level-based diagnostics for the checker run.
+tracing = "0.1"
+# Deserializes config.json, rust-template.json, and the compliance-checks.toml
+# manifest into typed structures.
+serde = { version = "1.0", features = ["derive"] }
+# Semantic, per-operation error types (no stringly-typed errors).
+thiserror = "2.0"
+# Method chaining that keeps logging/inspection inside a call chain instead of
+# spawning intermediate locals.
+tap = "1.0"
+# Derive-based parsing of the compliance cli's arguments and env-var fallbacks.
+clap = { version = "4.5", features = ["derive", "env"] }
+# Parses the compliance-checks.toml manifest and spawn Cargo.lock files.
+toml = "0.8"
+# Parses config.json (spawn registry), rust-template.json (provenance), and
+# spawn flake.lock files, and serializes the JSON report.
+serde_json = "1.0"
 
 # Project-wide lint policy, enforced via clippy.  Test code is exempted
 # from the panicking-variant bans by clippy.toml's

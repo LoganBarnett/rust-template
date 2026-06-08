@@ -610,6 +610,14 @@ hand-rolled (~^\*+\s~ headings); do not pull in the external ~org-fmt~ input.
 This folds in the [[*Add a compliance check that the three pins agree][three-pins-agree]] subtask — implement it here, not in the
 deleted bash script.
 
+Future check kind (not phase 1): ~dep-comments~ — assert that every dependency
+is preceded by a why comment, enforcing the rule documented in
+=CONTRIBUTING.org=.  Covers Cargo manifests (workspace
+~[workspace.dependencies]~ and each crate's ~[dependencies]~ /
+~[dev-dependencies]~) and Nix (~flake.nix~ devShell ~buildInputs~ and a
+package's ~buildInputs~ / ~nativeBuildInputs~).  This is a content check over
+manifests rather than a doc-section or pin check, so it wants its own kind.
+
 ** TODO CLI, output, and cutover
 Clap ~CliRaw~ on the staged-config convention; args ~[project]~ filter,
 ~--config~, ~--template-dir~, ~--format human|json~, and an inert ~--fix~ seam

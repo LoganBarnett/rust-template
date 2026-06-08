@@ -1,0 +1,31 @@
+[package]
+name = "rust-template-compliance-lib"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+# Shared config-staging, logging, and error infrastructure the engine builds on.
+rust-template-foundation = { workspace = true }
+# Structured, level-based diagnostics emitted while running checks.
+tracing = { workspace = true }
+# Derives the typed models for config.json, rust-template.json, and the
+# compliance-checks.toml manifest.
+serde = { workspace = true }
+# Semantic, per-operation error types for the engine.
+thiserror = { workspace = true }
+# Parses the compliance-checks.toml manifest and spawn Cargo.lock files.
+toml = { workspace = true }
+# Parses config.json, rust-template.json, and spawn flake.lock files, and
+# derives the serializable report types for JSON output.
+serde_json = { workspace = true }
+
+[dev-dependencies]
+# Builds throwaway fixture spawn trees for the engine integration tests.
+tempfile = "3"
+
+[lints]
+workspace = true
