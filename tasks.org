@@ -441,6 +441,103 @@ In ~crates/foundation/tests/server_integration.rs~, add a test that issues
 requests to ~/healthz~ and ~/metrics~, then verifies the ~/metrics~ response
 contains incremented ~http_requests_total~ counters with correct labels.
 
+* TODO Add ~configFile~ option to ~mkNixosService~ and ~mkDarwinService~
+
+Spawned projects whose Nix module renders a ~config.toml= into the Nix store
+have no template-aligned way to tell the server where to find it.  The natural
+foundation seam doesn't exist yet: there's no ~configFile~ option on
+~mkNixosService~ / ~mkDarwinService~, no convention for setting the
+~<app>_config~ env var from a Nix path.
+
+Surfaced by hyuqueue, which has nested config (~topics~ array, ~llm~ sub-table)
+that can't fit env vars and therefore needs a generated ~config.toml=.  Hyuqueue
+currently hand-wires it:
+
+#+begin_src nix :exports code
+# NixOS:
+systemd.services.${name}.environment.hyuqueue_server_config =
+  toString cfg._generatedConfigFile;
+# Darwin:
+launchd.servers.${name}.serviceConfig
+  .EnvironmentVariables.hyuqueue_server_config =
+  toString cfg._generatedConfigFile;
+#+end_src
+
+The same two lines, on platform-specific attrset paths.  Can't move to
+~common.nix= (those paths only exist on their respective platforms).  Belongs in
+the foundation helpers directly.
+
+** Proposed shape
+
+Add to ~service-options.nix= (so both helpers pick it up):
+
+#+begin_src nix :exports code
+configFile = lib.mkOption {
+  type = lib.types.nullOr lib.types.path;
+  default = null;
+  description = ''
+    Path to a config.toml the service should load.  When set,
+    `<app>_config` is set as an environment variable so the
+    service's CLI picks the file up via its `--config` flag's
+    env-var binding.  Use this for Nix-managed config files
+    that don't live at the XDG path the foundation searches
+    by default.
+  '';
+};
+#+end_src
+
+In ~mkNixosService.nix~ — fold into the existing ~environment=~ attrset:
+
+#+begin_src nix :exports code
+environment = lib.mapAttrs (_: lib.mkDefault) (
+  { ... existing keys ... }
+  // lib.optionalAttrs (cfg.configFile != null) {
+    "${envPrefix}_config" = toString cfg.configFile;
+  }
+);
+#+end_src
+
+Equivalent fold into ~mkDarwinService.nix='s ~EnvironmentVariables=.
+
+Spawn-side, the platform modules then become:
+
+#+begin_src nix :exports code
+# Both NixOS and Darwin shrink to:
+imports = [ ./common.nix (foundation.lib.mkXService { ... }) ];
+config = lib.mkIf cfg.enable {
+  services.${name}.configFile = cfg._generatedConfigFile;
+  # ... only platform-specific bits (ReadWritePaths, activation
+  #     script for the db dir) remain.
+};
+#+end_src
+
+** Why the template doesn't already do this
+
+The template assumes spawned projects fit one of two shapes:
+
+1. Pure scalar config — every option fits an env var, no config file needed.
+2. User-managed config file — operator drops one at the XDG path; foundation's
+   ~find_config_file~ picks it up.
+
+The Nix-generated-config-file case is a third shape the template hasn't
+addressed.  Hyuqueue is the first spawn (that I'm aware of) to hit it; future
+spawns with nested config will hit it too.
+
+** Trigger
+
+Any second spawn that needs a Nix-generated config file (or just sooner if
+hyuqueue's repeated boilerplate becomes painful).  The implementation is a few
+lines per helper plus one option declaration in ~service-options.nix=.
+
+** Out of scope
+
+- "Render the config file inside the foundation" — spawns own the config schema
+  (hyuqueue's ~topics~ array can't be known to the foundation).  Spawns render
+  their own file; foundation just plumbs the path through.
+- Replacing the env-var injection with an ~ExecStart= override — see the
+  existing anti-pattern note in the compliance-check TODO.  Env var is the right
+  seam.
+
 * TODO Compliance sync must bump both flake input and Cargo dependency
 A compliance sweep on a spawned project is incomplete if it only refreshes the
 scaffolding files and the ~rust-template.json~ provenance hash.  The project
