@@ -41,6 +41,9 @@
         ];
       };
     in [
+      # Rust toolchain (compiler, cargo, rustfmt, rust-analyzer); the
+      # pre-commit hook needs rustfmt on PATH, hence the duplication noted
+      # at the top of this file.
       rust
       # Unified formatter and the per-language binaries it invokes.
       # `new-project.sh` runs `treefmt` as its final spawn step, so this

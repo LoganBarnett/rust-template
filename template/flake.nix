@@ -70,19 +70,28 @@
       inherit (rustPackages) apps;
       devShell = pkgs.mkShell {
         buildInputs = [
+          # Rust toolchain (compiler, cargo, rustfmt, rust-analyzer).
           rust
+          # Prunes stale per-profile artifacts from target/ to reclaim disk.
           pkgs.cargo-sweep
+          # JSON parsing for the shellHook's cargo-package listing and ad-hoc
+          # scripting in the dev shell.
           pkgs.jq
-          # Elm toolchain
+          # Elm toolchain for the frontend/ app: compiler, formatter, and the
+          # elm2nix bridge that pins Elm deps for reproducible builds.
           pkgs.elmPackages.elm
           pkgs.elmPackages.elm-format
           pkgs.elm2nix
-          # Unified formatter
+          # Unified formatter and the per-language binaries it invokes.
           pkgs.treefmt
           pkgs.alejandra
           pkgs.prettier
+          # Command runner for the project's justfile recipes.
           pkgs.just
+          # Rolls the CHANGELOG on release; used by the reusable CI workflow's
+          # `changelog` job and runnable locally for the same flow.
           changelog-roller.packages.${system}.default
+          # Formats org-mode documents (treefmt delegates .org files to it).
           org-fmt.packages.${system}.default
           # ABI baseline check used by the reusable CI workflow's `abi`
           # job.  Compares the workspace's current public API against the
