@@ -226,7 +226,7 @@ the validation to compile time:
 - *URLs.* Use ~url-macro~ or similar; or build with ~const_format~.
 - *General pattern.* Any proc-macro can validate a string literal at expansion
   time. The ~.unwrap()~, if any, lives inside macro-generated code on a path the
-        proc-macro has statically proven unreachable — never at the call site.
+  proc-macro has statically proven unreachable — never at the call site.
 
 If no suitable macro exists for a given parse, the right move is /write one/,
 not allow ~.unwrap()~.
@@ -361,8 +361,8 @@ itself a yellow flag — usually it is one of the above wearing a different hat.
 The bias to watch for: LLMs carry a strong "exceptions are friendly" instinct
 from Python and other exception-driven languages where ad-hoc ~try/except~ is
 normal. Rust's design rejects that worldview.  The discipline is: prove
-        unreachability to the compiler, or propagate.  There is no third option
-        for shipping code.
+unreachability to the compiler, or propagate.  There is no third option for
+shipping code.
 
 *** Rule of least power
 
@@ -389,7 +389,7 @@ Concretely:
   }~ when both arms are pure transforms.
 - ~?~ over ~if cond { return Err(...) } else { ... }~ when the right shape
   exists. An early-return guard clause without an ~else~ is /already/ the
-          least-powerful form for that flow — leave it alone.
+  least-powerful form for that flow — leave it alone.
 
 The mechanical enforcement is a curated set of clippy lints in the ~manual_*~
 family (~manual_map~, ~manual_filter~, ~manual_find~, ~manual_let_else~, etc.)
@@ -397,8 +397,8 @@ plus ~option_if_let_else~, ~map_unwrap_or~, ~question_mark~,
 ~single_match_else~, and friends.  These live under ~[workspace.lints.clippy]~
 in the root ~Cargo.toml~ at ~warn~ — they have teeth without becoming a hard
 block. When the imperative form is genuinely clearer (multi-line bodies, side
-       effects, nested control flow), override site-locally with
-       ~#[allow(clippy::lint_name)]~ and a one-line comment explaining why.
+effects, nested control flow), override site-locally with
+~#[allow(clippy::lint_name)]~ and a one-line comment explaining why.
 
 The bias to watch for: LLMs reach for ~match~, ~for~, and early ~return~ because
 that is how most training-set Rust reads, and because imperative constructs are
@@ -475,7 +475,7 @@ are in use.  The pre-commit hook requires ~rustfmt~ in PATH, so ~git commit~
 must also go through the shell:
 
 #+begin_src sh :results none :exports code
-nix develop --command git commit -m "your message"
+nix develop --command git commit --message "your message"
 #+end_src
 
 ** Run all tests after changes

@@ -21,7 +21,7 @@ cd my-new-project
 rm -rf .git
 git init
 git add .
-git commit -m "Initial commit from rust-template"
+git commit --message "Initial commit from rust-template"
 #+end_src
 
 ** 2. Customize the project
@@ -64,8 +64,8 @@ tools.
 cargo build --workspace
 
 # Build specific package
-cargo build -p my-app-cli
-cargo build -p my-app-server
+cargo build --package my-app-cli
+cargo build --package my-app-server
 #+end_src
 
 ** 5. Run the applications
@@ -108,8 +108,8 @@ Once running, the server provides:
 cargo test --workspace
 
 # Run tests for specific package
-cargo test -p my-app-cli
-cargo test -p my-app-server
+cargo test --package my-app-cli
+cargo test --package my-app-server
 #+end_src
 
 * Configuration
@@ -179,7 +179,7 @@ The hook will:
 To install the hooks manually (if needed):
 
 #+begin_src sh :exports code
-cargo test -p rust-template-lib
+cargo test --package rust-template-lib
 #+end_src
 
 ** Adding New Dependencies

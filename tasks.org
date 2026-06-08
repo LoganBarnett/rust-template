@@ -34,7 +34,7 @@ Both halves of the setup are scriptable via a single API token scoped to
 =publish-new= and =trusted-publishing= (with crate scope left unrestricted so it
 covers every crate the user owns):
 
-- Claiming names: =cargo publish -p <crate>= using the token.
+- Claiming names: =cargo publish --package <crate>= using the token.
 - Registering trust configs: =POST /api/v1/trustpub/github_configs= with body
   =github_config: { krate, repository_owner, repository_name, workflow_filename,
   environment? }=.
@@ -448,7 +448,7 @@ consumes ~rust-template~ through two independently-pinned dependency edges, and
 both must move in lockstep with the recorded sync hash:
 
 - The ~rust-template-foundation~ git dependency, pinned by commit in
-  ~Cargo.lock~ (bumped with ~cargo update -p rust-template-foundation~).
+  ~Cargo.lock~ (bumped with ~cargo update --package rust-template-foundation~).
 - The ~foundation~ flake input, pinned by commit in ~flake.lock~ (bumped with
   ~nix flake update foundation~).
 
@@ -474,14 +474,74 @@ when any of the three diverge, since that is exactly the half-finished-sync
 state described above.  This belongs alongside the existing structural checks in
 the [[*Compliance test suite for spawned repos][compliance test suite]].
 
+Superseded: implement this as the ~pins-agree~ / ~pins-current~ check kinds in
+the Rust rewrite below, not by extending the deleted ~compliance-check.sh~.  See
+[[*Rewrite the compliance checker as a Rust cli + lib with per-check ids][Rewrite the compliance checker as a Rust cli + lib]].
+
+* TODO Rewrite the compliance checker as a Rust cli + lib with per-check ids
+The bash ~compliance-check.sh~ has outpaced what a shell script should do.
+Replace it with a Rust workspace tool — a ~lib~ engine and a ~cli~ front-end,
+dogfooded from the template's own archetypes via ~crate-add.sh --type lib~ and
+~--type cli~ (project ~rust-template~, names ~compliance~ / ~compliance-cli~,
+foundation rewired to the ~crates/foundation~ path dep).
+
+Each check has a stable symbolic id (e.g. ~llms-do-not-git-stage-for-review~)
+printed on failure.  Checks are declared in a checked-in
+~compliance-checks.toml~ manifest; the lib implements a finite set of /kinds/.
+A ~compliance-ignores~ key in a spawn's ~rust-template.json~ (bare id or ~{id,
+reason}~) opts a project out of named checks (reported ~Ignored~, not failed).
+Runs spawns in parallel (~std::thread::scope~); exits nonzero on any fail.  Out
+of scope: a meta-check for template sections lacking a check — an emitted repo
+may freely alter what the template lays down, so template-side coverage isn't
+reasonable.
+
+** TODO Scaffold the two crates via crate-add.sh and wire the workspace
+~crate-add.sh --type lib --project-dir . --name compliance~ and ~--type cli
+--name compliance-cli~; switch the foundation git dep to the ~crates/foundation~
+path dep (mirror the ~foundation-derive~ wiring in the root ~Cargo.toml~); add
+both to root ~members~.
+
+** TODO Build the engine and check kinds at parity, plus the new checks
+Kinds: ~file-present~, ~json-valid~, ~file-contains~, ~foundation-feature~
+(conditional on ~args.crates~), ~no-stale-literal~ (port the existing exclusion
+logic), ~section-exists~, ~mention-present~ (phrase present within a section
+after flattening line-wrapped paragraphs so wraps can't bite), ~pins-agree~
+(~Cargo.lock~ foundation rev == ~flake.lock~ ~foundation~ node rev) and
+~pins-current~ (pins == ~git -C <template-dir> rev-parse HEAD~).  Outcomes:
+~Pass~ / ~Fail{detail}~ / ~Skip~ / ~Ignored~ / ~Error~.  Org scanner is
+hand-rolled (~^\*+\s~ headings); do not pull in the external ~org-fmt~ input.
+This folds in the [[*Add a compliance check that the three pins agree][three-pins-agree]] subtask — implement it here, not in the
+deleted bash script.
+
+** TODO CLI, output, and cutover
+Clap ~CliRaw~ on the staged-config convention; args ~[project]~ filter,
+~--config~, ~--template-dir~, ~--format human|json~, and an inert ~--fix~ seam
+(phase 2).  Wire a ~justfile~ ~compliance~ recipe and point CI at the binary.
+Delete ~compliance-check.sh~ once a parity diff against the real ~config.json~
+spawns is clean.
+
+** TODO Assert a fresh emission is compliant in the emission integration test
+In ~test-crate-add.sh~ (~just test-integration~), after a spawn is emitted and
+built, run the compliance binary against it and assert a clean pass — making
+"the template emits a compliant project" enforced.  Aligns with
+[[*Emission tests must run the full CI suite against a fresh spawn][Emission tests must run the full CI suite against a fresh spawn]].  Constraint:
+every manifest check must be satisfiable day-zero (esp. the pin checks vs the
+emission's locked foundation rev).
+
+** TODO Implement ~--fix~ for the fixable kinds (phase 2)
+~file-present~ (copy from a fresh emission), ~pins-agree~ / ~pins-current~ (bump
+the Cargo dep + ~Cargo.lock~ + ~flake.lock~ edges in lockstep).
+~section-exists~ / ~mention-present~ are prose — report only, never auto-write
+into a foreign repo.
+
 * TODO Emission tests must run the full CI suite against a fresh spawn
 Template-emitted scaffolding has been shipping checks-failing code that only
 surfaces after spawning, because emission testing today only covers formatters.
 Whatever CI gates a real spawn at merge time should also gate a fresh emission —
 that is the only honest definition of "this template emits valid code."  Today
-that suite is formatters, clippy under =-D warnings=, the unit test suite, and
-the integration test suite (per =reusable-ci.yml='s jobs).  As that list grows
-it should continue to be the same list both places.
+that suite is formatters, clippy under =--deny warnings=, the unit test suite,
+and the integration test suite (per =reusable-ci.yml='s jobs).  As that list
+grows it should continue to be the same list both places.
 
 Concrete cases this would have caught up front instead of in production spawns:
 
@@ -490,11 +550,11 @@ Concrete cases this would have caught up front instead of in production spawns:
   =allow-{unwrap,expect}-in-tests= clippy options do *not* extend the exemption
   to free helpers in an integration-test binary — clippy's =is_in_test=
   heuristic only matches code inside =#[test]= functions and =#[cfg(test)]=
-  modules.  Caught by =cargo clippy --workspace --all-targets -- -D warnings=
-  but not by formatter coverage.
+  modules.  Caught by =cargo clippy --workspace --all-targets -- --deny
+  warnings= but not by formatter coverage.
 - =template/crates/cli/src/main.rs= declares an =AppError::Execution= variant
-  that is never constructed.  Under =-D warnings= the =dead_code= lint becomes a
-  hard error.  Same scope as above.
+  that is never constructed.  Under =--deny warnings= the =dead_code= lint
+  becomes a hard error.  Same scope as above.
 - =template/crates/cli/tests/integration_test.rs::test_version_flag= asserts the
   =--version= output contains the binary crate name (=<project>-cli=), but
   =foundation_main= derives the app name by stripping the =-cli= suffix.  Caught
@@ -513,7 +573,7 @@ the existing one in) that spawns a fresh project via =new-project.sh= and runs,
 inside the spawn, the same sequence =reusable-ci.yml= runs:
 
 - =treefmt --fail-on-change= (formatters)
-- =cargo clippy --workspace --all-targets --all-features -- -D warnings=
+- =cargo clippy --workspace --all-targets --all-features -- --deny warnings=
 - =cargo test --workspace=
 
 ABI and changelog gates are scoped to "previous published version exists" / "=*
