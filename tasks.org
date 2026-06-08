@@ -5,9 +5,9 @@
 The reusable workflow's ~changelog~ and ~abi~ jobs both gate on
 ~github.event_name == 'pull_request'~, so a contributor who pushes directly to a
 long-lived branch (or to ~main~ via a non-PR flow) bypasses both the
-changelog-entry requirement and the ABI / Upcoming → Breaking
-gate. CI should fail the build in those cases too — the asymmetric "ABI break ⇒
-      Breaking entry" rule is only useful if it holds on every path into ~main~.
+changelog-entry requirement and the ABI / Upcoming → Breaking gate. CI should
+fail the build in those cases too — the asymmetric "ABI break ⇒ Breaking entry"
+rule is only useful if it holds on every path into ~main~.
 
 Decide on the right base ref to diff against when the trigger is a ~push~
 (probably ~origin/main~ for branch pushes; for pushes to ~main~ itself, either
@@ -17,7 +17,7 @@ the previous commit on ~main~ or skip with a clear reason), then drop the
 * DONE Publish crates for public projects
 For projects marked as public, add mechanisms to publish crates via GitHub
 Actions. Use a =0.x.0= versioning pattern, incrementing =x= by 1 on every push
-         to the main branch, at which point a release is cut.
+to the main branch, at which point a release is cut.
 
 The =public= flag already lives in the spawn manifest (=config.json=) under each
 project's =args.public=.  The publishing workflow in spawned projects should key
@@ -91,9 +91,9 @@ main, indefinitely, until the consumer flips the flag.
 
 For a downstream project that uses =publish = false= as the "not ready to
 publish yet" signal but still wants the version bump → changelog roll → release
-commit half of the workflow on every merge, every run is a false
-alarm. Add a guard before the publish step that reads =package.publish= for the
-       target crate and skips =cargo publish= when the crate is not publishable.
+commit half of the workflow on every merge, every run is a false alarm. Add a
+guard before the publish step that reads =package.publish= for the target crate
+and skips =cargo publish= when the crate is not publishable.
 
 Detection is clean via =cargo metadata --format-version 1 --no-deps=: =.publish=
 is =null= for default-publishable crates, an empty array =[]= when =publish =
@@ -116,10 +116,10 @@ below for future reference and for any new darwin-only services that don't go
 through ~mkDarwinService~.
 
 All darwin launchd services should write ~StandardOutPath~ and
-~StandardErrorPath~ to ~/var/log/<service>/~ rather than ~/tmp/~ or
-nowhere. ~/tmp/~ is cleared on reboot and is not where service logs
-belong. Without explicit log paths, launchd silently discards all output —
-        making post-mortem diagnosis impossible.
+~StandardErrorPath~ to ~/var/log/<service>/~ rather than ~/tmp/~ or nowhere.
+~/tmp/~ is cleared on reboot and is not where service logs belong. Without
+explicit log paths, launchd silently discards all output — making post-mortem
+diagnosis impossible.
 
 ** Log directory creation
 
@@ -175,9 +175,9 @@ newsyslog rotation~) for a working example applied to the Ollama darwin module.
 * DONE MergeConfig derive macro
 Auto-generate the ~CliRaw -> ConfigFileRaw -> Config~ merge from a single type
 definition. The ~#[derive(MergeConfig)]~ macro should produce the ~CliRaw~ (clap
-            Parser), ~ConfigFileRaw~ (serde Deserialize), ~ConfigError~, the
-            ~from_cli_and_file~ resolution function, and the ~CliApp~ trait impl
-            from a single annotated ~Config~ struct.
+Parser), ~ConfigFileRaw~ (serde Deserialize), ~ConfigError~, the
+~from_cli_and_file~ resolution function, and the ~CliApp~ trait impl from a
+single annotated ~Config~ struct.
 
 ** API design
 
@@ -251,10 +251,9 @@ pub struct Config {
 ** DONE Implement MergeConfig derive in foundation-derive
 Replace the placeholder in ~crates/foundation-derive/src/lib.rs~ with the full
 implementation. Parse struct-level and field-level attributes, generate
-                ~CliRaw~, ~ConfigFileRaw~, ~ConfigError~, ~from_cli_and_file~,
-                and ~CliApp~ trait impl.  Add ~clap~ and ~serde~ as dependencies
-                of the derive crate if needed (for path references in generated
-                code).
+~CliRaw~, ~ConfigFileRaw~, ~ConfigError~, ~from_cli_and_file~, and ~CliApp~
+trait impl.  Add ~clap~ and ~serde~ as dependencies of the derive crate if
+needed (for path references in generated code).
 
 ** DONE Update example-cli config to use MergeConfig
 Simplest test case: ~common~ log fields + one field with a default.  Validates
@@ -298,9 +297,8 @@ The intent of =mkNixosService= / =mkDarwinService= is that downstream modules
 /compose/ with the helper rather than fork it — adding their own
 =options.services.<name>.foo= declarations under the same namespace and
 overriding =ExecStart= (or other items, once mkDefault is in place) when the
-project needs additional flags or environment
-entries. This is the standard Nix module merging behaviour, but the current
-         USAGE.org doesn't show the pattern.
+project needs additional flags or environment entries. This is the standard Nix
+module merging behaviour, but the current USAGE.org doesn't show the pattern.
 
 Without a worked example, spawned projects either re-implement their own
 equivalent module from scratch or assume the helpers are non-extensible.  Either
@@ -382,7 +380,7 @@ configuration, module outputs.  Document the contract.
 Create ~nix/lib/mkRustProject.nix~ that generates: packages (via crane with
 per-crate overrides), apps, devShells (with common + project-specific packages),
 overlays. Support the ~# CRATE_ENTRIES~ sentinel pattern for ~crate-add.sh~
-          compatibility.
+compatibility.
 
 ** DONE Export from root flake.nix
 Add ~lib.mkRustProject~ to the template repo's flake outputs.
@@ -442,3 +440,36 @@ is counted.  The counter state is extracted from ~BaseServerState~ via
 In ~crates/foundation/tests/server_integration.rs~, add a test that issues
 requests to ~/healthz~ and ~/metrics~, then verifies the ~/metrics~ response
 contains incremented ~http_requests_total~ counters with correct labels.
+
+* TODO Compliance sync must bump both flake input and Cargo dependency
+A compliance sweep on a spawned project is incomplete if it only refreshes the
+scaffolding files and the ~rust-template.json~ provenance hash.  The project
+consumes ~rust-template~ through two independently-pinned dependency edges, and
+both must move in lockstep with the recorded sync hash:
+
+- The ~rust-template-foundation~ git dependency, pinned by commit in
+  ~Cargo.lock~ (bumped with ~cargo update -p rust-template-foundation~).
+- The ~foundation~ flake input, pinned by commit in ~flake.lock~ (bumped with
+  ~nix flake update foundation~).
+
+A real case surfaced this gap: a sweep advanced the provenance hash to the
+template tip while ~Cargo.lock~ still pinned an old foundation revision and
+~flake.lock~ pinned a third, different one.  The provenance then claimed a sync
+that the build did not actually reflect.
+
+** TODO Document the dependency bump in the compliance procedure
+Update the compliance / forward-port documentation so the sync procedure spells
+out both bumps above and states the invariant: the foundation revision in
+~Cargo.lock~, the ~foundation~ input revision in ~flake.lock~, and the hash
+recorded in ~rust-template.json~ must all agree.  Note that the bump can pull a
+new foundation major/minor, so the sweep must build and test the spawn before
+recording the new hash.
+
+** TODO Add a compliance check that the three pins agree
+Extend ~compliance-check.sh~ with a check that reads the foundation commit from
+each spawn's ~Cargo.lock~ (the ~source~ line of the ~rust-template-foundation~
+package) and from ~flake.lock~ (the ~foundation~ node's ~locked.rev~), then
+confirms both equal each other and equal the hash in ~rust-template.json~.  Fail
+when any of the three diverge, since that is exactly the half-finished-sync
+state described above.  This belongs alongside the existing structural checks in
+the [[*Compliance test suite for spawned repos][compliance test suite]].
