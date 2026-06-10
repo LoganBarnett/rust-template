@@ -20,6 +20,12 @@ kind = "file-present"
 path = "CHANGELOG.org"
 
 [[check]]
+id = "required-file-tasks"
+description = "The project keeps a tasks.org backlog."
+kind = "file-present"
+path = "tasks.org"
+
+[[check]]
 id = "required-file-envrc"
 description = "The project ships a .envrc for direnv/devshell activation."
 kind = "file-present"
@@ -129,6 +135,20 @@ kind = "mention-present"
 target = "llms.org"
 section = "Template compliance"
 contains = "docs/compliance.org"
+
+[[check]]
+id = "llms-persistent-memory-section"
+description = "llms.org carries the \"Persistent memory\" section."
+kind = "section-exists"
+target = "llms.org"
+section = "Persistent memory"
+
+[[check]]
+id = "llms-capturing-plans-section"
+description = "llms.org carries the \"Capturing plans\" section."
+kind = "section-exists"
+target = "llms.org"
+section = "Capturing plans"
 
 # ── Foundation pin agreement ─────────────────────────────────────────
 

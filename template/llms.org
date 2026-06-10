@@ -458,6 +458,21 @@ For example, ~CliArgs~ can represent arguments as provided on the command line.
 ~ConfigFile~ can represent the configuration file's state.  Meshing the two
 together yields a ~Config~ that represents a completely valid configuration.
 
+* Persistent memory
+
+Use the assistant's local memory only for facts specific to one clone or one
+machine — local paths, machine quirks, transient personal context.  Anything
+that is a project convention, decision, or standard belongs in the repository
+(~llms.org~, ~CONTRIBUTING.org~, or ~docs/~), where every contributor benefits
+from it and it can be reviewed.  Reaching for memory to record a convention is
+the signal that it should be codified here instead.
+
+* Capturing plans
+
+When a planning pass produces a design worth keeping, record it as a ~TODO~
+entry in ~tasks.org~ (the project's backlog), cross-linking related entries and
+marking superseded ones, rather than leaving it only in an ephemeral plan file.
+
 * Verification
 
 ** Use the Nix development shell when available

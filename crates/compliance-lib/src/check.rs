@@ -200,7 +200,7 @@ fn mention_present(
 }
 
 fn pins_agree(dir: &Path) -> CheckOutcome {
-  match resolve_pins(dir) {
+  match pins(dir) {
     Pins::Both { cargo, flake } if cargo == flake => CheckOutcome::Pass,
     Pins::Both { cargo, flake } => CheckOutcome::Fail {
       detail: format!("Cargo.lock pins {cargo}; flake.lock pins {flake}"),
@@ -214,7 +214,7 @@ fn pins_current(
   dir: &Path,
   template_head: &Result<String, String>,
 ) -> CheckOutcome {
-  let (cargo, flake) = match resolve_pins(dir) {
+  let (cargo, flake) = match pins(dir) {
     Pins::Both { cargo, flake } => (cargo, flake),
     Pins::Skip(reason) => return CheckOutcome::Skip { reason },
     Pins::Error(detail) => return CheckOutcome::Error { detail },
@@ -267,7 +267,7 @@ enum Pins {
   Error(String),
 }
 
-fn resolve_pins(dir: &Path) -> Pins {
+fn pins(dir: &Path) -> Pins {
   let cargo = match read_file(&dir.join("Cargo.lock")) {
     FileRead::Found(text) => match pins::cargo_foundation_rev(&text) {
       Ok(Some(rev)) => rev,

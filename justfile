@@ -22,3 +22,14 @@ test-integration:
 # actually rewrites known-malformed files.
 test-formatters:
     ./test-formatters.sh
+
+# Audit every registered spawn against the compliance manifest.
+#
+# Runs the Rust compliance checker (crates/compliance-cli) against the
+# spawns in config.json, reporting per-check results (each with a stable
+# id) and exiting non-zero when any check fails.  This is a fleet audit,
+# deliberately not part of `test`: the template repo's build must not gate
+# on whether other repositories are currently in compliance.  Arguments
+# pass through, e.g. `just compliance --project my-app --format json`.
+compliance *ARGS:
+    cargo run --quiet --package rust-template-compliance-cli -- {{ARGS}}

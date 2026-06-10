@@ -64,11 +64,10 @@ counterpart. Apply the general [[*Cross-role compliance items]] to them.
 
 The tables below enumerate known compliance items for orientation and code
 review. They are *not* the compliance checklist — the process in
-        [[*Compliance process]] is.  A static list in this document will drift
-        behind the template as it evolves, and feature-by-feature auditing is
-        too easy to miss things.  Use the tables to recognise what kind of
-        infrastructure belongs where; rely on the actual template output to
-        decide what a given project is missing.
+[[*Compliance process]] is.  A static list in this document will drift behind the
+template as it evolves, and feature-by-feature auditing is too easy to miss
+things.  Use the tables to recognise what kind of infrastructure belongs where;
+rely on the actual template output to decide what a given project is missing.
 
 Items marked *required* must be present in every compliant crate of that role.
 Items marked *conditional* apply only when the target crate uses the related
@@ -170,8 +169,8 @@ the template emits; compare against a real emission instead.
    #+end_src Include =--public= if the target is public.  Use the same
    =--description= if one was recorded in the spawn manifest.
 
-2. *File-by-file comparison.* Walk the fresh emission against the derived
-   repo. For each file or directory in the emission:
+2. *File-by-file comparison.* Walk the fresh emission against the derived repo.
+   For each file or directory in the emission:
    - Absent from the derived repo → propose adding it.
    - Present but divergent → propose reconciling.  Favor template content except
      where the target has legitimate customisation (business logic,
@@ -201,6 +200,54 @@ A forthcoming =CHANGELOG.org= in the template will record compliance-relevant
 changes per release.  Once available, it will augment — not replace — the
 diff-based process above, making it easier to prioritise and group related
 changes during review.
+
+* The structural checker
+
+Alongside the manual process above, an automated checker enforces the codified,
+machine-checkable subset of compliance.  It lives in =crates/compliance-cli= and
+runs against every spawn registered in =config.json=:
+
+#+begin_src sh :exports code
+just compliance                      # audit the whole fleet
+just compliance --project my-app     # a single spawn
+just compliance --format json        # machine-readable output
+#+end_src
+
+Each check is declared in =compliance-checks.toml= with a stable symbolic id
+(e.g. =llms-template-compliance-section=) that is printed on every failure, so a
+result can always be traced back to the manifest.  The checks cover required
+files, foundation dependency and feature wiring, CI reusable-workflow
+references, the absence of stale =rust-template= literals, the presence of
+documented sections and phrases in =llms.org=, and the three-way foundation pin
+agreement: the revisions pinned in =Cargo.lock= and =flake.lock= must agree with
+each other (=foundation-pins-agree=) and with the template =HEAD=
+(=foundation-pins-current=).
+
+This /complements/, and does not replace, the diff-based and fresh-emission
+processes above.  The checker enforces what can be expressed as a structural
+rule; the diff and emission comparisons remain authoritative for everything a
+static rule cannot capture.  A green checker run is necessary, not sufficient,
+for full compliance.
+
+** Opting out of a check
+
+A project may deliberately deviate from what the template lays down.  To keep
+the checker honest about such a case, list the check ids it should ignore under
+a =compliance-ignores= key in the project's =rust-template.json=:
+
+#+begin_src json :exports code
+{
+  "template_sync_hashes": ["..."],
+  "compliance-ignores": [
+    "llms-template-compliance-section",
+    { "id": "foundation-pins-current", "reason": "pinned to v0.9 intentionally" }
+  ]
+}
+#+end_src
+
+Each entry is either a bare check id or an object pairing the id with a reason.
+An ignored check is reported as ignored — it does not count as a failure and
+does not affect the exit code.
 
 * What compliance does not cover
 

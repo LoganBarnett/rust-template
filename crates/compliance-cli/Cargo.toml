@@ -18,14 +18,26 @@ rust-template-foundation = { workspace = true, features = ["cli"] }
 rust-template-compliance-lib = { workspace = true }
 # Parses the checker's command-line arguments and env-var fallbacks.
 clap = { workspace = true }
-# Structured, level-based diagnostics for the run.
+# Required in scope by the foundation_main-generated entry point for logging.
 tracing = { workspace = true }
-# Config staging models, and serialization of the JSON report output.
+# Deserializes the staged config file and derives the OutputFormat value enum.
 serde = { workspace = true }
+# Renders the report as pretty JSON for `--format json`.
+serde_json = { workspace = true }
 # Semantic, per-operation error types for the front-end.
 thiserror = { workspace = true }
-# Method chaining that avoids intermediate locals that only name a value once.
+# Friendly terminal coloring of the human report (the crate
+# nix-remote-builder-doctor uses).  The `supports-colors` feature gates color on
+# real terminal support (NO_COLOR, CLICOLOR, tty) via `if_supports_color`.
+owo-colors = { version = "4", features = ["supports-colors"] }
+# Enables method chaining and reduces superfluous local variables that only
+# exist to name intermediate results.  Prefer .tap() over temporary variables
+# when it improves readability.
 tap = { workspace = true }
+
+[dev-dependencies]
+# Builds throwaway fixture spawn trees for the cli integration tests.
+tempfile = "3"
 
 [lints]
 workspace = true

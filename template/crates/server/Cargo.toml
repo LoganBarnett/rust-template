@@ -22,7 +22,10 @@ clap = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-tap = { workspace = true }  # For method chaining, reduces superfluous locals
+# Enables method chaining and reduces superfluous local variables that only
+# exist to name intermediate results.  Prefer .tap() over temporary variables
+# when it improves readability.
+tap = { workspace = true }
 axum = { workspace = true }
 tokio = { workspace = true }
 tokio-listener = { workspace = true }

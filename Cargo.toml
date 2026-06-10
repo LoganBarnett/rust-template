@@ -50,10 +50,9 @@ thiserror = "2.0"
 tap = "1.0"
 # Derive-based parsing of the compliance cli's arguments and env-var fallbacks.
 clap = { version = "4.5", features = ["derive", "env"] }
-# Parses the compliance-checks.toml manifest and spawn Cargo.lock files.
-toml = "0.8"
 # Parses config.json (spawn registry), rust-template.json (provenance), and
-# spawn flake.lock files, and serializes the JSON report.
+# spawn flake.lock files, and serializes the JSON report.  Shared by both
+# compliance crates.
 serde_json = "1.0"
 
 # Project-wide lint policy, enforced via clippy.  Test code is exempted

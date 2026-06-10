@@ -36,49 +36,82 @@ fn options(root: &Path) -> RunOptions {
 
 /// Write a fully-compliant cli spawn under `dir`.
 fn write_compliant_spawn(dir: &Path) {
-  for file in ["CHANGELOG.org", ".envrc", "rustfmt.toml"] {
+  for file in ["CHANGELOG.org", "tasks.org", ".envrc", "rustfmt.toml"] {
     write(&dir.join(file), "placeholder\n");
   }
   // Cargo.toml must mention the foundation dependency.
   write(
-        &dir.join("Cargo.toml"),
-        "[workspace.dependencies]\nrust-template-foundation = { workspace = true }\n",
-    );
+    &dir.join("Cargo.toml"),
+    r#"[workspace.dependencies]
+rust-template-foundation = { workspace = true }
+"#,
+  );
   // The flake must reference the foundation input.
   write(
     &dir.join("flake.nix"),
-    "{ inputs.foundation.url = \"github:LoganBarnett/rust-template\"; }\n",
+    r#"{ inputs.foundation.url = "github:LoganBarnett/rust-template"; }
+"#,
   );
   // flake.lock exists (required); pins skip before reading it (no Cargo.lock).
   write(&dir.join("flake.lock"), "{}\n");
   // CI calls the reusable workflows.
   write(
-        &dir.join(".github/workflows/ci.yml"),
-        "jobs:\n  ci:\n    uses: LoganBarnett/rust-template/.github/workflows/reusable-ci.yml@main\n",
-    );
+    &dir.join(".github/workflows/ci.yml"),
+    r#"jobs:
+  ci:
+    uses: LoganBarnett/rust-template/.github/workflows/reusable-ci.yml@main
+"#,
+  );
   // A cli crate that enables the foundation "cli" feature.
   write(
-        &dir.join("crates/app/Cargo.toml"),
-        "[dependencies]\nrust-template-foundation = { workspace = true, features = [\"cli\"] }\n",
-    );
-  // llms.org with the Template compliance section pointing at canonical docs.
+    &dir.join("crates/app/Cargo.toml"),
+    r#"[dependencies]
+rust-template-foundation = { workspace = true, features = ["cli"] }
+"#,
+  );
+  // llms.org with the Template compliance section pointing at canonical docs,
+  // plus the Persistent memory section.  Natural org formatting (blank line
+  // after each heading, a wrapped paragraph) exercises the orgize-backed
+  // scanner rather than fixed line positions.
   write(
-        &dir.join("llms.org"),
-        "* Template compliance\nThe authoritative description lives at\ndocs/compliance.org in the template.\n",
-    );
+    &dir.join("llms.org"),
+    r#"* Template compliance
+
+The authoritative description lives at
+docs/compliance.org in the template.
+
+* Persistent memory
+
+Codify conventions in the repo, not in local memory.
+
+* Capturing plans
+
+Record plans as TODO entries in tasks.org.
+"#,
+  );
   // Valid provenance that opts out of the stale-literal check.
   write(
-        &dir.join("rust-template.json"),
-        "{ \"template_sync_hashes\": [\"abc\"], \"compliance-ignores\": [\"no-stale-rust-template-literals\"] }",
-    );
+    &dir.join("rust-template.json"),
+    r#"{
+  "template_sync_hashes": ["abc"],
+  "compliance-ignores": ["no-stale-rust-template-literals"]
+}"#,
+  );
 }
 
 fn config_for(spawn_name: &str, spawn_dir: &Path, crates: &str) -> String {
   format!(
-        "{{ \"templateSpawns\": {{ \"{spawn_name}\": {{ \"dir\": \"{}\", \"archived\": false, \
-         \"args\": {{ \"crates\": \"{crates}\", \"description\": \"\", \"public\": false }} }} }} }}",
-        spawn_dir.display()
-    )
+    r#"{{
+  "templateSpawns": {{
+    "{spawn_name}": {{
+      "dir": "{}",
+      "archived": false,
+      "args": {{ "crates": "{crates}", "description": "", "public": false }}
+    }}
+  }}
+}}"#,
+    spawn_dir.display()
+  )
 }
 
 fn outcome<'a>(
@@ -130,6 +163,15 @@ fn compliant_spawn_has_no_failures() {
     outcome(spawn, "llms-template-compliance-points-to-canonical-docs"),
     CheckOutcome::Pass
   ));
+  // The Persistent memory and Capturing plans sections are present too.
+  assert!(matches!(
+    outcome(spawn, "llms-persistent-memory-section"),
+    CheckOutcome::Pass
+  ));
+  assert!(matches!(
+    outcome(spawn, "llms-capturing-plans-section"),
+    CheckOutcome::Pass
+  ));
   // The cli feature check applies and passes; the server check skips.
   assert!(matches!(
     outcome(spawn, "cli-foundation-cli-feature"),
@@ -160,7 +202,10 @@ fn drifted_spawn_reports_specific_failures() {
   std::fs::remove_file(spawn_dir.join("CHANGELOG.org")).unwrap();
   write(
     &spawn_dir.join("llms.org"),
-    "* Some other heading\nNothing about compliance here.\n",
+    r#"* Some other heading
+
+Nothing about compliance here.
+"#,
   );
   write(&root.join("config.json"), &config_for("drifted", &spawn_dir, "cli"));
 
@@ -192,12 +237,23 @@ fn archived_and_missing_spawns_are_skipped() {
   let tmp = tempfile::tempdir().unwrap();
   let root = tmp.path();
   let config = format!(
-        "{{ \"templateSpawns\": {{ \
-         \"archived\": {{ \"dir\": \"{}\", \"archived\": true, \"args\": {{ \"crates\": \"cli\" }} }}, \
-         \"gone\": {{ \"dir\": \"{}\", \"archived\": false, \"args\": {{ \"crates\": \"cli\" }} }} }} }}",
-        root.join("archived").display(),
-        root.join("does-not-exist").display(),
-    );
+    r#"{{
+  "templateSpawns": {{
+    "archived": {{
+      "dir": "{}",
+      "archived": true,
+      "args": {{ "crates": "cli" }}
+    }},
+    "gone": {{
+      "dir": "{}",
+      "archived": false,
+      "args": {{ "crates": "cli" }}
+    }}
+  }}
+}}"#,
+    root.join("archived").display(),
+    root.join("does-not-exist").display(),
+  );
   write(&root.join("config.json"), &config);
 
   let report = run(&options(root)).unwrap();
