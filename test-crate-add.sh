@@ -127,6 +127,48 @@ assert_flake_eval() {
     fi
 }
 
+# Assert that a freshly emitted project passes every compliance check — that
+# "the template emits a compliant project" actually holds.
+#
+# Registers the emission as a single spawn in a throwaway config.json (supplying
+# its crate set so the role-conditional checks run), then runs the compliance
+# checker against it and fails on any `fail` or `error` outcome.  Nothing is
+# tolerated: the foundation pin checks skip on a fresh emission (the template
+# Cargo.lock has no resolved foundation git rev), and pin hygiene is a
+# template-maintenance concern tracked as its own task.
+#
+# Gated on the checker having been built (which is gated on cargo); hosts
+# without a Rust toolchain skip cleanly, as with the cargo-check assertion.
+assert_compliant() {
+    local dir="$1" crates="$2"
+    if [[ -z "$COMPLIANCE_BIN" || ! -x "$COMPLIANCE_BIN" ]]; then
+        echo "  (skipping compliance check — checker not built)"
+        return 0
+    fi
+    local config="$TMPBASE/compliance-registry-$(basename "$dir").json"
+    jq -n --arg dir "$dir" --arg crates "$crates" \
+        '{templateSpawns: {emission: {dir: $dir, archived: false, args: {crates: $crates}}}}' \
+        > "$config"
+    # The checker's exit code is authoritative: non-zero iff a check failed or
+    # errored (or the run could not start at all).  Trust it for the pass/fail
+    # decision; the JSON report is only for showing *which* checks failed.
+    local report exit_code=0
+    report=$("$COMPLIANCE_BIN" \
+        --registry "$config" \
+        --manifest "$SCRIPT_DIR/compliance-checks.toml" \
+        --template-dir "$SCRIPT_DIR" \
+        --format json 2>/dev/null) || exit_code=$?
+    if [[ "$exit_code" -ne 0 ]]; then
+        echo "  assertion failed: fresh emission is not compliant:" >&2
+        printf '%s' "$report" \
+            | jq -r '.spawns[].checks[]
+                     | select(.status == "fail" or .status == "error")
+                     | "    [\(.id)] \(.detail // "")"' 2>/dev/null >&2 \
+            || echo "    (checker exited $exit_code without a JSON report)" >&2
+        return 1
+    fi
+}
+
 # ---------------------------------------------------------------------------
 # Test 1: new-project.sh with cli+server (default)
 # ---------------------------------------------------------------------------
@@ -160,6 +202,9 @@ test_new_project_default() {
     assert_file_contains "$dir/crates/server/Cargo.toml" 'name = "test-app-server"'
     assert_file_contains "$dir/crates/lib/Cargo.toml" 'name = "test-app-lib"'
 
+    # Compliance: a fresh emission must pass every check.
+    assert_compliant "$dir" "cli,server" || return 1
+
     # Flake-eval assertion: catches API drift between template and foundation.
     assert_flake_eval "$dir" || return 1
 
@@ -191,6 +236,8 @@ test_new_project_cli_only() {
     assert_file_contains "$dir/flake.nix" '# CRATE:cli:begin'
     assert_file_not_contains "$dir/flake.nix" '# CRATE:server:begin'
 
+    assert_compliant "$dir" "cli" || return 1
+
     assert_flake_eval "$dir" || return 1
 }
 
@@ -213,6 +260,8 @@ test_new_project_server_only() {
 
     assert_file_contains "$dir/flake.nix" '# CRATE:server:begin'
     assert_file_not_contains "$dir/flake.nix" '# CRATE:cli:begin'
+
+    assert_compliant "$dir" "server" || return 1
 }
 
 # ---------------------------------------------------------------------------
@@ -325,6 +374,21 @@ test_foundation_refs_preserved() {
     # The mangled form (test-app-foundation) should NOT appear anywhere.
     assert_no_occurrence "$dir" "test-app-foundation"
 }
+
+# Build the compliance checker once so each emission test can run it against
+# its output.  Gated on cargo, mirroring the cargo-check gating above.
+COMPLIANCE_BIN=""
+if command -v cargo &>/dev/null; then
+    echo "Building the compliance checker..."
+    if cargo build --quiet --manifest-path "$SCRIPT_DIR/Cargo.toml" \
+            --package rust-template-compliance-cli; then
+        COMPLIANCE_BIN="$(cargo metadata --format-version 1 --no-deps \
+            --manifest-path "$SCRIPT_DIR/Cargo.toml" 2>/dev/null \
+            | jq -r '.target_directory')/debug/rust-template-compliance-cli"
+    else
+        echo "  (compliance checker failed to build — checks will skip)" >&2
+    fi
+fi
 
 # ---------------------------------------------------------------------------
 # Run all tests.

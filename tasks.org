@@ -592,13 +592,13 @@ of scope: a meta-check for template sections lacking a check — an emitted repo
 may freely alter what the template lays down, so template-side coverage isn't
 reasonable.
 
-** TODO Scaffold the two crates via crate-add.sh and wire the workspace
+** DONE Scaffold the two crates via crate-add.sh and wire the workspace
 ~crate-add.sh --type lib --project-dir . --name compliance~ and ~--type cli
 --name compliance-cli~; switch the foundation git dep to the ~crates/foundation~
 path dep (mirror the ~foundation-derive~ wiring in the root ~Cargo.toml~); add
 both to root ~members~.
 
-** TODO Build the engine and check kinds at parity, plus the new checks
+** DONE Build the engine and check kinds at parity, plus the new checks
 Kinds: ~file-present~, ~json-valid~, ~file-contains~, ~foundation-feature~
 (conditional on ~args.crates~), ~no-stale-literal~ (port the existing exclusion
 logic), ~section-exists~, ~mention-present~ (phrase present within a section
@@ -618,17 +618,17 @@ is preceded by a why comment, enforcing the rule documented in
 package's ~buildInputs~ / ~nativeBuildInputs~).  This is a content check over
 manifests rather than a doc-section or pin check, so it wants its own kind.
 
-** TODO CLI, output, and cutover
+** DONE CLI, output, and cutover
 Clap ~CliRaw~ on the staged-config convention; args ~[project]~ filter,
 ~--config~, ~--template-dir~, ~--format human|json~, and an inert ~--fix~ seam
 (phase 2).  Wire a ~justfile~ ~compliance~ recipe and point CI at the binary.
 Delete ~compliance-check.sh~ once a parity diff against the real ~config.json~
 spawns is clean.
 
-** TODO Assert a fresh emission is compliant in the emission integration test
-In ~test-crate-add.sh~ (~just test-integration~), after a spawn is emitted and
-built, run the compliance binary against it and assert a clean pass — making
-"the template emits a compliant project" enforced.  Aligns with
+** DONE Assert a fresh emission is compliant in the emission integration test
+In ~test-crate-add.sh~ (~just test-integration~), after a spawn is emitted, run
+the compliance binary against it and assert a clean pass — making "the template
+emits a compliant project" enforced.  Aligns with
 [[*Emission tests must run the full CI suite against a fresh spawn][Emission tests must run the full CI suite against a fresh spawn]].  Constraint:
 every manifest check must be satisfiable day-zero (esp. the pin checks vs the
 emission's locked foundation rev).
@@ -638,6 +638,40 @@ emission's locked foundation rev).
 the Cargo dep + ~Cargo.lock~ + ~flake.lock~ edges in lockstep).
 ~section-exists~ / ~mention-present~ are prose — report only, never auto-write
 into a foreign repo.
+
+* TODO Make the foundation pin checks meaningful and keep the template pins honest
+The pin checks under-deliver on the three-way agreement that
+[[*Compliance sync must bump both flake input and Cargo dependency][the dual-pin invariant]] documents, and the template's own pins have drifted, so
+the checks currently verify almost nothing on a fresh emission.
+
+** TODO Fix ~pins-agree~ to the documented three-way check
+~foundation-pins-agree~ currently compares only the ~Cargo.lock~ foundation rev
+to the ~flake.lock~ foundation rev.  The documented invariant is three-way: both
+must also equal the last hash recorded in the spawn's ~rust-template.json~
+(~template_sync_hashes~).  Add that third leg so a spawn whose provenance claims
+a sync the lockfiles do not reflect actually fails.
+
+** TODO Decide what ~pins-current~ should compare against
+~foundation-pins-current~ compares the pins to ~git rev-parse HEAD~ of the
+template checkout.  But foundation /is/ rust-template, fetched from GitHub, so
+the pins can only point at a *pushed* rev — they can never equal a locally
+unpushed HEAD, making the check unsatisfiable by construction in local
+development.  Decide: drop it, compare against the latest pushed rev, or keep it
+as an informational (non-failing) signal.
+
+** TODO Refresh the template's foundation pins
+~template/flake.lock~ pins the ~foundation~ input to a stale rev, and
+~template/Cargo.lock~ carries no resolved foundation git source at all — which
+is why the pin checks /skip/ on a fresh emission instead of verifying anything.
+Bring both into agreement on a current pushed rev so emissions inherit honest
+pins.
+
+** TODO Add a rust-template-proper test that the template's pins agree
+Guard against the drift above with a test (alongside the emission integration
+tests) that reads the foundation rev from ~template/flake.lock~ and
+~template/Cargo.lock~ and asserts they agree — and, once decided, are current.
+Keeps "the template's pins are honest" enforced rather than discovered later in
+a spawn.
 
 * TODO Emission tests must run the full CI suite against a fresh spawn
 Template-emitted scaffolding has been shipping checks-failing code that only
