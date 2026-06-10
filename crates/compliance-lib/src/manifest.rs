@@ -24,6 +24,9 @@ pub struct Check {
   /// When set, the check only applies to spawns whose `args.crates` string
   /// contains this substring; others report `Skip`.
   pub when_crates_contains: Option<String>,
+  /// When `Some(true)`, the check only applies to spawns marked public; others
+  /// report `Skip`.  Used for the crates.io publish machinery.
+  pub when_public: Option<bool>,
   pub kind: CheckKind,
 }
 
@@ -59,6 +62,38 @@ pub enum CheckKind {
   /// Both foundation pins equal the template's current `HEAD` (the spawn is
   /// on the latest template).
   PinsCurrent,
+  /// No file exists at `path` (the inverse of `file-present`).
+  FileAbsent { path: String },
+  /// The spawn's file at `path` is byte-for-byte identical to the template's
+  /// canonical copy under `template/`.  Skips when either file is absent.
+  FileMatchesTemplate { path: String },
+  /// At least one file in the spawn matches `glob` (a `/`-separated pattern
+  /// where `*` matches one path segment).
+  GlobPresent { glob: String },
+  /// `target` parses as JSON and the value at `pointer` (a dotted path,
+  /// e.g. `a.b.0`) exists.  Skips when `target` is absent.
+  JsonPathExists { target: String, pointer: String },
+  /// `target` parses as JSON and the scalar at `pointer` equals `value`.
+  JsonPathEquals {
+    target: String,
+    pointer: String,
+    value: String,
+  },
+  /// `target` parses as JSON and the sequence at `pointer` contains an element
+  /// equal to `value`.
+  JsonSeqContains {
+    target: String,
+    pointer: String,
+    value: String,
+  },
+  /// `target` parses as TOML and the value at `pointer` exists.
+  TomlPathExists { target: String, pointer: String },
+  /// `target` parses as TOML and the scalar at `pointer` equals `value`.
+  TomlPathEquals {
+    target: String,
+    pointer: String,
+    value: String,
+  },
 }
 
 /// The TOML shape: every kind-specific field is optional and validated later.
@@ -76,6 +111,8 @@ struct RawCheck {
   #[serde(default)]
   when_crates_contains: Option<String>,
   #[serde(default)]
+  when_public: Option<bool>,
+  #[serde(default)]
   target: Option<String>,
   #[serde(default)]
   path: Option<String>,
@@ -85,6 +122,12 @@ struct RawCheck {
   contains: Option<String>,
   #[serde(default)]
   feature: Option<String>,
+  #[serde(default)]
+  glob: Option<String>,
+  #[serde(default)]
+  pointer: Option<String>,
+  #[serde(default)]
+  value: Option<String>,
 }
 
 /// Require a kind-specific parameter, naming the check and kind on absence.
@@ -107,11 +150,15 @@ impl RawCheck {
       description,
       kind,
       when_crates_contains,
+      when_public,
       target,
       path,
       section,
       contains,
       feature,
+      glob,
+      pointer,
+      value,
     } = self;
 
     let resolved = match kind.as_str() {
@@ -140,6 +187,38 @@ impl RawCheck {
       },
       "pins-agree" => CheckKind::PinsAgree,
       "pins-current" => CheckKind::PinsCurrent,
+      "file-absent" => CheckKind::FileAbsent {
+        path: require(&id, &kind, "path", path)?,
+      },
+      "file-matches-template" => CheckKind::FileMatchesTemplate {
+        path: require(&id, &kind, "path", path)?,
+      },
+      "glob-present" => CheckKind::GlobPresent {
+        glob: require(&id, &kind, "glob", glob)?,
+      },
+      "json-path-exists" => CheckKind::JsonPathExists {
+        target: require(&id, &kind, "target", target)?,
+        pointer: require(&id, &kind, "pointer", pointer)?,
+      },
+      "json-path-equals" => CheckKind::JsonPathEquals {
+        target: require(&id, &kind, "target", target)?,
+        pointer: require(&id, &kind, "pointer", pointer)?,
+        value: require(&id, &kind, "value", value)?,
+      },
+      "json-seq-contains" => CheckKind::JsonSeqContains {
+        target: require(&id, &kind, "target", target)?,
+        pointer: require(&id, &kind, "pointer", pointer)?,
+        value: require(&id, &kind, "value", value)?,
+      },
+      "toml-path-exists" => CheckKind::TomlPathExists {
+        target: require(&id, &kind, "target", target)?,
+        pointer: require(&id, &kind, "pointer", pointer)?,
+      },
+      "toml-path-equals" => CheckKind::TomlPathEquals {
+        target: require(&id, &kind, "target", target)?,
+        pointer: require(&id, &kind, "pointer", pointer)?,
+        value: require(&id, &kind, "value", value)?,
+      },
       other => {
         return Err(ComplianceError::ManifestInvalid {
           id: id.clone(),
@@ -152,6 +231,7 @@ impl RawCheck {
       id,
       description,
       when_crates_contains,
+      when_public,
       kind: resolved,
     })
   }

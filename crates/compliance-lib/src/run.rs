@@ -7,7 +7,7 @@ use crate::manifest::{self, Check};
 use crate::provenance;
 use crate::registry::{self, Spawn};
 use serde::Serialize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Inputs for a compliance run.
 #[derive(Debug, Clone)]
@@ -130,6 +130,7 @@ pub fn run(opts: &RunOptions) -> Result<RunReport, ComplianceError> {
     // before any join, so the spawns actually run concurrently.  Without
     // it, a lazy map would join each handle before spawning the next,
     // serializing the whole run.
+    let template_dir = opts.template_dir.as_path();
     #[allow(clippy::needless_collect)]
     let handles: Vec<(&str, _)> = entries
       .iter()
@@ -138,7 +139,12 @@ pub fn run(opts: &RunOptions) -> Result<RunReport, ComplianceError> {
         let head = &template_head;
         let name: &str = name;
         let spawn: &Spawn = spawn;
-        (name, scope.spawn(move || check_spawn(name, spawn, checks, head)))
+        (
+          name,
+          scope.spawn(move || {
+            check_spawn(name, spawn, checks, head, template_dir)
+          }),
+        )
       })
       .collect();
     handles
@@ -159,6 +165,7 @@ fn check_spawn(
   spawn: &Spawn,
   checks: &[Check],
   template_head: &Result<String, String>,
+  template_dir: &Path,
 ) -> SpawnReport {
   if spawn.archived {
     return SpawnReport::skipped(
@@ -182,6 +189,8 @@ fn check_spawn(
     crates: &spawn.args.crates,
     provenance: &provenance,
     template_head,
+    template_dir,
+    public: spawn.args.public,
   };
 
   let checks = checks

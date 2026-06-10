@@ -47,6 +47,11 @@ pub struct SpawnContext<'a> {
   /// The template's current `HEAD`, resolved once per run (shared), or the
   /// reason it could not be resolved.
   pub template_head: &'a Result<String, String>,
+  /// The template checkout root; its `template/` subtree holds the canonical
+  /// files that `file-matches-template` compares against.
+  pub template_dir: &'a Path,
+  /// Whether the spawn is marked public (gates the publish-machinery checks).
+  pub public: bool,
 }
 
 /// Run `check` against the spawn described by `ctx`.
@@ -66,6 +71,13 @@ pub fn run_check(check: &Check, ctx: &SpawnContext) -> CheckOutcome {
         ),
       };
     }
+  }
+
+  // Public-only checks (the crates.io publish machinery) skip on private spawns.
+  if check.when_public == Some(true) && !ctx.public {
+    return CheckOutcome::Skip {
+      reason: "spawn is not public".to_string(),
+    };
   }
 
   match &check.kind {
@@ -88,6 +100,50 @@ pub fn run_check(check: &Check, ctx: &SpawnContext) -> CheckOutcome {
     } => mention_present(ctx.dir, target, section.as_deref(), contains),
     CheckKind::PinsAgree => pins_agree(ctx.dir),
     CheckKind::PinsCurrent => pins_current(ctx.dir, ctx.template_head),
+    CheckKind::FileAbsent { path } => file_absent(ctx.dir, path),
+    CheckKind::FileMatchesTemplate { path } => {
+      file_matches_template(ctx.dir, ctx.template_dir, path)
+    }
+    CheckKind::GlobPresent { glob } => glob_present(ctx.dir, glob),
+    CheckKind::JsonPathExists { target, pointer } => {
+      structured_path(ctx.dir, target, pointer, &PathMatch::Exists, parse_json)
+    }
+    CheckKind::JsonPathEquals {
+      target,
+      pointer,
+      value,
+    } => structured_path(
+      ctx.dir,
+      target,
+      pointer,
+      &PathMatch::Equals(value),
+      parse_json,
+    ),
+    CheckKind::JsonSeqContains {
+      target,
+      pointer,
+      value,
+    } => structured_path(
+      ctx.dir,
+      target,
+      pointer,
+      &PathMatch::SeqContains(value),
+      parse_json,
+    ),
+    CheckKind::TomlPathExists { target, pointer } => {
+      structured_path(ctx.dir, target, pointer, &PathMatch::Exists, parse_toml)
+    }
+    CheckKind::TomlPathEquals {
+      target,
+      pointer,
+      value,
+    } => structured_path(
+      ctx.dir,
+      target,
+      pointer,
+      &PathMatch::Equals(value),
+      parse_toml,
+    ),
   }
 }
 
@@ -233,6 +289,216 @@ fn pins_current(
     CheckOutcome::Fail {
       detail: format!("Cargo {cargo} / flake {flake} differ from HEAD {head}"),
     }
+  }
+}
+
+fn file_absent(dir: &Path, path: &str) -> CheckOutcome {
+  if dir.join(path).exists() {
+    CheckOutcome::Fail {
+      detail: format!("file should not exist: {path}"),
+    }
+  } else {
+    CheckOutcome::Pass
+  }
+}
+
+fn file_matches_template(
+  dir: &Path,
+  template_dir: &Path,
+  path: &str,
+) -> CheckOutcome {
+  let spawn = match read_file(&dir.join(path)) {
+    FileRead::Found(text) => text,
+    FileRead::Missing => {
+      return CheckOutcome::Skip {
+        reason: format!("{path} not present"),
+      }
+    }
+    FileRead::Error(detail) => return CheckOutcome::Error { detail },
+  };
+  let canonical_path = template_dir.join("template").join(path);
+  let canonical = match read_file(&canonical_path) {
+    FileRead::Found(text) => text,
+    FileRead::Missing => {
+      return CheckOutcome::Skip {
+        reason: format!(
+          "no canonical template file at {}",
+          canonical_path.display()
+        ),
+      }
+    }
+    FileRead::Error(detail) => return CheckOutcome::Error { detail },
+  };
+  if spawn == canonical {
+    CheckOutcome::Pass
+  } else {
+    CheckOutcome::Fail {
+      detail: format!("{path} differs from the template's canonical copy"),
+    }
+  }
+}
+
+fn glob_present(dir: &Path, glob: &str) -> CheckOutcome {
+  let mut files = Vec::new();
+  walk_files(dir, &mut files);
+  let matched = files.iter().any(|path| {
+    path
+      .strip_prefix(dir)
+      .ok()
+      .and_then(|rel| rel.to_str())
+      .is_some_and(|rel| glob_matches(glob, rel))
+  });
+  if matched {
+    CheckOutcome::Pass
+  } else {
+    CheckOutcome::Fail {
+      detail: format!("no file matches \"{glob}\""),
+    }
+  }
+}
+
+/// Match a `/`-separated glob where each segment may use `*` as a wildcard for
+/// any run of characters within that segment.  Segment counts must match.
+fn glob_matches(pattern: &str, path: &str) -> bool {
+  let pattern_segments: Vec<&str> = pattern.split('/').collect();
+  let path_segments: Vec<&str> = path.split('/').collect();
+  pattern_segments.len() == path_segments.len()
+    && pattern_segments
+      .iter()
+      .zip(&path_segments)
+      .all(|(pattern, segment)| segment_matches(pattern, segment))
+}
+
+fn segment_matches(pattern: &str, segment: &str) -> bool {
+  match pattern.split_once('*') {
+    None => pattern == segment,
+    Some((prefix, suffix)) => {
+      segment.len() >= prefix.len() + suffix.len()
+        && segment.starts_with(prefix)
+        && segment.ends_with(suffix)
+    }
+  }
+}
+
+/// How a structured-document check matches the value at its pointer.
+enum PathMatch<'a> {
+  /// The pointer resolves to any value.
+  Exists,
+  /// The pointer resolves to a scalar equal to this string.
+  Equals(&'a str),
+  /// The pointer resolves to a sequence containing a scalar equal to this.
+  SeqContains(&'a str),
+}
+
+fn parse_json(text: &str) -> Result<serde_json::Value, String> {
+  serde_json::from_str(text).map_err(|error| format!("invalid JSON: {error}"))
+}
+
+fn parse_toml(text: &str) -> Result<serde_json::Value, String> {
+  let value: toml::Value =
+    toml::from_str(text).map_err(|error| format!("invalid TOML: {error}"))?;
+  serde_json::to_value(value).map_err(|error| format!("TOML to JSON: {error}"))
+}
+
+/// Read `target`, parse it via `parse`, navigate to `pointer`, and apply
+/// `matcher`.  A missing target skips — its existence is a separate concern,
+/// checked (where required) by a `file-present` check.
+fn structured_path(
+  dir: &Path,
+  target: &str,
+  pointer: &str,
+  matcher: &PathMatch,
+  parse: fn(&str) -> Result<serde_json::Value, String>,
+) -> CheckOutcome {
+  let text = match read_file(&dir.join(target)) {
+    FileRead::Found(text) => text,
+    FileRead::Missing => {
+      return CheckOutcome::Skip {
+        reason: format!("{target} not present"),
+      }
+    }
+    FileRead::Error(detail) => return CheckOutcome::Error { detail },
+  };
+  let value = match parse(&text) {
+    Ok(value) => value,
+    Err(detail) => {
+      return CheckOutcome::Fail {
+        detail: format!("{target}: {detail}"),
+      }
+    }
+  };
+  let found = navigate(&value, pointer);
+  match matcher {
+    PathMatch::Exists => match found {
+      Some(_) => CheckOutcome::Pass,
+      None => CheckOutcome::Fail {
+        detail: format!("{target}: no value at \"{pointer}\""),
+      },
+    },
+    PathMatch::Equals(expected) => match found.and_then(scalar_to_string) {
+      Some(actual) if actual == *expected => CheckOutcome::Pass,
+      Some(actual) => CheckOutcome::Fail {
+        detail: format!(
+          "{target}: \"{pointer}\" is \"{actual}\", expected \"{expected}\""
+        ),
+      },
+      None => CheckOutcome::Fail {
+        detail: format!("{target}: no scalar at \"{pointer}\""),
+      },
+    },
+    PathMatch::SeqContains(expected) => match found {
+      Some(serde_json::Value::Array(items)) => {
+        if items
+          .iter()
+          .filter_map(scalar_to_string)
+          .any(|item| item == *expected)
+        {
+          CheckOutcome::Pass
+        } else {
+          CheckOutcome::Fail {
+            detail: format!(
+              "{target}: sequence at \"{pointer}\" has no \"{expected}\""
+            ),
+          }
+        }
+      }
+      Some(_) => CheckOutcome::Fail {
+        detail: format!("{target}: \"{pointer}\" is not a sequence"),
+      },
+      None => CheckOutcome::Fail {
+        detail: format!("{target}: no value at \"{pointer}\""),
+      },
+    },
+  }
+}
+
+/// Navigate a JSON value by a dotted pointer (`a.b.0`), descending object keys
+/// and array indices.
+fn navigate<'a>(
+  value: &'a serde_json::Value,
+  pointer: &str,
+) -> Option<&'a serde_json::Value> {
+  let mut current = value;
+  for segment in pointer.split('.') {
+    current = match current {
+      serde_json::Value::Object(map) => map.get(segment)?,
+      serde_json::Value::Array(items) => {
+        items.get(segment.parse::<usize>().ok()?)?
+      }
+      _ => return None,
+    };
+  }
+  Some(current)
+}
+
+/// The string form of a JSON scalar (string, number, bool); `None` for
+/// objects, arrays, and null.
+fn scalar_to_string(value: &serde_json::Value) -> Option<String> {
+  match value {
+    serde_json::Value::String(string) => Some(string.clone()),
+    serde_json::Value::Number(number) => Some(number.to_string()),
+    serde_json::Value::Bool(boolean) => Some(boolean.to_string()),
+    _ => None,
   }
 }
 
@@ -396,4 +662,43 @@ fn relative_display(base: &Path, path: &Path) -> String {
     .unwrap_or(path)
     .display()
     .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn glob_matches_per_segment_wildcards() {
+    assert!(glob_matches(
+      "crates/*/tests/*.rs",
+      "crates/cli/tests/integration_test.rs"
+    ));
+    assert!(!glob_matches("crates/*/tests/*.rs", "crates/cli/src/main.rs"));
+    // Segment counts must match.
+    assert!(!glob_matches("crates/*/tests/*.rs", "crates/cli/tests"));
+    assert!(glob_matches("*.toml", "Cargo.toml"));
+    assert!(!glob_matches("*.toml", "Cargo.lock"));
+  }
+
+  #[test]
+  fn navigate_descends_objects_and_arrays() {
+    let value = parse_json(r#"{ "a": { "b": ["x", "y"] } }"#).unwrap();
+    assert_eq!(
+      navigate(&value, "a.b.1").and_then(scalar_to_string),
+      Some("y".to_string())
+    );
+    assert!(navigate(&value, "a.c").is_none());
+    assert!(navigate(&value, "a.b.9").is_none());
+  }
+
+  #[test]
+  fn parse_toml_normalises_inline_tables() {
+    // `version.workspace = true` parses to package.version.workspace == true.
+    let value = parse_toml("[package]\nversion.workspace = true\n").unwrap();
+    assert_eq!(
+      navigate(&value, "package.version.workspace").and_then(scalar_to_string),
+      Some("true".to_string())
+    );
+  }
 }
