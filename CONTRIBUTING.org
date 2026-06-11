@@ -65,6 +65,22 @@ nix develop --command cargo test --workspace
 
 Tests must exit with a proper error code.
 
+* Compliance checks
+
+This template exists to capture learnings as code and config, so a feature is
+not finished until the convention it introduces is /enforced/.  Whenever it is
+at all possible, a new feature should land with a check in
+=compliance-checks.toml= that asserts a spawned project carries it, and the
+emission test must still pass against a fresh spawn.  See [[file:docs/compliance.org][=docs/compliance.org=]]
+for the checker and the set of check kinds.
+
+This applies even to documentation additions.  A new =llms.org= or
+=CONTRIBUTING.org= section can be asserted with =section-exists=, a load-bearing
+phrase within one with =mention-present=, and a new required file with
+=file-present=.  If a convention genuinely cannot be expressed as a structural
+rule, say so in the change rather than dropping the check silently — the default
+expectation is that every new convention is machine-checked.
+
 * UI philosophy: no modals
 
 Do not use modals anywhere in the UI.  Replace every modal with an inline

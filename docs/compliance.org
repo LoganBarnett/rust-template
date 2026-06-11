@@ -127,6 +127,24 @@ any list in this document will drift behind the template as it evolves, and
 going feature by feature is too easy to miss things.  The tables in
 [[*Compliance items reference]] exist for orientation, not as the audit checklist.
 
+** Run the structural checker first
+
+Begin every compliance pass with the automated checker (see
+[[*The structural checker]]).  It catches the codified, mechanical drift — required
+files, foundation wiring, the GitHub Actions machinery, the documented
+=llms.org= and =CONTRIBUTING.org= sections, workspace inheritance, and the
+foundation pin agreement — and names each failure by its check id, so those gaps
+need no manual hunting.
+
+#+begin_src sh :exports code
+just compliance --project <target-project-name>
+#+end_src
+
+Fix everything it reports, then continue to the manual walk below.  The checker
+is necessary, not sufficient: a green run still leaves prose intent and the
+judgment-call reconciliations that only a diff or fresh-emission comparison can
+surface.
+
 ** Determine the process
 
 1. Open =rust-template.json= in the derived repo.
@@ -216,18 +234,24 @@ just compliance --format json        # machine-readable output
 Each check is declared in =compliance-checks.toml= with a stable symbolic id
 (e.g. =llms-template-compliance-section=) that is printed on every failure, so a
 result can always be traced back to the manifest.  The checks cover required
-files, foundation dependency and feature wiring, CI reusable-workflow
-references, the absence of stale =rust-template= literals, the presence of
-documented sections and phrases in =llms.org=, and the three-way foundation pin
-agreement: the revisions pinned in =Cargo.lock= and =flake.lock= must agree with
-each other (=foundation-pins-agree=) and with the template =HEAD=
-(=foundation-pins-current=).
+files, foundation dependency and feature wiring, the GitHub Actions machinery
+(the CI, publish, branch-protection, and dependabot-automerge workflows, plus
+=dependabot.yml= and =branch-protection.json=), the foundation-driven =main= and
+=config= wiring (the =foundation_main= entry attribute and the =MergeConfig=
+derive with its helper attribute), the module layout and workspace inheritance,
+the absence of stale =rust-template= literals, the documented sections in
+=llms.org= and =CONTRIBUTING.org=, and the foundation pin agreement: the
+revisions pinned in =Cargo.lock= and =flake.lock= must agree with each other
+(=foundation-pins-agree=) and with the template =HEAD=
+(=foundation-pins-current=).  Rust facts are read from the parsed syntax tree,
+and YAML / JSON / TOML facts from the parsed value tree, narrowing to a
+substring match only at the leaf.
 
-This /complements/, and does not replace, the diff-based and fresh-emission
-processes above.  The checker enforces what can be expressed as a structural
-rule; the diff and emission comparisons remain authoritative for everything a
-static rule cannot capture.  A green checker run is necessary, not sufficient,
-for full compliance.
+It is the first step of both processes above (see
+[[*Run the structural checker first]]), but does not replace them.  The checker
+enforces what can be expressed as a structural rule; the diff and emission
+comparisons remain authoritative for everything a static rule cannot capture.  A
+green checker run is necessary, not sufficient, for full compliance.
 
 ** Opting out of a check
 
