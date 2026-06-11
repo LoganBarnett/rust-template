@@ -23,7 +23,7 @@ pub mod run;
 // declaring a foundation dependency edge of its own.
 pub use rust_template_foundation::logging::{LogFormat, LogLevel};
 
-pub use check::CheckOutcome;
+pub use check::Verdict;
 pub use error::ComplianceError;
 pub use run::{
   run, CheckResult, RunOptions, RunReport, SpawnReport, SpawnStatus,

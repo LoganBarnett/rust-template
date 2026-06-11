@@ -1,6 +1,6 @@
 //! Running a single check against a single spawn.
 //!
-//! Every check resolves to a [`CheckOutcome`].  Outcomes are data, not control
+//! Every check resolves to a [`Verdict`].  Outcomes are data, not control
 //! flow: a failing or erroring check never aborts the run, so one broken spawn
 //! cannot hide the state of the others.  The outcome variants serialize
 //! directly into the JSON report.
@@ -12,10 +12,10 @@ use crate::provenance::Provenance;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
-/// The result of running one check.
+/// A check's verdict: the result of running one check against one spawn.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "status", rename_all = "lowercase")]
-pub enum CheckOutcome {
+pub enum Verdict {
   /// The check held.
   Pass,
   /// The check did not hold; `detail` says how.
@@ -29,10 +29,10 @@ pub enum CheckOutcome {
   Error { detail: String },
 }
 
-impl CheckOutcome {
+impl Verdict {
   /// Whether this outcome should make the overall run fail.
   pub fn is_failure(&self) -> bool {
-    matches!(self, CheckOutcome::Fail { .. } | CheckOutcome::Error { .. })
+    matches!(self, Verdict::Fail { .. } | Verdict::Error { .. })
   }
 }
 
@@ -55,16 +55,16 @@ pub struct SpawnContext<'a> {
 }
 
 /// Run `check` against the spawn described by `ctx`.
-pub fn run_check(check: &Check, ctx: &SpawnContext) -> CheckOutcome {
+pub fn run_check(check: &Check, ctx: &SpawnContext) -> Verdict {
   // An explicit opt-out wins over everything else.
   if let Some(reason) = ctx.provenance.ignored_reason(&check.id) {
-    return CheckOutcome::Ignored { reason };
+    return Verdict::Ignored { reason };
   }
 
   // Role-conditional checks skip on spawns that lack the role.
   if let Some(role) = &check.when_crates_contains {
     if !ctx.crates.contains(role.as_str()) {
-      return CheckOutcome::Skip {
+      return Verdict::Skip {
         reason: format!(
           "crate roles \"{}\" do not include \"{role}\"",
           ctx.crates
@@ -75,7 +75,7 @@ pub fn run_check(check: &Check, ctx: &SpawnContext) -> CheckOutcome {
 
   // Public-only checks (the crates.io publish machinery) skip on private spawns.
   if check.when_public == Some(true) && !ctx.public {
-    return CheckOutcome::Skip {
+    return Verdict::Skip {
       reason: "spawn is not public".to_string(),
     };
   }
@@ -209,62 +209,62 @@ pub fn run_check(check: &Check, ctx: &SpawnContext) -> CheckOutcome {
 
 // ── Per-kind implementations ─────────────────────────────────────────
 
-fn file_present(dir: &Path, path: &str) -> CheckOutcome {
+fn file_present(dir: &Path, path: &str) -> Verdict {
   if dir.join(path).exists() {
-    CheckOutcome::Pass
+    Verdict::Pass
   } else {
-    CheckOutcome::Fail {
+    Verdict::Fail {
       detail: format!("required file missing: {path}"),
     }
   }
 }
 
-fn json_valid(dir: &Path, path: &str) -> CheckOutcome {
+fn json_valid(dir: &Path, path: &str) -> Verdict {
   match read_file(&dir.join(path)) {
     FileRead::Found(text) => {
       match serde_json::from_str::<serde_json::Value>(&text) {
-        Ok(_) => CheckOutcome::Pass,
-        Err(error) => CheckOutcome::Fail {
+        Ok(_) => Verdict::Pass,
+        Err(error) => Verdict::Fail {
           detail: format!("{path} is not valid JSON: {error}"),
         },
       }
     }
-    FileRead::Missing => CheckOutcome::Fail {
+    FileRead::Missing => Verdict::Fail {
       detail: format!("{path} not found"),
     },
-    FileRead::Error(detail) => CheckOutcome::Error { detail },
+    FileRead::Error(detail) => Verdict::Error { detail },
   }
 }
 
-fn file_contains(dir: &Path, target: &str, needle: &str) -> CheckOutcome {
+fn file_contains(dir: &Path, target: &str, needle: &str) -> Verdict {
   match read_file(&dir.join(target)) {
-    FileRead::Found(text) if text.contains(needle) => CheckOutcome::Pass,
-    FileRead::Found(_) => CheckOutcome::Fail {
+    FileRead::Found(text) if text.contains(needle) => Verdict::Pass,
+    FileRead::Found(_) => Verdict::Fail {
       detail: format!("{target} does not contain \"{needle}\""),
     },
-    FileRead::Missing => CheckOutcome::Fail {
+    FileRead::Missing => Verdict::Fail {
       detail: format!("{target} not found"),
     },
-    FileRead::Error(detail) => CheckOutcome::Error { detail },
+    FileRead::Error(detail) => Verdict::Error { detail },
   }
 }
 
-fn foundation_feature(dir: &Path, feature: &str) -> CheckOutcome {
+fn foundation_feature(dir: &Path, feature: &str) -> Verdict {
   if foundation_feature_present(dir, feature) {
-    CheckOutcome::Pass
+    Verdict::Pass
   } else {
-    CheckOutcome::Fail {
+    Verdict::Fail {
       detail: format!("no crate enables the foundation \"{feature}\" feature"),
     }
   }
 }
 
-fn no_stale_literal(dir: &Path) -> CheckOutcome {
+fn no_stale_literal(dir: &Path) -> Verdict {
   let offenders = stale_literals(dir);
   if offenders.is_empty() {
-    CheckOutcome::Pass
+    Verdict::Pass
   } else {
-    CheckOutcome::Fail {
+    Verdict::Fail {
       detail: format!(
         "stale rust-template literals in: {}",
         offenders.join(", ")
@@ -273,18 +273,18 @@ fn no_stale_literal(dir: &Path) -> CheckOutcome {
   }
 }
 
-fn section_exists(dir: &Path, target: &str, section: &str) -> CheckOutcome {
+fn section_exists(dir: &Path, target: &str, section: &str) -> Verdict {
   match read_file(&dir.join(target)) {
     FileRead::Found(text) if org::section_exists(&text, section) => {
-      CheckOutcome::Pass
+      Verdict::Pass
     }
-    FileRead::Found(_) => CheckOutcome::Fail {
+    FileRead::Found(_) => Verdict::Fail {
       detail: format!("section \"{section}\" not found in {target}"),
     },
-    FileRead::Missing => CheckOutcome::Fail {
+    FileRead::Missing => Verdict::Fail {
       detail: format!("{target} not found"),
     },
-    FileRead::Error(detail) => CheckOutcome::Error { detail },
+    FileRead::Error(detail) => Verdict::Error { detail },
   }
 }
 
@@ -293,72 +293,69 @@ fn mention_present(
   target: &str,
   section: Option<&str>,
   needle: &str,
-) -> CheckOutcome {
+) -> Verdict {
   match read_file(&dir.join(target)) {
     FileRead::Found(text) => match org::mention_present(&text, section, needle)
     {
-      Ok(true) => CheckOutcome::Pass,
-      Ok(false) => CheckOutcome::Fail {
+      Ok(true) => Verdict::Pass,
+      Ok(false) => Verdict::Fail {
         detail: section.map_or_else(
           || format!("\"{needle}\" not found in {target}"),
           |name| format!("\"{needle}\" not found in {target} § {name}"),
         ),
       },
-      Err(reason) => CheckOutcome::Fail {
+      Err(reason) => Verdict::Fail {
         detail: format!("{reason} in {target}"),
       },
     },
-    FileRead::Missing => CheckOutcome::Fail {
+    FileRead::Missing => Verdict::Fail {
       detail: format!("{target} not found"),
     },
-    FileRead::Error(detail) => CheckOutcome::Error { detail },
+    FileRead::Error(detail) => Verdict::Error { detail },
   }
 }
 
-fn pins_agree(dir: &Path) -> CheckOutcome {
+fn pins_agree(dir: &Path) -> Verdict {
   match pins(dir) {
-    Pins::Both { cargo, flake } if cargo == flake => CheckOutcome::Pass,
-    Pins::Both { cargo, flake } => CheckOutcome::Fail {
+    Pins::Both { cargo, flake } if cargo == flake => Verdict::Pass,
+    Pins::Both { cargo, flake } => Verdict::Fail {
       detail: format!("Cargo.lock pins {cargo}; flake.lock pins {flake}"),
     },
-    Pins::Skip(reason) => CheckOutcome::Skip { reason },
-    Pins::Error(detail) => CheckOutcome::Error { detail },
+    Pins::Skip(reason) => Verdict::Skip { reason },
+    Pins::Error(detail) => Verdict::Error { detail },
   }
 }
 
-fn pins_current(
-  dir: &Path,
-  template_head: &Result<String, String>,
-) -> CheckOutcome {
+fn pins_current(dir: &Path, template_head: &Result<String, String>) -> Verdict {
   let (cargo, flake) = match pins(dir) {
     Pins::Both { cargo, flake } => (cargo, flake),
-    Pins::Skip(reason) => return CheckOutcome::Skip { reason },
-    Pins::Error(detail) => return CheckOutcome::Error { detail },
+    Pins::Skip(reason) => return Verdict::Skip { reason },
+    Pins::Error(detail) => return Verdict::Error { detail },
   };
   let head = match template_head {
     Ok(head) => head,
     Err(reason) => {
-      return CheckOutcome::Error {
+      return Verdict::Error {
         detail: format!("template HEAD unavailable: {reason}"),
       }
     }
   };
   if &cargo == head && &flake == head {
-    CheckOutcome::Pass
+    Verdict::Pass
   } else {
-    CheckOutcome::Fail {
+    Verdict::Fail {
       detail: format!("Cargo {cargo} / flake {flake} differ from HEAD {head}"),
     }
   }
 }
 
-fn file_absent(dir: &Path, path: &str) -> CheckOutcome {
+fn file_absent(dir: &Path, path: &str) -> Verdict {
   if dir.join(path).exists() {
-    CheckOutcome::Fail {
+    Verdict::Fail {
       detail: format!("file should not exist: {path}"),
     }
   } else {
-    CheckOutcome::Pass
+    Verdict::Pass
   }
 }
 
@@ -366,39 +363,39 @@ fn file_matches_template(
   dir: &Path,
   template_dir: &Path,
   path: &str,
-) -> CheckOutcome {
+) -> Verdict {
   let spawn = match read_file(&dir.join(path)) {
     FileRead::Found(text) => text,
     FileRead::Missing => {
-      return CheckOutcome::Skip {
+      return Verdict::Skip {
         reason: format!("{path} not present"),
       }
     }
-    FileRead::Error(detail) => return CheckOutcome::Error { detail },
+    FileRead::Error(detail) => return Verdict::Error { detail },
   };
   let canonical_path = template_dir.join("template").join(path);
   let canonical = match read_file(&canonical_path) {
     FileRead::Found(text) => text,
     FileRead::Missing => {
-      return CheckOutcome::Skip {
+      return Verdict::Skip {
         reason: format!(
           "no canonical template file at {}",
           canonical_path.display()
         ),
       }
     }
-    FileRead::Error(detail) => return CheckOutcome::Error { detail },
+    FileRead::Error(detail) => return Verdict::Error { detail },
   };
   if spawn == canonical {
-    CheckOutcome::Pass
+    Verdict::Pass
   } else {
-    CheckOutcome::Fail {
+    Verdict::Fail {
       detail: format!("{path} differs from the template's canonical copy"),
     }
   }
 }
 
-fn glob_present(dir: &Path, glob: &str) -> CheckOutcome {
+fn glob_present(dir: &Path, glob: &str) -> Verdict {
   let mut files = Vec::new();
   walk_files(dir, &mut files);
   let matched = files.iter().any(|path| {
@@ -409,9 +406,9 @@ fn glob_present(dir: &Path, glob: &str) -> CheckOutcome {
       .is_some_and(|rel| glob_matches(glob, rel))
   });
   if matched {
-    CheckOutcome::Pass
+    Verdict::Pass
   } else {
-    CheckOutcome::Fail {
+    Verdict::Fail {
       detail: format!("no file matches \"{glob}\""),
     }
   }
@@ -471,50 +468,51 @@ impl Resolved {
   }
 }
 
-/// Apply `matcher` to a resolved value.  `target` / `pointer` are for messages.
-fn apply_match(
+/// Render the verdict for `matcher` against an already-resolved value.  This is
+/// the pure decision layer: the callers do the I/O and reduce a document to a
+/// [`Resolved`]; this turns (what was wanted, what was found) into a [`Verdict`]
+/// with no further reads.  `target` / `pointer` only feed the failure messages.
+fn verdict(
   target: &str,
   pointer: &str,
   matcher: &PathMatch,
   resolved: &Resolved,
-) -> CheckOutcome {
+) -> Verdict {
   match matcher {
-    PathMatch::Exists if resolved.exists => CheckOutcome::Pass,
-    PathMatch::Exists => CheckOutcome::Fail {
+    PathMatch::Exists if resolved.exists => Verdict::Pass,
+    PathMatch::Exists => Verdict::Fail {
       detail: format!("{target}: no value at \"{pointer}\""),
     },
     PathMatch::Equals(expected) => match &resolved.scalar {
-      Some(actual) if actual == expected => CheckOutcome::Pass,
-      Some(actual) => CheckOutcome::Fail {
+      Some(actual) if actual == expected => Verdict::Pass,
+      Some(actual) => Verdict::Fail {
         detail: format!(
           "{target}: \"{pointer}\" is \"{actual}\", expected \"{expected}\""
         ),
       },
-      None => CheckOutcome::Fail {
+      None => Verdict::Fail {
         detail: format!("{target}: no scalar at \"{pointer}\""),
       },
     },
     PathMatch::Contains(needle) => match &resolved.scalar {
-      Some(actual) if actual.contains(needle) => CheckOutcome::Pass,
-      Some(actual) => CheckOutcome::Fail {
+      Some(actual) if actual.contains(needle) => Verdict::Pass,
+      Some(actual) => Verdict::Fail {
         detail: format!(
           "{target}: \"{pointer}\" is \"{actual}\", missing \"{needle}\""
         ),
       },
-      None => CheckOutcome::Fail {
+      None => Verdict::Fail {
         detail: format!("{target}: no scalar at \"{pointer}\""),
       },
     },
     PathMatch::SeqContains(expected) => match &resolved.seq {
-      Some(items) if items.iter().any(|item| item == expected) => {
-        CheckOutcome::Pass
-      }
-      Some(_) => CheckOutcome::Fail {
+      Some(items) if items.iter().any(|item| item == expected) => Verdict::Pass,
+      Some(_) => Verdict::Fail {
         detail: format!(
           "{target}: sequence at \"{pointer}\" has no \"{expected}\""
         ),
       },
-      None => CheckOutcome::Fail {
+      None => Verdict::Fail {
         detail: format!("{target}: no sequence at \"{pointer}\""),
       },
     },
@@ -540,25 +538,25 @@ fn structured_path(
   pointer: &str,
   matcher: &PathMatch,
   parse: fn(&str) -> Result<serde_json::Value, String>,
-) -> CheckOutcome {
+) -> Verdict {
   let text = match read_file(&dir.join(target)) {
     FileRead::Found(text) => text,
     FileRead::Missing => {
-      return CheckOutcome::Skip {
+      return Verdict::Skip {
         reason: format!("{target} not present"),
       }
     }
-    FileRead::Error(detail) => return CheckOutcome::Error { detail },
+    FileRead::Error(detail) => return Verdict::Error { detail },
   };
   let value = match parse(&text) {
     Ok(value) => value,
     Err(detail) => {
-      return CheckOutcome::Fail {
+      return Verdict::Fail {
         detail: format!("{target}: {detail}"),
       }
     }
   };
-  apply_match(target, pointer, matcher, &resolve_json(&value, pointer))
+  verdict(target, pointer, matcher, &resolve_json(&value, pointer))
 }
 
 fn resolve_json(value: &serde_json::Value, pointer: &str) -> Resolved {
@@ -578,30 +576,30 @@ fn yaml_path(
   target: &str,
   pointer: &str,
   matcher: &PathMatch,
-) -> CheckOutcome {
+) -> Verdict {
   let text = match read_file(&dir.join(target)) {
     FileRead::Found(text) => text,
     FileRead::Missing => {
-      return CheckOutcome::Skip {
+      return Verdict::Skip {
         reason: format!("{target} not present"),
       }
     }
-    FileRead::Error(detail) => return CheckOutcome::Error { detail },
+    FileRead::Error(detail) => return Verdict::Error { detail },
   };
   let docs = match yaml_rust2::YamlLoader::load_from_str(&text) {
     Ok(docs) => docs,
     Err(error) => {
-      return CheckOutcome::Fail {
+      return Verdict::Fail {
         detail: format!("{target}: invalid YAML: {error}"),
       }
     }
   };
   let Some(doc) = docs.first() else {
-    return CheckOutcome::Fail {
+    return Verdict::Fail {
       detail: format!("{target}: empty YAML"),
     };
   };
-  apply_match(target, pointer, matcher, &resolve_yaml(doc, pointer))
+  verdict(target, pointer, matcher, &resolve_yaml(doc, pointer))
 }
 
 fn resolve_yaml(value: &yaml_rust2::Yaml, pointer: &str) -> Resolved {
@@ -707,19 +705,19 @@ fn scalar_to_string(value: &serde_json::Value) -> Option<String> {
 fn with_rust(
   dir: &Path,
   target: &str,
-  check: impl FnOnce(&syn::File) -> CheckOutcome,
-) -> CheckOutcome {
+  check: impl FnOnce(&syn::File) -> Verdict,
+) -> Verdict {
   match read_file(&dir.join(target)) {
     FileRead::Found(text) => match syn::parse_file(&text) {
       Ok(file) => check(&file),
-      Err(error) => CheckOutcome::Fail {
+      Err(error) => Verdict::Fail {
         detail: format!("{target}: invalid Rust: {error}"),
       },
     },
-    FileRead::Missing => CheckOutcome::Skip {
+    FileRead::Missing => Verdict::Skip {
       reason: format!("{target} not present"),
     },
-    FileRead::Error(detail) => CheckOutcome::Error { detail },
+    FileRead::Error(detail) => Verdict::Error { detail },
   }
 }
 
@@ -764,9 +762,9 @@ fn rust_fn_has_attr(
   target: &str,
   function: &str,
   attr: &str,
-) -> CheckOutcome {
+) -> Verdict {
   with_rust(dir, target, |file| match find_fn(file, function) {
-    None => CheckOutcome::Fail {
+    None => Verdict::Fail {
       detail: format!("{target}: no fn `{function}`"),
     },
     Some(item)
@@ -775,9 +773,9 @@ fn rust_fn_has_attr(
         .iter()
         .any(|a| attr_last_segment(a).as_deref() == Some(attr)) =>
     {
-      CheckOutcome::Pass
+      Verdict::Pass
     }
-    Some(_) => CheckOutcome::Fail {
+    Some(_) => Verdict::Fail {
       detail: format!("{target}: fn `{function}` is not annotated #[{attr}]"),
     },
   })
@@ -788,13 +786,13 @@ fn rust_struct_has_derive(
   target: &str,
   struct_name: &str,
   derive: &str,
-) -> CheckOutcome {
+) -> Verdict {
   with_rust(dir, target, |file| match find_struct(file, struct_name) {
-    None => CheckOutcome::Fail {
+    None => Verdict::Fail {
       detail: format!("{target}: no struct `{struct_name}`"),
     },
-    Some(item) if struct_has_derive(item, derive) => CheckOutcome::Pass,
-    Some(_) => CheckOutcome::Fail {
+    Some(item) if struct_has_derive(item, derive) => Verdict::Pass,
+    Some(_) => Verdict::Fail {
       detail: format!(
         "{target}: struct `{struct_name}` does not derive {derive}"
       ),
@@ -825,9 +823,9 @@ fn rust_struct_has_helper_attr(
   target: &str,
   struct_name: &str,
   attr: &str,
-) -> CheckOutcome {
+) -> Verdict {
   with_rust(dir, target, |file| match find_struct(file, struct_name) {
-    None => CheckOutcome::Fail {
+    None => Verdict::Fail {
       detail: format!("{target}: no struct `{struct_name}`"),
     },
     Some(item)
@@ -836,9 +834,9 @@ fn rust_struct_has_helper_attr(
         .iter()
         .any(|a| attr_last_segment(a).as_deref() == Some(attr)) =>
     {
-      CheckOutcome::Pass
+      Verdict::Pass
     }
-    Some(_) => CheckOutcome::Fail {
+    Some(_) => Verdict::Fail {
       detail: format!("{target}: struct `{struct_name}` lacks #[{attr}]"),
     },
   })
@@ -851,10 +849,10 @@ fn rust_struct_field_attr_count(
   attr: &str,
   contains: Option<&str>,
   count: u32,
-) -> CheckOutcome {
+) -> Verdict {
   with_rust(dir, target, |file| {
     find_struct(file, struct_name).map_or_else(
-      || CheckOutcome::Fail {
+      || Verdict::Fail {
         detail: format!("{target}: no struct `{struct_name}`"),
       },
       |item| {
@@ -869,9 +867,9 @@ fn rust_struct_field_attr_count(
           })
           .count() as u32;
         if actual == count {
-          CheckOutcome::Pass
+          Verdict::Pass
         } else {
-          CheckOutcome::Fail {
+          Verdict::Fail {
             detail: format!(
               "{target}: struct `{struct_name}` has {actual} matching fields, expected {count}"
             ),
@@ -882,12 +880,12 @@ fn rust_struct_field_attr_count(
   })
 }
 
-fn rust_use_glob(dir: &Path, target: &str, path: &str) -> CheckOutcome {
+fn rust_use_glob(dir: &Path, target: &str, path: &str) -> Verdict {
   with_rust(dir, target, |file| {
     if file.items.iter().any(|item| use_glob_matches(item, path)) {
-      CheckOutcome::Pass
+      Verdict::Pass
     } else {
-      CheckOutcome::Fail {
+      Verdict::Fail {
         detail: format!("{target}: no `use {path}::*` import"),
       }
     }
@@ -921,16 +919,16 @@ fn rust_impl_trait_for(
   target: &str,
   trait_name: &str,
   self_ty: &str,
-) -> CheckOutcome {
+) -> Verdict {
   with_rust(dir, target, |file| {
     if file
       .items
       .iter()
       .any(|item| impl_matches(item, trait_name, self_ty))
     {
-      CheckOutcome::Pass
+      Verdict::Pass
     } else {
-      CheckOutcome::Fail {
+      Verdict::Fail {
         detail: format!("{target}: no `impl {trait_name} for {self_ty}`"),
       }
     }
@@ -960,10 +958,10 @@ fn rust_method_chain(
   target: &str,
   function: &str,
   methods: &[String],
-) -> CheckOutcome {
+) -> Verdict {
   with_rust(dir, target, |file| {
     find_fn(file, function).map_or_else(
-      || CheckOutcome::Fail {
+      || Verdict::Fail {
         detail: format!("{target}: no fn `{function}`"),
       },
       |item| {
@@ -975,9 +973,9 @@ fn rust_method_chain(
           .filter(|method| !visitor.methods.contains(*method))
           .collect();
         if missing.is_empty() {
-          CheckOutcome::Pass
+          Verdict::Pass
         } else {
-          CheckOutcome::Fail {
+          Verdict::Fail {
             detail: format!(
               "{target}: fn `{function}` does not call: {}",
               missing.join(", ")

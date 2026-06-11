@@ -3,7 +3,7 @@
 //! These are the failures that abort the whole run because nothing can proceed
 //! without them: the spawn registry and the check manifest.  Per-check and
 //! per-spawn failures are *not* errors — they are reported as
-//! [`crate::check::CheckOutcome`] values so one bad spawn cannot mask the rest.
+//! [`crate::check::Verdict`] values so one bad spawn cannot mask the rest.
 
 use std::path::PathBuf;
 use thiserror::Error;

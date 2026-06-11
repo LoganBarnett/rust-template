@@ -8,7 +8,7 @@
 
 use owo_colors::{AnsiColors, OwoColorize, Stream};
 use rust_template_compliance_lib::{
-  CheckOutcome, CheckResult, RunReport, SpawnStatus,
+  CheckResult, RunReport, SpawnStatus, Verdict,
 };
 
 /// Render `report` to stdout.
@@ -50,21 +50,21 @@ pub fn print_human(report: &RunReport) {
 
 fn print_check(check: &CheckResult) {
   let (label, hue, extra) = match &check.outcome {
-    CheckOutcome::Pass => ("PASS", AnsiColors::Green, String::new()),
-    CheckOutcome::Fail { detail } => {
+    Verdict::Pass => ("PASS", AnsiColors::Green, String::new()),
+    Verdict::Fail { detail } => {
       ("FAIL", AnsiColors::Red, format!(" — {detail}"))
     }
-    CheckOutcome::Skip { reason } => {
+    Verdict::Skip { reason } => {
       ("SKIP", AnsiColors::Yellow, format!(" ({reason})"))
     }
-    CheckOutcome::Ignored { reason } => (
+    Verdict::Ignored { reason } => (
       "IGNORED",
       AnsiColors::Yellow,
       reason
         .as_ref()
         .map_or_else(String::new, |reason| format!(" ({reason})")),
     ),
-    CheckOutcome::Error { detail } => {
+    Verdict::Error { detail } => {
       ("ERROR", AnsiColors::Red, format!(" — {detail}"))
     }
   };
@@ -84,11 +84,11 @@ fn print_summary(report: &RunReport, checked: usize, skipped: usize) {
   let mut error = 0usize;
   for outcome in report.outcomes() {
     match outcome {
-      CheckOutcome::Pass => pass += 1,
-      CheckOutcome::Fail { .. } => fail += 1,
-      CheckOutcome::Skip { .. } => skip += 1,
-      CheckOutcome::Ignored { .. } => ignored += 1,
-      CheckOutcome::Error { .. } => error += 1,
+      Verdict::Pass => pass += 1,
+      Verdict::Fail { .. } => fail += 1,
+      Verdict::Skip { .. } => skip += 1,
+      Verdict::Ignored { .. } => ignored += 1,
+      Verdict::Error { .. } => error += 1,
     }
   }
 

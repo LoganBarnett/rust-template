@@ -18,7 +18,7 @@
 // allowances clippy.toml grants test code.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use rust_template_compliance_lib::{run, CheckOutcome, RunOptions};
+use rust_template_compliance_lib::{run, RunOptions, Verdict};
 use std::path::{Path, PathBuf};
 
 fn write(path: &Path, contents: &str) {
@@ -125,7 +125,7 @@ fn config_for(spawn_name: &str, spawn_dir: &Path, crates: &str) -> String {
 fn outcome<'a>(
   report: &'a rust_template_compliance_lib::SpawnReport,
   id: &str,
-) -> &'a CheckOutcome {
+) -> &'a Verdict {
   &report
     .checks
     .iter()
@@ -152,50 +152,50 @@ fn minimal_spawn_yields_expected_outcomes_without_engine_errors() {
   let errors: Vec<_> = spawn
     .checks
     .iter()
-    .filter(|c| matches!(c.outcome, CheckOutcome::Error { .. }))
+    .filter(|c| matches!(c.outcome, Verdict::Error { .. }))
     .collect();
   assert!(errors.is_empty(), "unexpected engine errors: {errors:#?}");
 
   // The opted-out check is reported as Ignored, not Pass.
   assert!(matches!(
     outcome(spawn, "no-stale-rust-template-literals"),
-    CheckOutcome::Ignored { .. }
+    Verdict::Ignored { .. }
   ));
   // The doc section and its mention both pass.
   assert!(matches!(
     outcome(spawn, "llms-template-compliance-section"),
-    CheckOutcome::Pass
+    Verdict::Pass
   ));
   assert!(matches!(
     outcome(spawn, "llms-template-compliance-points-to-canonical-docs"),
-    CheckOutcome::Pass
+    Verdict::Pass
   ));
   // The Persistent memory and Capturing plans sections are present too.
   assert!(matches!(
     outcome(spawn, "llms-persistent-memory-section"),
-    CheckOutcome::Pass
+    Verdict::Pass
   ));
   assert!(matches!(
     outcome(spawn, "llms-capturing-plans-section"),
-    CheckOutcome::Pass
+    Verdict::Pass
   ));
   // The cli feature check applies and passes; the server check skips.
   assert!(matches!(
     outcome(spawn, "cli-foundation-cli-feature"),
-    CheckOutcome::Pass
+    Verdict::Pass
   ));
   assert!(matches!(
     outcome(spawn, "server-foundation-auth-feature"),
-    CheckOutcome::Skip { .. }
+    Verdict::Skip { .. }
   ));
   // No Cargo.lock present, so the pin checks skip rather than error.
   assert!(matches!(
     outcome(spawn, "foundation-pins-agree"),
-    CheckOutcome::Skip { .. }
+    Verdict::Skip { .. }
   ));
   assert!(matches!(
     outcome(spawn, "foundation-pins-current"),
-    CheckOutcome::Skip { .. }
+    Verdict::Skip { .. }
   ));
 }
 
@@ -226,16 +226,16 @@ Nothing about compliance here.
   assert!(report.has_failures());
   assert!(matches!(
     outcome(spawn, "required-file-changelog"),
-    CheckOutcome::Fail { .. }
+    Verdict::Fail { .. }
   ));
   assert!(matches!(
     outcome(spawn, "llms-template-compliance-section"),
-    CheckOutcome::Fail { .. }
+    Verdict::Fail { .. }
   ));
   // The mention check fails because its section is gone.
   assert!(matches!(
     outcome(spawn, "llms-template-compliance-points-to-canonical-docs"),
-    CheckOutcome::Fail { .. }
+    Verdict::Fail { .. }
   ));
 }
 

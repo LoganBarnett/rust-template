@@ -1,7 +1,7 @@
 //! Orchestration: load inputs, run every check against every spawn in
 //! parallel, and collect a [`RunReport`].
 
-use crate::check::{run_check, CheckOutcome, SpawnContext};
+use crate::check::{run_check, SpawnContext, Verdict};
 use crate::error::ComplianceError;
 use crate::manifest::{self, Check};
 use crate::provenance;
@@ -30,7 +30,7 @@ pub struct CheckResult {
   pub id: String,
   pub description: String,
   #[serde(flatten)]
-  pub outcome: CheckOutcome,
+  pub outcome: Verdict,
 }
 
 /// Why a spawn was (or was not) checked.
@@ -69,7 +69,7 @@ impl SpawnReport {
       checks: vec![CheckResult {
         id: "internal".to_string(),
         description: "check execution".to_string(),
-        outcome: CheckOutcome::Error {
+        outcome: Verdict::Error {
           detail: "the check thread for this spawn panicked".to_string(),
         },
       }],
@@ -85,7 +85,7 @@ pub struct RunReport {
 
 impl RunReport {
   /// Every check outcome across every checked spawn.
-  pub fn outcomes(&self) -> impl Iterator<Item = &CheckOutcome> {
+  pub fn outcomes(&self) -> impl Iterator<Item = &Verdict> {
     self
       .spawns
       .iter()
@@ -94,7 +94,7 @@ impl RunReport {
 
   /// Whether any outcome should make the overall run fail.
   pub fn has_failures(&self) -> bool {
-    self.outcomes().any(CheckOutcome::is_failure)
+    self.outcomes().any(Verdict::is_failure)
   }
 }
 
