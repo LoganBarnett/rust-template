@@ -69,9 +69,11 @@ fn print_check(check: &CheckResult) {
     }
   };
   println!(
-    "  {} [{}] {}{extra}",
+    "  {} {}{}{} {}{extra}",
     paint(label, hue),
-    check.id,
+    paint("[", AnsiColors::Blue),
+    paint(&check.id, AnsiColors::BrightBlue),
+    paint("]", AnsiColors::Blue),
     check.description,
   );
 }
