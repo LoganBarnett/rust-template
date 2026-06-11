@@ -3,6 +3,7 @@
 
 * Upcoming
 ** Fixed
+* v0.11.0
 * v0.10.0
 ** Fixed
 - =template/Cargo.toml= reverts =rust-template-foundation= to =https://= from
