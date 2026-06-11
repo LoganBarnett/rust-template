@@ -2,11 +2,19 @@
 #+language:  en
 
 * Upcoming
-* v0.12.0
 ** Added
 1. A freshly emitted =CHANGELOG.org= comes pre-seeded with the =Added= / =Fixes=
    / =Breaking= subheadings under =* Upcoming=, so a new project starts with the
    changelog structure already in place and matching the documented conventions.
+2. Compliance now checks that the workspace declares the =tap= dependency and
+   that every crate defers to it (=tap = { workspace = true }=), so the
+   convention survives tools that would otherwise strip it.  The check discovers
+   crates by directory, covering custom-named crates as well as the =cli= /
+   =server= / =lib= archetypes.
+** Fixes
+1. ~tap~ should no longer be removed by over-eager LLMs.
+** Breaking
+* v0.12.0
 * v0.11.0
 * v0.10.0
 ** Fixed

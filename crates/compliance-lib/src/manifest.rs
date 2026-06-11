@@ -98,6 +98,10 @@ pub enum CheckKind {
     pointer: String,
     value: String,
   },
+  /// Every `crates/*/Cargo.toml` parses as TOML and its scalar at `pointer`
+  /// equals `value`.  There is no `target`: the crate manifests are discovered,
+  /// not named, so the check covers archetype and custom-named crates alike.
+  CrateTomlPathEquals { pointer: String, value: String },
   /// `target` parses as YAML and the value at `pointer` exists.
   YamlPathExists { target: String, pointer: String },
   /// `target` parses as YAML and the scalar at `pointer` equals `value`.
@@ -356,6 +360,10 @@ impl RawCheck {
       },
       "toml-path-equals" => CheckKind::TomlPathEquals {
         target: require(&id, &kind, "target", target)?,
+        pointer: require(&id, &kind, "pointer", pointer)?,
+        value: require(&id, &kind, "value", value)?,
+      },
+      "crate-toml-path-equals" => CheckKind::CrateTomlPathEquals {
         pointer: require(&id, &kind, "pointer", pointer)?,
         value: require(&id, &kind, "value", value)?,
       },

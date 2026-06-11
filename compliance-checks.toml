@@ -586,6 +586,27 @@ target = "crates/server/Cargo.toml"
 contains = "tokio-listener = { workspace = true }"
 when_crates_contains = "server"
 
+# ── tap dependency ───────────────────────────────────────────────────
+# tap powers the chain-friendly style the template prescribes (see the
+# "Chains, local variables, and tap" guidance in llms.org).  It keeps
+# getting stripped by tools that do not recognise the convention, so the
+# workspace declares it once and every crate is held to deferring to that
+# single declaration rather than dropping it or pinning its own copy.
+
+[[check]]
+id = "workspace-declares-tap"
+description = "The workspace Cargo.toml declares tap under [workspace.dependencies]."
+kind = "toml-path-exists"
+target = "Cargo.toml"
+pointer = "workspace.dependencies.tap"
+
+[[check]]
+id = "crates-defer-to-workspace-tap"
+description = "Every crate defers to the workspace tap dependency."
+kind = "crate-toml-path-equals"
+pointer = "dependencies.tap.workspace"
+value = "true"
+
 # ======== misc-and-docs-sections ========
 [[check]]
 id = "pre-commit-hook-present"

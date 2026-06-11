@@ -144,6 +144,9 @@ pub fn run_check(check: &Check, ctx: &SpawnContext) -> Verdict {
       &PathMatch::Equals(value),
       parse_toml,
     ),
+    CheckKind::CrateTomlPathEquals { pointer, value } => {
+      crate_toml_path_equals(ctx.dir, pointer, value)
+    }
     CheckKind::YamlPathExists { target, pointer } => {
       yaml_path(ctx.dir, target, pointer, &PathMatch::Exists)
     }
@@ -562,6 +565,82 @@ fn structured_path(
     }
   };
   verdict(target, pointer, matcher, &resolve_json(&value, pointer))
+}
+
+/// Assert that the scalar at `pointer` equals `value` in *every*
+/// `crates/*/Cargo.toml`.  The crate manifests are discovered rather than
+/// named, so the check holds archetype and custom-named crates to the same
+/// rule (e.g. every crate deferring to a workspace dependency).  Skips when the
+/// spawn has no crate manifests; fails naming each crate that diverges.
+fn crate_toml_path_equals(dir: &Path, pointer: &str, value: &str) -> Verdict {
+  let mut files = Vec::new();
+  walk_files(dir, &mut files);
+  let mut manifests: Vec<PathBuf> = files
+    .into_iter()
+    .filter(|path| {
+      path
+        .strip_prefix(dir)
+        .ok()
+        .and_then(|rel| rel.to_str())
+        .is_some_and(|rel| glob_matches("crates/*/Cargo.toml", rel))
+    })
+    .collect();
+  manifests.sort();
+  if manifests.is_empty() {
+    return Verdict::Skip {
+      reason: "no crates/*/Cargo.toml present".to_string(),
+    };
+  }
+
+  // Each manifest yields `Ok(None)` when it satisfies the rule, `Ok(Some(why))`
+  // when it diverges, or `Err(detail)` for a hard read error.  Collecting into a
+  // `Result` short-circuits the whole check to an `Error` on the first `Err`.
+  manifests
+    .iter()
+    .map(|manifest| crate_pointer_divergence(dir, manifest, pointer, value))
+    .collect::<Result<Vec<_>, _>>()
+    .map_or_else(
+      |detail| Verdict::Error { detail },
+      |results| {
+        let failures: Vec<String> = results.into_iter().flatten().collect();
+        if failures.is_empty() {
+          Verdict::Pass
+        } else {
+          Verdict::Fail {
+            detail: format!(
+              "\"{pointer}\" != \"{value}\": {}",
+              failures.join("; ")
+            ),
+          }
+        }
+      },
+    )
+}
+
+/// One crate manifest's contribution to [`crate_toml_path_equals`]: `Ok(None)`
+/// when its scalar at `pointer` equals `value`, `Ok(Some(reason))` when it
+/// diverges, or `Err(detail)` for a hard read error that aborts the check.
+fn crate_pointer_divergence(
+  dir: &Path,
+  manifest: &Path,
+  pointer: &str,
+  value: &str,
+) -> Result<Option<String>, String> {
+  let rel = manifest.strip_prefix(dir).unwrap_or(manifest).display();
+  match read_file(manifest) {
+    FileRead::Found(text) => Ok(
+      match parse_toml(&text).map(|json| resolve_json(&json, pointer).scalar) {
+        Ok(Some(actual)) if actual == value => None,
+        Ok(Some(actual)) => {
+          Some(format!("{rel}: \"{pointer}\" is \"{actual}\""))
+        }
+        Ok(None) => Some(format!("{rel}: no scalar at \"{pointer}\"")),
+        Err(detail) => Some(format!("{rel}: {detail}")),
+      },
+    ),
+    FileRead::Missing => Ok(Some(format!("{rel}: not found"))),
+    FileRead::Error(detail) => Err(detail),
+  }
 }
 
 fn resolve_json(value: &serde_json::Value, pointer: &str) -> Resolved {
