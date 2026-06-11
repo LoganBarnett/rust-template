@@ -1,0 +1,1 @@
+../../template/.claude/hooks/review-stop.sh

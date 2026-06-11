@@ -18,7 +18,11 @@ target/
 config.json
 
 # The template ships a .claude/ directory (Stop hook + compliance subagent)
-# that must be emitted into every spawned project.  /etc/gitignore (or a
-# user-global ignore) excludes .claude/ wholesale; re-include the template's
-# copy so it tracks here.
+# that must be emitted into every spawned project, and the repo dogfoods the
+# same gate through its own root .claude/.  /etc/gitignore (or a user-global
+# ignore) excludes .claude/ wholesale; re-include both copies so they track
+# here.  Machine-local state stays ignored.
 !template/.claude/
+!.claude/
+.claude/settings.local.json
+.claude/scheduled_tasks.lock

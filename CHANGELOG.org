@@ -3,6 +3,13 @@
 
 * Upcoming
 ** Added
+1. Spawned projects now ship a deterministic code-review gate.  A =Stop= hook
+   (=.claude/hooks/review-stop.sh=) blocks a turn from ending while the working
+   tree holds un-reviewed code or config changes, releasing only once the
+   =template-compliance= subagent has run and reported =COMPLIANCE: PASS=.  The
+   reviewer defers to =CONTRIBUTING.org= and =llms.org= as the authority rather
+   than carrying its own checklist, and compliance now verifies the hook, the
+   agent, and the =COMPLIANCE:= marker that wires them together.
 ** Fixes
 ** Breaking
 * v0.13.0

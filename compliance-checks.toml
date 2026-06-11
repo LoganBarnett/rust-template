@@ -906,3 +906,49 @@ description = "The flake exposes a default devShell."
 kind = "file-contains"
 target = "flake.nix"
 contains = "devShells"
+
+# ── Code-review gate (.claude) ───────────────────────────────────────
+# Every spawned project ships a deterministic review gate: a Stop hook
+# that blocks a turn from ending while un-reviewed code/config changes
+# exist, until the template-compliance subagent reports COMPLIANCE: PASS.
+# These checks assert the gate is present and that the hook and the agent
+# still agree on the COMPLIANCE: marker that wires them together.
+
+[[check]]
+id = "review-gate-settings"
+description = "The project ships .claude/settings.json registering the review Stop hook."
+kind = "file-present"
+path = ".claude/settings.json"
+
+[[check]]
+id = "review-gate-settings-wires-hook"
+description = "The .claude/settings.json Stop hook invokes review-stop.sh."
+kind = "file-contains"
+target = ".claude/settings.json"
+contains = "review-stop.sh"
+
+[[check]]
+id = "review-gate-hook"
+description = "The project ships the review-stop.sh Stop hook."
+kind = "file-present"
+path = ".claude/hooks/review-stop.sh"
+
+[[check]]
+id = "review-gate-hook-reads-marker"
+description = "The review-stop.sh hook gates on the COMPLIANCE: marker."
+kind = "file-contains"
+target = ".claude/hooks/review-stop.sh"
+contains = "COMPLIANCE:"
+
+[[check]]
+id = "review-gate-agent"
+description = "The project ships the template-compliance review subagent."
+kind = "file-present"
+path = ".claude/agents/template-compliance.md"
+
+[[check]]
+id = "review-gate-agent-emits-marker"
+description = "The template-compliance agent emits the COMPLIANCE: PASS verdict the hook reads."
+kind = "file-contains"
+target = ".claude/agents/template-compliance.md"
+contains = "COMPLIANCE: PASS"
