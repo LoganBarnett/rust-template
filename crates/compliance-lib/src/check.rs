@@ -144,6 +144,24 @@ pub fn run_check(check: &Check, ctx: &SpawnContext) -> CheckOutcome {
       &PathMatch::Equals(value),
       parse_toml,
     ),
+    CheckKind::YamlPathExists { target, pointer } => {
+      yaml_path(ctx.dir, target, pointer, &PathMatch::Exists)
+    }
+    CheckKind::YamlPathEquals {
+      target,
+      pointer,
+      value,
+    } => yaml_path(ctx.dir, target, pointer, &PathMatch::Equals(value)),
+    CheckKind::YamlPathContains {
+      target,
+      pointer,
+      contains,
+    } => yaml_path(ctx.dir, target, pointer, &PathMatch::Contains(contains)),
+    CheckKind::YamlSeqContains {
+      target,
+      pointer,
+      value,
+    } => yaml_path(ctx.dir, target, pointer, &PathMatch::SeqContains(value)),
   }
 }
 
@@ -386,8 +404,79 @@ enum PathMatch<'a> {
   Exists,
   /// The pointer resolves to a scalar equal to this string.
   Equals(&'a str),
+  /// The pointer resolves to a scalar containing this as a substring.
+  Contains(&'a str),
   /// The pointer resolves to a sequence containing a scalar equal to this.
   SeqContains(&'a str),
+}
+
+/// A value found at a pointer, reduced to what the matchers need so JSON/TOML
+/// and YAML can share one matcher: whether it exists, its scalar form (if a
+/// scalar), and its sequence's scalars (if a sequence).
+struct Resolved {
+  exists: bool,
+  scalar: Option<String>,
+  seq: Option<Vec<String>>,
+}
+
+impl Resolved {
+  fn absent() -> Self {
+    Resolved {
+      exists: false,
+      scalar: None,
+      seq: None,
+    }
+  }
+}
+
+/// Apply `matcher` to a resolved value.  `target` / `pointer` are for messages.
+fn apply_match(
+  target: &str,
+  pointer: &str,
+  matcher: &PathMatch,
+  resolved: &Resolved,
+) -> CheckOutcome {
+  match matcher {
+    PathMatch::Exists if resolved.exists => CheckOutcome::Pass,
+    PathMatch::Exists => CheckOutcome::Fail {
+      detail: format!("{target}: no value at \"{pointer}\""),
+    },
+    PathMatch::Equals(expected) => match &resolved.scalar {
+      Some(actual) if actual == expected => CheckOutcome::Pass,
+      Some(actual) => CheckOutcome::Fail {
+        detail: format!(
+          "{target}: \"{pointer}\" is \"{actual}\", expected \"{expected}\""
+        ),
+      },
+      None => CheckOutcome::Fail {
+        detail: format!("{target}: no scalar at \"{pointer}\""),
+      },
+    },
+    PathMatch::Contains(needle) => match &resolved.scalar {
+      Some(actual) if actual.contains(needle) => CheckOutcome::Pass,
+      Some(actual) => CheckOutcome::Fail {
+        detail: format!(
+          "{target}: \"{pointer}\" is \"{actual}\", missing \"{needle}\""
+        ),
+      },
+      None => CheckOutcome::Fail {
+        detail: format!("{target}: no scalar at \"{pointer}\""),
+      },
+    },
+    PathMatch::SeqContains(expected) => match &resolved.seq {
+      Some(items) if items.iter().any(|item| item == expected) => {
+        CheckOutcome::Pass
+      }
+      Some(_) => CheckOutcome::Fail {
+        detail: format!(
+          "{target}: sequence at \"{pointer}\" has no \"{expected}\""
+        ),
+      },
+      None => CheckOutcome::Fail {
+        detail: format!("{target}: no sequence at \"{pointer}\""),
+      },
+    },
+  }
 }
 
 fn parse_json(text: &str) -> Result<serde_json::Value, String> {
@@ -427,48 +516,115 @@ fn structured_path(
       }
     }
   };
-  let found = navigate(&value, pointer);
-  match matcher {
-    PathMatch::Exists => match found {
-      Some(_) => CheckOutcome::Pass,
-      None => CheckOutcome::Fail {
-        detail: format!("{target}: no value at \"{pointer}\""),
-      },
-    },
-    PathMatch::Equals(expected) => match found.and_then(scalar_to_string) {
-      Some(actual) if actual == *expected => CheckOutcome::Pass,
-      Some(actual) => CheckOutcome::Fail {
-        detail: format!(
-          "{target}: \"{pointer}\" is \"{actual}\", expected \"{expected}\""
-        ),
-      },
-      None => CheckOutcome::Fail {
-        detail: format!("{target}: no scalar at \"{pointer}\""),
-      },
-    },
-    PathMatch::SeqContains(expected) => match found {
-      Some(serde_json::Value::Array(items)) => {
-        if items
-          .iter()
-          .filter_map(scalar_to_string)
-          .any(|item| item == *expected)
-        {
-          CheckOutcome::Pass
-        } else {
-          CheckOutcome::Fail {
-            detail: format!(
-              "{target}: sequence at \"{pointer}\" has no \"{expected}\""
-            ),
-          }
-        }
+  apply_match(target, pointer, matcher, &resolve_json(&value, pointer))
+}
+
+fn resolve_json(value: &serde_json::Value, pointer: &str) -> Resolved {
+  navigate(value, pointer).map_or_else(Resolved::absent, |found| Resolved {
+    exists: true,
+    scalar: scalar_to_string(found),
+    seq: found
+      .as_array()
+      .map(|items| items.iter().filter_map(scalar_to_string).collect()),
+  })
+}
+
+/// Like [`structured_path`] but for YAML, navigated with yaml-rust2's value
+/// tree (which keeps scalar keys raw, so the `on:` trigger key is handled).
+fn yaml_path(
+  dir: &Path,
+  target: &str,
+  pointer: &str,
+  matcher: &PathMatch,
+) -> CheckOutcome {
+  let text = match read_file(&dir.join(target)) {
+    FileRead::Found(text) => text,
+    FileRead::Missing => {
+      return CheckOutcome::Skip {
+        reason: format!("{target} not present"),
       }
-      Some(_) => CheckOutcome::Fail {
-        detail: format!("{target}: \"{pointer}\" is not a sequence"),
+    }
+    FileRead::Error(detail) => return CheckOutcome::Error { detail },
+  };
+  let docs = match yaml_rust2::YamlLoader::load_from_str(&text) {
+    Ok(docs) => docs,
+    Err(error) => {
+      return CheckOutcome::Fail {
+        detail: format!("{target}: invalid YAML: {error}"),
+      }
+    }
+  };
+  let Some(doc) = docs.first() else {
+    return CheckOutcome::Fail {
+      detail: format!("{target}: empty YAML"),
+    };
+  };
+  apply_match(target, pointer, matcher, &resolve_yaml(doc, pointer))
+}
+
+fn resolve_yaml(value: &yaml_rust2::Yaml, pointer: &str) -> Resolved {
+  yaml_navigate(value, pointer).map_or_else(Resolved::absent, |found| {
+    Resolved {
+      exists: true,
+      scalar: yaml_scalar(found),
+      seq: match found {
+        yaml_rust2::Yaml::Array(items) => {
+          Some(items.iter().filter_map(yaml_scalar).collect())
+        }
+        _ => None,
       },
-      None => CheckOutcome::Fail {
-        detail: format!("{target}: no value at \"{pointer}\""),
-      },
-    },
+    }
+  })
+}
+
+/// Navigate a YAML value by a dotted pointer, descending mapping keys and
+/// array indices.  A `on`/`off`/`yes`/`no` segment also matches the boolean
+/// key a YAML-1.1 parser would have produced.
+fn yaml_navigate<'a>(
+  value: &'a yaml_rust2::Yaml,
+  pointer: &str,
+) -> Option<&'a yaml_rust2::Yaml> {
+  let mut current = value;
+  for segment in pointer.split('.') {
+    current = yaml_child(current, segment)?;
+  }
+  Some(current)
+}
+
+fn yaml_child<'a>(
+  value: &'a yaml_rust2::Yaml,
+  segment: &str,
+) -> Option<&'a yaml_rust2::Yaml> {
+  match value {
+    yaml_rust2::Yaml::Hash(map) => map
+      .get(&yaml_rust2::Yaml::String(segment.to_string()))
+      .or_else(|| {
+        bool_alias(segment)
+          .and_then(|boolean| map.get(&yaml_rust2::Yaml::Boolean(boolean)))
+      }),
+    yaml_rust2::Yaml::Array(items) => segment
+      .parse::<usize>()
+      .ok()
+      .and_then(|index| items.get(index)),
+    _ => None,
+  }
+}
+
+fn bool_alias(segment: &str) -> Option<bool> {
+  match segment {
+    "on" | "yes" => Some(true),
+    "off" | "no" => Some(false),
+    _ => None,
+  }
+}
+
+fn yaml_scalar(value: &yaml_rust2::Yaml) -> Option<String> {
+  match value {
+    yaml_rust2::Yaml::String(string) => Some(string.clone()),
+    yaml_rust2::Yaml::Integer(integer) => Some(integer.to_string()),
+    yaml_rust2::Yaml::Boolean(boolean) => Some(boolean.to_string()),
+    yaml_rust2::Yaml::Real(real) => Some(real.clone()),
+    _ => None,
   }
 }
 
@@ -700,5 +856,24 @@ mod tests {
       navigate(&value, "package.version.workspace").and_then(scalar_to_string),
       Some("true".to_string())
     );
+  }
+
+  #[test]
+  fn yaml_navigate_descends_and_resolves() {
+    let docs = yaml_rust2::YamlLoader::load_from_str(
+      "on:\n  push:\n    branches: [main]\njobs:\n  ci:\n    uses: org/repo/x.yml@main\n",
+    )
+    .unwrap();
+    let doc = &docs[0];
+    // The `on:` trigger key resolves despite the YAML-1.1 boolean quirk.
+    assert_eq!(
+      resolve_yaml(doc, "on.push.branches").seq,
+      Some(vec!["main".to_string()])
+    );
+    assert_eq!(
+      resolve_yaml(doc, "jobs.ci.uses").scalar.as_deref(),
+      Some("org/repo/x.yml@main")
+    );
+    assert!(!resolve_yaml(doc, "jobs.missing").exists);
   }
 }

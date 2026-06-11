@@ -94,6 +94,28 @@ pub enum CheckKind {
     pointer: String,
     value: String,
   },
+  /// `target` parses as YAML and the value at `pointer` exists.
+  YamlPathExists { target: String, pointer: String },
+  /// `target` parses as YAML and the scalar at `pointer` equals `value`.
+  YamlPathEquals {
+    target: String,
+    pointer: String,
+    value: String,
+  },
+  /// `target` parses as YAML and the scalar at `pointer` contains `contains`
+  /// as a substring (for folded `if:` guards and the like).
+  YamlPathContains {
+    target: String,
+    pointer: String,
+    contains: String,
+  },
+  /// `target` parses as YAML and the sequence at `pointer` contains a scalar
+  /// equal to `value`.
+  YamlSeqContains {
+    target: String,
+    pointer: String,
+    value: String,
+  },
 }
 
 /// The TOML shape: every kind-specific field is optional and validated later.
@@ -215,6 +237,25 @@ impl RawCheck {
         pointer: require(&id, &kind, "pointer", pointer)?,
       },
       "toml-path-equals" => CheckKind::TomlPathEquals {
+        target: require(&id, &kind, "target", target)?,
+        pointer: require(&id, &kind, "pointer", pointer)?,
+        value: require(&id, &kind, "value", value)?,
+      },
+      "yaml-path-exists" => CheckKind::YamlPathExists {
+        target: require(&id, &kind, "target", target)?,
+        pointer: require(&id, &kind, "pointer", pointer)?,
+      },
+      "yaml-path-equals" => CheckKind::YamlPathEquals {
+        target: require(&id, &kind, "target", target)?,
+        pointer: require(&id, &kind, "pointer", pointer)?,
+        value: require(&id, &kind, "value", value)?,
+      },
+      "yaml-path-contains" => CheckKind::YamlPathContains {
+        target: require(&id, &kind, "target", target)?,
+        pointer: require(&id, &kind, "pointer", pointer)?,
+        contains: require(&id, &kind, "contains", contains)?,
+      },
+      "yaml-seq-contains" => CheckKind::YamlSeqContains {
         target: require(&id, &kind, "target", target)?,
         pointer: require(&id, &kind, "pointer", pointer)?,
         value: require(&id, &kind, "value", value)?,
