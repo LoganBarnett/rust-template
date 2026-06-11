@@ -103,14 +103,14 @@ These apply to every crate regardless of role.
 |------+----------+-------------|
 | =/healthz= endpoint | Required | =GET /healthz= returns ={"status":"healthy"}= (or equivalent JSON).  Must be part of the =base_router=, not mixed into application routes. |
 | =/metrics= endpoint | Required | =GET /metrics= returns Prometheus text-format metrics via the =prometheus= crate. |
-| OpenAPI / Swagger UI | Required | =/swagger-ui= and =/api-docs/openapi.json= are served via =utoipa= + =utoipa-swagger-ui=.  The =ApiDoc= struct annotates at minimum the health and metrics paths. |
+| OpenAPI / Scalar UI | Required | =/scalar= and =/api-docs/openapi.json= are served via =aide= (with =schemars= for schema generation).  The OpenAPI document is built from =aide=-annotated routes and covers at minimum the health and metrics paths. |
 | =AppState= with Prometheus registry | Required | An =AppState= struct holds an =Arc<Registry>= and at minimum an =http_requests_total= counter.  State is passed through Axum's =with_state=. |
 | =web_base= module | Required | Health, metrics, OpenAPI setup, and =AppState= live in a =web_base= module (lib crate or inline module), separate from application routes and from =main.rs=. |
 | =TraceLayer= | Required | =tower_http::trace::TraceLayer::new_for_http()= is applied to the router. |
 | Graceful shutdown | Required | The server calls =.with_graceful_shutdown(shutdown_signal())= where =shutdown_signal= awaits both SIGINT and SIGTERM. |
 | =tokio-listener= binding | Required | The listener is created via =tokio_listener::Listener::bind= and served via =tokio_listener::axum07::serve=.  This enables Unix domain socket and systemd socket-activation support. |
 | Systemd notifications | Required | =systemd::notify_ready()= and =systemd::spawn_watchdog()= are called after the listener binds, before the server starts serving. |
-| Separate =host= and =port= args | Required | The bind address is specified as two separate CLI arguments, not a single combined string.  This makes NixOS module options cleaner. |
+| Single combined =listen= address | Required | The bind address is a single =--listen= argument parsed into a =tokio_listener::ListenerAddress= (default =127.0.0.1:3000=), accepting =host:port= for TCP, a filesystem path for a Unix socket, or =sd-listen= for systemd socket activation — not separate host and port arguments. |
 
 ** =cli= crate compliance items
 

@@ -40,6 +40,13 @@ assert_dir_not_exists() {
     fi
 }
 
+assert_file_exists() {
+    if [[ ! -f "$1" ]]; then
+        echo "  assertion failed: file does not exist: $1" >&2
+        return 1
+    fi
+}
+
 assert_file_contains() {
     if ! grep -q "$2" "$1" 2>/dev/null; then
         echo "  assertion failed: '$1' does not contain '$2'" >&2
@@ -140,14 +147,14 @@ assert_flake_eval() {
 # Gated on the checker having been built (which is gated on cargo); hosts
 # without a Rust toolchain skip cleanly, as with the cargo-check assertion.
 assert_compliant() {
-    local dir="$1" crates="$2"
+    local dir="$1" crates="$2" public="${3:-false}"
     if [[ -z "$COMPLIANCE_BIN" || ! -x "$COMPLIANCE_BIN" ]]; then
         echo "  (skipping compliance check — checker not built)"
         return 0
     fi
     local config="$TMPBASE/compliance-registry-$(basename "$dir").json"
-    jq -n --arg dir "$dir" --arg crates "$crates" \
-        '{templateSpawns: {emission: {dir: $dir, archived: false, args: {crates: $crates}}}}' \
+    jq -n --arg dir "$dir" --arg crates "$crates" --argjson public "$public" \
+        '{templateSpawns: {emission: {dir: $dir, archived: false, args: {crates: $crates, public: $public}}}}' \
         > "$config"
     # The checker's exit code is authoritative: non-zero iff a check failed or
     # errored (or the run could not start at all).  Trust it for the pass/fail
@@ -262,6 +269,24 @@ test_new_project_server_only() {
     assert_file_not_contains "$dir/flake.nix" '# CRATE:cli:begin'
 
     assert_compliant "$dir" "server" || return 1
+}
+
+# ---------------------------------------------------------------------------
+# Test 3b: new-project.sh --public — exercises the publish.yml machinery and
+# the when_public-gated compliance checks, which the private emissions skip.
+# ---------------------------------------------------------------------------
+test_new_project_public() {
+    local dir="$TMPBASE/test-public"
+    "$SCRIPT_DIR/new-project.sh" \
+        --name test-app \
+        --output "$dir" \
+        --public
+
+    # The publish workflow is emitted only for public spawns.
+    assert_file_exists "$dir/.github/workflows/publish.yml"
+
+    # Compliance with public = true so the gated publish checks actually run.
+    assert_compliant "$dir" "cli,server" true || return 1
 }
 
 # ---------------------------------------------------------------------------
@@ -399,6 +424,7 @@ echo ""
 run_test "new-project-default" test_new_project_default
 run_test "new-project-cli-only" test_new_project_cli_only
 run_test "new-project-server-only" test_new_project_server_only
+run_test "new-project-public" test_new_project_public
 run_test "add-server-to-cli-project" test_add_server_to_cli_project
 run_test "custom-crate-name" test_custom_crate_name
 run_test "duplicate-crate-rejection" test_duplicate_crate_rejection

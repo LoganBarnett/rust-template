@@ -161,3 +161,685 @@ kind = "pins-agree"
 id = "foundation-pins-current"
 description = "Both foundation pins match the current rust-template HEAD."
 kind = "pins-current"
+
+# ── New checks (workflow machinery, foundation main/config, server
+#    delegation, doc sections, workspace inheritance, ...) ──────────
+# ======== github-yaml ========
+# ---------------------------------------------------------------------------
+# CI workflow (.github/workflows/ci.yml) — always emitted.
+# ---------------------------------------------------------------------------
+
+[[check]]
+id = "ci-workflow-uses-reusable"
+description = "The ci job must delegate to the rust-template reusable-ci workflow."
+kind = "yaml-path-equals"
+target = ".github/workflows/ci.yml"
+pointer = "jobs.ci.uses"
+value = "LoganBarnett/rust-template/.github/workflows/reusable-ci.yml@main"
+
+[[check]]
+id = "ci-workflow-push-main"
+description = "CI must trigger on pushes to the main branch."
+kind = "yaml-seq-contains"
+target = ".github/workflows/ci.yml"
+pointer = "on.push.branches"
+value = "main"
+
+[[check]]
+id = "ci-workflow-pull-request-main"
+description = "CI must trigger on pull requests targeting the main branch."
+kind = "yaml-seq-contains"
+target = ".github/workflows/ci.yml"
+pointer = "on.pull_request.branches"
+value = "main"
+
+# ---------------------------------------------------------------------------
+# Publish workflow (.github/workflows/publish.yml) — removed from PRIVATE
+# spawns, so every check is gated with when_public = true.
+# ---------------------------------------------------------------------------
+
+[[check]]
+id = "publish-workflow-present"
+description = "The publish workflow file must exist in public spawns."
+kind = "file-present"
+path = ".github/workflows/publish.yml"
+when_public = true
+
+[[check]]
+id = "publish-workflow-uses-reusable"
+description = "The publish job must delegate to the rust-template reusable-publish workflow."
+kind = "yaml-path-equals"
+target = ".github/workflows/publish.yml"
+pointer = "jobs.publish.uses"
+value = "LoganBarnett/rust-template/.github/workflows/reusable-publish.yml@main"
+when_public = true
+
+[[check]]
+id = "publish-workflow-push-main"
+description = "Publish must trigger on pushes to the main branch."
+kind = "yaml-seq-contains"
+target = ".github/workflows/publish.yml"
+pointer = "on.push.branches"
+value = "main"
+when_public = true
+
+[[check]]
+id = "publish-workflow-workflow-dispatch"
+description = "Publish must be dispatchable so dependabot-automerge can fire it after a merge."
+kind = "yaml-path-exists"
+target = ".github/workflows/publish.yml"
+pointer = "on.workflow_dispatch"
+when_public = true
+
+[[check]]
+id = "publish-workflow-contents-write"
+description = "Publish must grant contents: write at the workflow level."
+kind = "yaml-path-equals"
+target = ".github/workflows/publish.yml"
+pointer = "permissions.contents"
+value = "write"
+when_public = true
+
+[[check]]
+id = "publish-workflow-id-token-write"
+description = "Publish must grant id-token: write so the reusable workflow can mint the crates.io OIDC token."
+kind = "yaml-path-equals"
+target = ".github/workflows/publish.yml"
+pointer = "permissions.id-token"
+value = "write"
+when_public = true
+
+# ---------------------------------------------------------------------------
+# Branch-protection workflow (.github/workflows/branch-protection.yml) —
+# always emitted.
+# ---------------------------------------------------------------------------
+
+[[check]]
+id = "branch-protection-workflow-present"
+description = "The branch-protection workflow file must exist."
+kind = "file-present"
+path = ".github/workflows/branch-protection.yml"
+
+[[check]]
+id = "branch-protection-workflow-uses-reusable"
+description = "The apply job must delegate to the rust-template reusable-branch-protection workflow."
+kind = "yaml-path-equals"
+target = ".github/workflows/branch-protection.yml"
+pointer = "jobs.apply.uses"
+value = "LoganBarnett/rust-template/.github/workflows/reusable-branch-protection.yml@main"
+
+[[check]]
+id = "branch-protection-workflow-push-main"
+description = "The branch-protection workflow must trigger on pushes to the main branch."
+kind = "yaml-seq-contains"
+target = ".github/workflows/branch-protection.yml"
+pointer = "on.push.branches"
+value = "main"
+
+# ---------------------------------------------------------------------------
+# Dependabot auto-merge workflow (.github/workflows/dependabot-automerge.yml)
+# — always emitted.
+# ---------------------------------------------------------------------------
+
+[[check]]
+id = "dependabot-automerge-workflow-present"
+description = "The dependabot auto-merge workflow file must exist."
+kind = "file-present"
+path = ".github/workflows/dependabot-automerge.yml"
+
+[[check]]
+id = "dependabot-automerge-uses-reusable"
+description = "The automerge job must delegate to the rust-template reusable-dependabot-automerge workflow."
+kind = "yaml-path-equals"
+target = ".github/workflows/dependabot-automerge.yml"
+pointer = "jobs.automerge.uses"
+value = "LoganBarnett/rust-template/.github/workflows/reusable-dependabot-automerge.yml@main"
+
+[[check]]
+id = "dependabot-automerge-workflow-run-ci"
+description = "Auto-merge must listen for completion of the CI workflow via workflow_run."
+kind = "yaml-seq-contains"
+target = ".github/workflows/dependabot-automerge.yml"
+pointer = "on.workflow_run.workflows"
+value = "CI"
+
+[[check]]
+id = "dependabot-automerge-workflow-run-completed"
+description = "Auto-merge must fire on the completed type of the workflow_run event."
+kind = "yaml-seq-contains"
+target = ".github/workflows/dependabot-automerge.yml"
+pointer = "on.workflow_run.types"
+value = "completed"
+
+[[check]]
+id = "dependabot-automerge-if-guards-pull-request"
+description = "The automerge job must guard on the upstream run having been a pull_request event."
+kind = "yaml-path-contains"
+target = ".github/workflows/dependabot-automerge.yml"
+pointer = "jobs.automerge.if"
+contains = "github.event.workflow_run.event == 'pull_request'"
+
+[[check]]
+id = "dependabot-automerge-if-guards-success"
+description = "The automerge job must guard on the upstream CI run having succeeded."
+kind = "yaml-path-contains"
+target = ".github/workflows/dependabot-automerge.yml"
+pointer = "jobs.automerge.if"
+contains = "github.event.workflow_run.conclusion == 'success'"
+
+[[check]]
+id = "dependabot-automerge-contents-write"
+description = "Auto-merge must grant contents: write to push the changelog commit after the squash-merge."
+kind = "yaml-path-equals"
+target = ".github/workflows/dependabot-automerge.yml"
+pointer = "permissions.contents"
+value = "write"
+
+[[check]]
+id = "dependabot-automerge-pull-requests-write"
+description = "Auto-merge must grant pull-requests: write to perform the merge."
+kind = "yaml-path-equals"
+target = ".github/workflows/dependabot-automerge.yml"
+pointer = "permissions.pull-requests"
+value = "write"
+
+[[check]]
+id = "dependabot-automerge-actions-write"
+description = "Auto-merge must grant actions: write to dispatch the publish workflow after merge."
+kind = "yaml-path-equals"
+target = ".github/workflows/dependabot-automerge.yml"
+pointer = "permissions.actions"
+value = "write"
+
+# ---------------------------------------------------------------------------
+# Dependabot config (.github/dependabot.yml) — always emitted.
+# ---------------------------------------------------------------------------
+
+[[check]]
+id = "dependabot-config-present"
+description = "The dependabot configuration file must exist."
+kind = "file-present"
+path = ".github/dependabot.yml"
+
+[[check]]
+id = "dependabot-config-version"
+description = "The dependabot config must declare config version 2."
+kind = "yaml-path-equals"
+target = ".github/dependabot.yml"
+pointer = "version"
+value = "2"
+
+[[check]]
+id = "dependabot-config-cargo-ecosystem"
+description = "Dependabot must update the cargo ecosystem."
+kind = "yaml-path-equals"
+target = ".github/dependabot.yml"
+pointer = "updates.0.package-ecosystem"
+value = "cargo"
+
+[[check]]
+id = "dependabot-config-github-actions-ecosystem"
+description = "Dependabot must update the github-actions ecosystem."
+kind = "yaml-path-equals"
+target = ".github/dependabot.yml"
+pointer = "updates.1.package-ecosystem"
+value = "github-actions"
+
+# ---------------------------------------------------------------------------
+# Branch-protection rules (.github/branch-protection.json) — always emitted.
+# ---------------------------------------------------------------------------
+
+[[check]]
+id = "branch-protection-json-present"
+description = "The branch-protection rules file must exist."
+kind = "file-present"
+path = ".github/branch-protection.json"
+
+[[check]]
+id = "branch-protection-json-valid"
+description = "The branch-protection rules file must be valid JSON."
+kind = "json-valid"
+path = ".github/branch-protection.json"
+
+[[check]]
+id = "branch-protection-json-strict-status-checks"
+description = "Branch protection must require strict (up-to-date) status checks."
+kind = "json-path-equals"
+target = ".github/branch-protection.json"
+pointer = "required_status_checks.strict"
+value = "true"
+
+[[check]]
+id = "branch-protection-json-context-test"
+description = "Branch protection must require the 'ci / Test' status check."
+kind = "json-seq-contains"
+target = ".github/branch-protection.json"
+pointer = "required_status_checks.contexts"
+value = "ci / Test"
+
+[[check]]
+id = "branch-protection-json-context-formatting"
+description = "Branch protection must require the 'ci / Formatting' status check."
+kind = "json-seq-contains"
+target = ".github/branch-protection.json"
+pointer = "required_status_checks.contexts"
+value = "ci / Formatting"
+
+[[check]]
+id = "branch-protection-json-no-force-pushes"
+description = "Branch protection must disallow force pushes to the protected branch."
+kind = "json-path-equals"
+target = ".github/branch-protection.json"
+pointer = "allow_force_pushes"
+value = "false"
+
+[[check]]
+id = "branch-protection-json-no-deletions"
+description = "Branch protection must disallow deletion of the protected branch."
+kind = "json-path-equals"
+target = ".github/branch-protection.json"
+pointer = "allow_deletions"
+value = "false"
+
+[[check]]
+id = "branch-protection-json-enforce-admins"
+description = "Branch protection must not enforce the rules against admins."
+kind = "json-path-equals"
+target = ".github/branch-protection.json"
+pointer = "enforce_admins"
+value = "false"
+
+# ======== rust-entry-config ========
+[[check]]
+id = "cli-main-foundation-entry-attr"
+description = "The CLI main fn carries the foundation entry attribute (#[foundation_main])."
+kind = "rust-fn-has-attr"
+target = "crates/cli/src/main.rs"
+function = "main"
+attr = "foundation_main"
+when_crates_contains = "cli"
+
+[[check]]
+id = "cli-config-derives-merge-config"
+description = "The CLI Config struct derives MergeConfig."
+kind = "rust-struct-has-derive"
+target = "crates/cli/src/config.rs"
+struct_name = "Config"
+derive = "MergeConfig"
+when_crates_contains = "cli"
+
+[[check]]
+id = "cli-config-merge-config-helper-attr"
+description = "The CLI Config struct carries the merge_config helper attribute."
+kind = "rust-struct-has-helper-attr"
+target = "crates/cli/src/config.rs"
+struct_name = "Config"
+attr = "merge_config"
+when_crates_contains = "cli"
+
+[[check]]
+id = "cli-config-common-field-count"
+description = "The CLI Config struct has two fields marked #[merge_config(common)]."
+kind = "rust-struct-field-attr-count"
+target = "crates/cli/src/config.rs"
+struct_name = "Config"
+attr = "merge_config"
+contains = "common"
+count = 2
+when_crates_contains = "cli"
+
+[[check]]
+id = "server-main-foundation-entry-attr"
+description = "The server main fn carries the foundation entry attribute (#[foundation_main])."
+kind = "rust-fn-has-attr"
+target = "crates/server/src/main.rs"
+function = "main"
+attr = "foundation_main"
+when_crates_contains = "server"
+
+[[check]]
+id = "server-main-delegates-to-foundation-runner"
+description = "The server main fn delegates to the foundation runner via with_state and listen."
+kind = "rust-method-chain"
+target = "crates/server/src/main.rs"
+function = "main"
+methods = "with_state, listen"
+when_crates_contains = "server"
+
+[[check]]
+id = "server-config-derives-merge-config"
+description = "The server Config struct derives MergeConfig."
+kind = "rust-struct-has-derive"
+target = "crates/server/src/config.rs"
+struct_name = "Config"
+derive = "MergeConfig"
+when_crates_contains = "server"
+
+[[check]]
+id = "server-config-merge-config-helper-attr"
+description = "The server Config struct carries the merge_config helper attribute."
+kind = "rust-struct-has-helper-attr"
+target = "crates/server/src/config.rs"
+struct_name = "Config"
+attr = "merge_config"
+when_crates_contains = "server"
+
+[[check]]
+id = "server-config-common-field-count"
+description = "The server Config struct has two fields marked #[merge_config(common)]."
+kind = "rust-struct-field-attr-count"
+target = "crates/server/src/config.rs"
+struct_name = "Config"
+attr = "merge_config"
+contains = "common"
+count = 2
+when_crates_contains = "server"
+
+# ======== rust-modules ========
+[[check]]
+id = "lib-no-main"
+description = "The lib crate is a library and must not have a binary entrypoint at crates/lib/src/main.rs."
+kind = "file-absent"
+path = "crates/lib/src/main.rs"
+
+[[check]]
+id = "lib-logging-globs-foundation"
+description = "The lib crate's logging module re-exports foundation's logging module via a glob for backward compatibility."
+kind = "rust-use-glob"
+target = "crates/lib/src/logging.rs"
+path = "rust_template_foundation::logging"
+
+[[check]]
+id = "cli-config-present"
+description = "The cli crate keeps configuration in a dedicated config.rs module."
+kind = "file-present"
+path = "crates/cli/src/config.rs"
+when_crates_contains = "cli"
+
+[[check]]
+id = "server-config-present"
+description = "The server crate keeps configuration in a dedicated config.rs module."
+kind = "file-present"
+path = "crates/server/src/config.rs"
+when_crates_contains = "server"
+
+[[check]]
+id = "server-web-base-present"
+description = "The server crate defines its web base server state module at crates/server/src/web_base.rs."
+kind = "file-present"
+path = "crates/server/src/web_base.rs"
+when_crates_contains = "server"
+
+[[check]]
+id = "server-dep-prometheus"
+description = "The server crate depends on prometheus for metrics."
+kind = "file-contains"
+target = "crates/server/Cargo.toml"
+contains = "prometheus = { workspace = true }"
+when_crates_contains = "server"
+
+[[check]]
+id = "server-dep-tokio-listener"
+description = "The server crate depends on tokio-listener for systemd socket activation."
+kind = "file-contains"
+target = "crates/server/Cargo.toml"
+contains = "tokio-listener = { workspace = true }"
+when_crates_contains = "server"
+
+# ======== misc-and-docs-sections ========
+[[check]]
+id = "pre-commit-hook-present"
+description = "The cargo-husky pre-commit hook that formats staged files via treefmt is present."
+kind = "file-present"
+path = ".cargo-husky/hooks/pre-commit"
+
+[[check]]
+id = "pre-commit-hook-runs-treefmt"
+description = "The pre-commit hook dispatches staged files to treefmt for formatting."
+kind = "file-contains"
+target = ".cargo-husky/hooks/pre-commit"
+contains = "treefmt"
+
+[[check]]
+id = "rustfmt-matches-template"
+description = "The spawn's rustfmt.toml is byte-for-byte identical to the template's, keeping formatting rules in lockstep."
+kind = "file-matches-template"
+path = "rustfmt.toml"
+
+# ---------------------------------------------------------------------------
+# CLI crate: workspace metadata inheritance.
+# ---------------------------------------------------------------------------
+[[check]]
+id = "cli-cargo-version-workspace"
+description = "The cli crate inherits its version from [workspace.package]."
+kind = "toml-path-equals"
+target = "crates/cli/Cargo.toml"
+pointer = "package.version.workspace"
+value = "true"
+when_crates_contains = "cli"
+
+[[check]]
+id = "cli-cargo-edition-workspace"
+description = "The cli crate inherits its edition from [workspace.package]."
+kind = "toml-path-equals"
+target = "crates/cli/Cargo.toml"
+pointer = "package.edition.workspace"
+value = "true"
+when_crates_contains = "cli"
+
+[[check]]
+id = "cli-cargo-authors-workspace"
+description = "The cli crate inherits its authors from [workspace.package]."
+kind = "toml-path-equals"
+target = "crates/cli/Cargo.toml"
+pointer = "package.authors.workspace"
+value = "true"
+when_crates_contains = "cli"
+
+[[check]]
+id = "cli-cargo-license-workspace"
+description = "The cli crate inherits its license from [workspace.package]."
+kind = "toml-path-equals"
+target = "crates/cli/Cargo.toml"
+pointer = "package.license.workspace"
+value = "true"
+when_crates_contains = "cli"
+
+[[check]]
+id = "cli-cargo-repository-workspace"
+description = "The cli crate inherits its repository from [workspace.package]."
+kind = "toml-path-equals"
+target = "crates/cli/Cargo.toml"
+pointer = "package.repository.workspace"
+value = "true"
+when_crates_contains = "cli"
+
+# ---------------------------------------------------------------------------
+# Server crate: workspace metadata inheritance.
+# ---------------------------------------------------------------------------
+[[check]]
+id = "server-cargo-version-workspace"
+description = "The server crate inherits its version from [workspace.package]."
+kind = "toml-path-equals"
+target = "crates/server/Cargo.toml"
+pointer = "package.version.workspace"
+value = "true"
+when_crates_contains = "server"
+
+[[check]]
+id = "server-cargo-edition-workspace"
+description = "The server crate inherits its edition from [workspace.package]."
+kind = "toml-path-equals"
+target = "crates/server/Cargo.toml"
+pointer = "package.edition.workspace"
+value = "true"
+when_crates_contains = "server"
+
+[[check]]
+id = "server-cargo-authors-workspace"
+description = "The server crate inherits its authors from [workspace.package]."
+kind = "toml-path-equals"
+target = "crates/server/Cargo.toml"
+pointer = "package.authors.workspace"
+value = "true"
+when_crates_contains = "server"
+
+[[check]]
+id = "server-cargo-license-workspace"
+description = "The server crate inherits its license from [workspace.package]."
+kind = "toml-path-equals"
+target = "crates/server/Cargo.toml"
+pointer = "package.license.workspace"
+value = "true"
+when_crates_contains = "server"
+
+[[check]]
+id = "server-cargo-repository-workspace"
+description = "The server crate inherits its repository from [workspace.package]."
+kind = "toml-path-equals"
+target = "crates/server/Cargo.toml"
+pointer = "package.repository.workspace"
+value = "true"
+when_crates_contains = "server"
+
+# ---------------------------------------------------------------------------
+# Lib crate: workspace metadata inheritance.
+# ---------------------------------------------------------------------------
+[[check]]
+id = "lib-cargo-version-workspace"
+description = "The lib crate inherits its version from [workspace.package]."
+kind = "toml-path-equals"
+target = "crates/lib/Cargo.toml"
+pointer = "package.version.workspace"
+value = "true"
+
+[[check]]
+id = "lib-cargo-edition-workspace"
+description = "The lib crate inherits its edition from [workspace.package]."
+kind = "toml-path-equals"
+target = "crates/lib/Cargo.toml"
+pointer = "package.edition.workspace"
+value = "true"
+
+[[check]]
+id = "lib-cargo-authors-workspace"
+description = "The lib crate inherits its authors from [workspace.package]."
+kind = "toml-path-equals"
+target = "crates/lib/Cargo.toml"
+pointer = "package.authors.workspace"
+value = "true"
+
+[[check]]
+id = "lib-cargo-license-workspace"
+description = "The lib crate inherits its license from [workspace.package]."
+kind = "toml-path-equals"
+target = "crates/lib/Cargo.toml"
+pointer = "package.license.workspace"
+value = "true"
+
+[[check]]
+id = "lib-cargo-repository-workspace"
+description = "The lib crate inherits its repository from [workspace.package]."
+kind = "toml-path-equals"
+target = "crates/lib/Cargo.toml"
+pointer = "package.repository.workspace"
+value = "true"
+
+# ---------------------------------------------------------------------------
+# Integration tests: emitted for cli and server crates.
+# ---------------------------------------------------------------------------
+[[check]]
+id = "cli-integration-test-present"
+description = "The cli crate ships an integration test under tests/."
+kind = "file-present"
+path = "crates/cli/tests/integration_test.rs"
+when_crates_contains = "cli"
+
+[[check]]
+id = "server-integration-test-present"
+description = "The server crate ships an integration test under tests/."
+kind = "file-present"
+path = "crates/server/tests/integration_test.rs"
+when_crates_contains = "server"
+
+# ---------------------------------------------------------------------------
+# llms.org: major headings a spawn must keep.
+# ---------------------------------------------------------------------------
+[[check]]
+id = "llms-server-role-section"
+description = "llms.org documents the server crate's role and scope."
+kind = "section-exists"
+target = "llms.org"
+section = "Server crate: role and scope"
+
+[[check]]
+id = "llms-general-code-guidelines-section"
+description = "llms.org documents the general code guidelines."
+kind = "section-exists"
+target = "llms.org"
+section = "General code guidelines"
+
+[[check]]
+id = "llms-verification-section"
+description = "llms.org documents the verification workflow."
+kind = "section-exists"
+target = "llms.org"
+section = "Verification"
+
+# ---------------------------------------------------------------------------
+# CONTRIBUTING.org: file plus major headings a spawn must keep.
+# ---------------------------------------------------------------------------
+[[check]]
+id = "contributing-present"
+description = "CONTRIBUTING.org is present in the spawn."
+kind = "file-present"
+path = "CONTRIBUTING.org"
+
+[[check]]
+id = "contributing-code-style-section"
+description = "CONTRIBUTING.org documents code style."
+kind = "section-exists"
+target = "CONTRIBUTING.org"
+section = "Code style"
+
+[[check]]
+id = "contributing-error-handling-section"
+description = "CONTRIBUTING.org documents error handling."
+kind = "section-exists"
+target = "CONTRIBUTING.org"
+section = "Error handling"
+
+[[check]]
+id = "contributing-css-section"
+description = "CONTRIBUTING.org documents CSS conventions."
+kind = "section-exists"
+target = "CONTRIBUTING.org"
+section = "CSS"
+
+[[check]]
+id = "contributing-systemd-secrets-section"
+description = "CONTRIBUTING.org documents systemd secrets handling."
+kind = "section-exists"
+target = "CONTRIBUTING.org"
+section = "Systemd secrets"
+
+[[check]]
+id = "contributing-logging-levels-section"
+description = "CONTRIBUTING.org documents logging levels."
+kind = "section-exists"
+target = "CONTRIBUTING.org"
+section = "Logging levels"
+
+[[check]]
+id = "contributing-changelog-conventions-section"
+description = "CONTRIBUTING.org documents changelog conventions."
+kind = "section-exists"
+target = "CONTRIBUTING.org"
+section = "Changelog conventions"
+
+[[check]]
+id = "flake-default-devshell"
+description = "The flake exposes a default devShell."
+kind = "file-contains"
+target = "flake.nix"
+contains = "devShells"
