@@ -3,6 +3,17 @@
 
 * Upcoming
 ** Added
+1. The =treefmt= prettier formatter now also formats =*.json=, with
+   =**/elm.json= excluded so the elm toolchain keeps managing its own manifest.
+   This keeps JSON such as the spawn registry pretty-printed without a manual
+   step.
+2. Compliance now verifies the =treefmt.toml= formatter wiring.  A new
+   =toml-seq-contains= check kind lets the engine assert membership in a TOML
+   array (the prior TOML checks only reached scalars), and a =treefmt= section
+   of checks holds each shipped formatter — rustfmt, alejandra, elm-format,
+   prettier, org-fmt — to its expected command, file-type =includes=, and (for
+   prettier) =excludes=.  The checks assert presence rather than byte-equality,
+   so a spawn may add its own formatters without tripping compliance.
 ** Fixes
 ** Breaking
 * v0.14.0
@@ -14,6 +25,8 @@
    reviewer defers to =CONTRIBUTING.org= and =llms.org= as the authority rather
    than carrying its own checklist, and compliance now verifies the hook, the
    agent, and the =COMPLIANCE:= marker that wires them together.
+** Fixes
+** Breaking
 * v0.13.0
 ** Added
 1. A freshly emitted =CHANGELOG.org= comes pre-seeded with the =Added= / =Fixes=

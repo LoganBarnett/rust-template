@@ -19,7 +19,11 @@ includes = ["*.elm"]
 [formatter.prettier]
 command = "prettier"
 options = ["--write"]
-includes = ["*.css"]
+includes = ["*.css", "*.json"]
+# elm.json is managed by the elm toolchain, which rewrites it in its own
+# style on `elm install` / `elm make`; formatting it here only starts a
+# churn battle, so leave it to elm.
+excludes = ["**/elm.json"]
 
 [formatter.org-fmt]
 command = "org-fmt"

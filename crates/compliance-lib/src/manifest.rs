@@ -98,6 +98,13 @@ pub enum CheckKind {
     pointer: String,
     value: String,
   },
+  /// `target` parses as TOML and the sequence at `pointer` contains an element
+  /// equal to `value`.
+  TomlSeqContains {
+    target: String,
+    pointer: String,
+    value: String,
+  },
   /// Every `crates/*/Cargo.toml` parses as TOML and its scalar at `pointer`
   /// equals `value`.  There is no `target`: the crate manifests are discovered,
   /// not named, so the check covers archetype and custom-named crates alike.
@@ -359,6 +366,11 @@ impl RawCheck {
         pointer: require(&id, &kind, "pointer", pointer)?,
       },
       "toml-path-equals" => CheckKind::TomlPathEquals {
+        target: require(&id, &kind, "target", target)?,
+        pointer: require(&id, &kind, "pointer", pointer)?,
+        value: require(&id, &kind, "value", value)?,
+      },
+      "toml-seq-contains" => CheckKind::TomlSeqContains {
         target: require(&id, &kind, "target", target)?,
         pointer: require(&id, &kind, "pointer", pointer)?,
         value: require(&id, &kind, "value", value)?,

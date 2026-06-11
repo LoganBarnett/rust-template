@@ -628,6 +628,118 @@ kind = "file-matches-template"
 path = "rustfmt.toml"
 
 # ---------------------------------------------------------------------------
+# treefmt: the unified formatter configuration.
+#
+# treefmt.toml drives `treefmt` (run by the pre-commit hook and in CI), so a
+# spawn that loses a formatter block or its file-type globs silently stops
+# formatting that language.  These checks assert each formatter the template
+# ships is still wired with the command and includes/excludes we expect.  They
+# verify presence, not byte-equality (unlike rustfmt above), so a spawn may add
+# its own project-specific formatters without tripping compliance.
+# ---------------------------------------------------------------------------
+[[check]]
+id = "treefmt-config-present"
+description = "The unified treefmt formatter configuration is present."
+kind = "file-present"
+path = "treefmt.toml"
+
+[[check]]
+id = "treefmt-rustfmt-command"
+description = "treefmt routes Rust files through rustfmt."
+kind = "toml-path-equals"
+target = "treefmt.toml"
+pointer = "formatter.rustfmt.command"
+value = "rustfmt"
+
+[[check]]
+id = "treefmt-rustfmt-includes-rs"
+description = "The rustfmt formatter includes *.rs files."
+kind = "toml-seq-contains"
+target = "treefmt.toml"
+pointer = "formatter.rustfmt.includes"
+value = "*.rs"
+
+[[check]]
+id = "treefmt-alejandra-command"
+description = "treefmt routes Nix files through alejandra."
+kind = "toml-path-equals"
+target = "treefmt.toml"
+pointer = "formatter.alejandra.command"
+value = "alejandra"
+
+[[check]]
+id = "treefmt-alejandra-includes-nix"
+description = "The alejandra formatter includes *.nix files."
+kind = "toml-seq-contains"
+target = "treefmt.toml"
+pointer = "formatter.alejandra.includes"
+value = "*.nix"
+
+[[check]]
+id = "treefmt-elm-format-command"
+description = "treefmt routes Elm files through elm-format."
+kind = "toml-path-equals"
+target = "treefmt.toml"
+pointer = "formatter.elm-format.command"
+value = "elm-format"
+
+[[check]]
+id = "treefmt-elm-format-includes-elm"
+description = "The elm-format formatter includes *.elm files."
+kind = "toml-seq-contains"
+target = "treefmt.toml"
+pointer = "formatter.elm-format.includes"
+value = "*.elm"
+
+[[check]]
+id = "treefmt-prettier-command"
+description = "treefmt routes prettier-owned files through prettier."
+kind = "toml-path-equals"
+target = "treefmt.toml"
+pointer = "formatter.prettier.command"
+value = "prettier"
+
+[[check]]
+id = "treefmt-prettier-includes-css"
+description = "The prettier formatter includes *.css files."
+kind = "toml-seq-contains"
+target = "treefmt.toml"
+pointer = "formatter.prettier.includes"
+value = "*.css"
+
+[[check]]
+id = "treefmt-prettier-includes-json"
+description = "The prettier formatter includes *.json files, keeping JSON such as the config registry pretty-printed."
+kind = "toml-seq-contains"
+target = "treefmt.toml"
+pointer = "formatter.prettier.includes"
+value = "*.json"
+
+[[check]]
+id = "treefmt-prettier-excludes-elm-json"
+description = "The prettier formatter excludes elm.json, which the elm toolchain manages in its own style."
+kind = "toml-seq-contains"
+target = "treefmt.toml"
+pointer = "formatter.prettier.excludes"
+value = "**/elm.json"
+
+[[check]]
+id = "treefmt-org-fmt-command"
+description = "treefmt routes org files through org-fmt."
+kind = "toml-path-equals"
+target = "treefmt.toml"
+pointer = "formatter.org-fmt.command"
+value = "org-fmt"
+
+[[check]]
+id = "treefmt-org-fmt-includes-org"
+description = "The org-fmt formatter includes *.org files."
+kind = "toml-seq-contains"
+target = "treefmt.toml"
+pointer = "formatter.org-fmt.includes"
+value = "*.org"
+
+# ---------------------------------------------------------------------------
 # CLI crate: workspace metadata inheritance.
 # ---------------------------------------------------------------------------
 [[check]]

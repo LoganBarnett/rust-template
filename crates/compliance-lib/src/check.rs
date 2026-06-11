@@ -144,6 +144,17 @@ pub fn run_check(check: &Check, ctx: &SpawnContext) -> Verdict {
       &PathMatch::Equals(value),
       parse_toml,
     ),
+    CheckKind::TomlSeqContains {
+      target,
+      pointer,
+      value,
+    } => structured_path(
+      ctx.dir,
+      target,
+      pointer,
+      &PathMatch::SeqContains(value),
+      parse_toml,
+    ),
     CheckKind::CrateTomlPathEquals { pointer, value } => {
       crate_toml_path_equals(ctx.dir, pointer, value)
     }
@@ -1281,6 +1292,29 @@ mod tests {
       navigate(&value, "package.version.workspace").and_then(scalar_to_string),
       Some("true".to_string())
     );
+  }
+
+  #[test]
+  fn toml_array_resolves_to_a_sequence() {
+    // A treefmt-style includes array resolves to `seq`, so `SeqContains`
+    // can assert a given file glob is configured for a formatter.
+    let value =
+      parse_toml("[formatter.prettier]\nincludes = [\"*.css\", \"*.json\"]\n")
+        .unwrap();
+    let resolved = resolve_json(&value, "formatter.prettier.includes");
+    assert_eq!(
+      resolved.seq,
+      Some(vec!["*.css".to_string(), "*.json".to_string()])
+    );
+    assert!(matches!(
+      verdict(
+        "treefmt.toml",
+        "formatter.prettier.includes",
+        &PathMatch::SeqContains("*.json"),
+        &resolved,
+      ),
+      Verdict::Pass
+    ));
   }
 
   #[test]
