@@ -3,6 +3,10 @@
 
 * Upcoming
 ** Added
+** Fixes
+** Breaking
+* v0.15.0
+** Added
 1. The =treefmt= prettier formatter now also formats =*.json=, with
    =**/elm.json= excluded so the elm toolchain keeps managing its own manifest.
    This keeps JSON such as the spawn registry pretty-printed without a manual
@@ -14,8 +18,6 @@
    prettier, org-fmt — to its expected command, file-type =includes=, and (for
    prettier) =excludes=.  The checks assert presence rather than byte-equality,
    so a spawn may add its own formatters without tripping compliance.
-** Fixes
-** Breaking
 * v0.14.0
 ** Added
 1. Spawned projects now ship a deterministic code-review gate.  A =Stop= hook
