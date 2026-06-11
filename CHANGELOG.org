@@ -3,6 +3,10 @@
 
 * Upcoming
 ** Added
+** Fixes
+** Breaking
+* v0.13.0
+** Added
 1. A freshly emitted =CHANGELOG.org= comes pre-seeded with the =Added= / =Fixes=
    / =Breaking= subheadings under =* Upcoming=, so a new project starts with the
    changelog structure already in place and matching the documented conventions.
@@ -13,7 +17,6 @@
    =server= / =lib= archetypes.
 ** Fixes
 1. ~tap~ should no longer be removed by over-eager LLMs.
-** Breaking
 * v0.12.0
 * v0.11.0
 * v0.10.0
