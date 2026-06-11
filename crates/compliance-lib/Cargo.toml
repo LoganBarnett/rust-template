@@ -32,6 +32,11 @@ orgize = { git = "https://github.com/LoganBarnett/orgize.git" }
 # value tree rather than scraping text.  yaml-rust2 is the maintained
 # pure-Rust parser; its low-level value enum lets us match raw scalar keys.
 yaml-rust2 = "0.10"
+# Parses spawn Rust sources into an AST for the rust-ast checks, so they assert
+# on resolved items/attributes/idents rather than scraping source text (the
+# macro-expanded identifiers never appear pre-expansion).  `visit` powers the
+# method-chain traversal.
+syn = { version = "2", features = ["full", "visit", "extra-traits"] }
 # Enables method chaining and reduces superfluous local variables that only
 # exist to name intermediate results.  Prefer .tap() over temporary variables
 # when it improves readability.

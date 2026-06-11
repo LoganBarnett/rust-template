@@ -116,6 +116,51 @@ pub enum CheckKind {
     pointer: String,
     value: String,
   },
+  /// `target` parses as Rust and the fn named `function` carries an attribute
+  /// whose path's last segment is `attr` (any local alias matches).
+  RustFnHasAttr {
+    target: String,
+    function: String,
+    attr: String,
+  },
+  /// The struct named `struct_name` has a `#[derive(...)]` that lists `derive`.
+  RustStructHasDerive {
+    target: String,
+    struct_name: String,
+    derive: String,
+  },
+  /// The struct named `struct_name` carries a helper attribute whose path's
+  /// last segment is `attr` (e.g. `#[merge_config(...)]`).
+  RustStructHasHelperAttr {
+    target: String,
+    struct_name: String,
+    attr: String,
+  },
+  /// Exactly `count` fields of `struct_name` carry a helper attribute whose
+  /// path's last segment is `attr`; when `contains` is set, the attribute's
+  /// token text must also contain it (e.g. the nested `common` marker).
+  RustStructFieldAttrCount {
+    target: String,
+    struct_name: String,
+    attr: String,
+    contains: Option<String>,
+    count: u32,
+  },
+  /// `target` contains a glob `use` import `use <path>::*;`.
+  RustUseGlob { target: String, path: String },
+  /// `target` has an `impl <trait_name> for <self_ty>`.
+  RustImplTraitFor {
+    target: String,
+    trait_name: String,
+    self_ty: String,
+  },
+  /// Within the fn named `function`, a method-call chain invokes every method
+  /// ident listed in `methods`.
+  RustMethodChain {
+    target: String,
+    function: String,
+    methods: Vec<String>,
+  },
 }
 
 /// The TOML shape: every kind-specific field is optional and validated later.
@@ -150,6 +195,22 @@ struct RawCheck {
   pointer: Option<String>,
   #[serde(default)]
   value: Option<String>,
+  #[serde(default)]
+  function: Option<String>,
+  #[serde(default)]
+  struct_name: Option<String>,
+  #[serde(default)]
+  derive: Option<String>,
+  #[serde(default)]
+  attr: Option<String>,
+  #[serde(default)]
+  count: Option<u32>,
+  #[serde(default)]
+  trait_name: Option<String>,
+  #[serde(default)]
+  self_ty: Option<String>,
+  #[serde(default)]
+  methods: Option<String>,
 }
 
 /// Require a kind-specific parameter, naming the check and kind on absence.
@@ -162,6 +223,19 @@ fn require(
   value.ok_or_else(|| ComplianceError::ManifestInvalid {
     id: id.to_string(),
     message: format!("kind '{kind}' requires parameter '{name}'"),
+  })
+}
+
+/// Require an integer parameter.
+fn require_u32(
+  id: &str,
+  kind: &str,
+  name: &str,
+  value: Option<u32>,
+) -> Result<u32, ComplianceError> {
+  value.ok_or_else(|| ComplianceError::ManifestInvalid {
+    id: id.to_string(),
+    message: format!("kind '{kind}' requires integer parameter '{name}'"),
   })
 }
 
@@ -181,6 +255,14 @@ impl RawCheck {
       glob,
       pointer,
       value,
+      function,
+      struct_name,
+      derive,
+      attr,
+      count,
+      trait_name,
+      self_ty,
+      methods,
     } = self;
 
     let resolved = match kind.as_str() {
@@ -259,6 +341,46 @@ impl RawCheck {
         target: require(&id, &kind, "target", target)?,
         pointer: require(&id, &kind, "pointer", pointer)?,
         value: require(&id, &kind, "value", value)?,
+      },
+      "rust-fn-has-attr" => CheckKind::RustFnHasAttr {
+        target: require(&id, &kind, "target", target)?,
+        function: require(&id, &kind, "function", function)?,
+        attr: require(&id, &kind, "attr", attr)?,
+      },
+      "rust-struct-has-derive" => CheckKind::RustStructHasDerive {
+        target: require(&id, &kind, "target", target)?,
+        struct_name: require(&id, &kind, "struct_name", struct_name)?,
+        derive: require(&id, &kind, "derive", derive)?,
+      },
+      "rust-struct-has-helper-attr" => CheckKind::RustStructHasHelperAttr {
+        target: require(&id, &kind, "target", target)?,
+        struct_name: require(&id, &kind, "struct_name", struct_name)?,
+        attr: require(&id, &kind, "attr", attr)?,
+      },
+      "rust-struct-field-attr-count" => CheckKind::RustStructFieldAttrCount {
+        target: require(&id, &kind, "target", target)?,
+        struct_name: require(&id, &kind, "struct_name", struct_name)?,
+        attr: require(&id, &kind, "attr", attr)?,
+        contains,
+        count: require_u32(&id, &kind, "count", count)?,
+      },
+      "rust-use-glob" => CheckKind::RustUseGlob {
+        target: require(&id, &kind, "target", target)?,
+        path: require(&id, &kind, "path", path)?,
+      },
+      "rust-impl-trait-for" => CheckKind::RustImplTraitFor {
+        target: require(&id, &kind, "target", target)?,
+        trait_name: require(&id, &kind, "trait_name", trait_name)?,
+        self_ty: require(&id, &kind, "self_ty", self_ty)?,
+      },
+      "rust-method-chain" => CheckKind::RustMethodChain {
+        target: require(&id, &kind, "target", target)?,
+        function: require(&id, &kind, "function", function)?,
+        methods: require(&id, &kind, "methods", methods)?
+          .split(',')
+          .map(|method| method.trim().to_string())
+          .filter(|method| !method.is_empty())
+          .collect(),
       },
       other => {
         return Err(ComplianceError::ManifestInvalid {

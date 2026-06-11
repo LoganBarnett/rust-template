@@ -162,6 +162,48 @@ pub fn run_check(check: &Check, ctx: &SpawnContext) -> CheckOutcome {
       pointer,
       value,
     } => yaml_path(ctx.dir, target, pointer, &PathMatch::SeqContains(value)),
+    CheckKind::RustFnHasAttr {
+      target,
+      function,
+      attr,
+    } => rust_fn_has_attr(ctx.dir, target, function, attr),
+    CheckKind::RustStructHasDerive {
+      target,
+      struct_name,
+      derive,
+    } => rust_struct_has_derive(ctx.dir, target, struct_name, derive),
+    CheckKind::RustStructHasHelperAttr {
+      target,
+      struct_name,
+      attr,
+    } => rust_struct_has_helper_attr(ctx.dir, target, struct_name, attr),
+    CheckKind::RustStructFieldAttrCount {
+      target,
+      struct_name,
+      attr,
+      contains,
+      count,
+    } => rust_struct_field_attr_count(
+      ctx.dir,
+      target,
+      struct_name,
+      attr,
+      contains.as_deref(),
+      *count,
+    ),
+    CheckKind::RustUseGlob { target, path } => {
+      rust_use_glob(ctx.dir, target, path)
+    }
+    CheckKind::RustImplTraitFor {
+      target,
+      trait_name,
+      self_ty,
+    } => rust_impl_trait_for(ctx.dir, target, trait_name, self_ty),
+    CheckKind::RustMethodChain {
+      target,
+      function,
+      methods,
+    } => rust_method_chain(ctx.dir, target, function, methods),
   }
 }
 
@@ -658,6 +700,307 @@ fn scalar_to_string(value: &serde_json::Value) -> Option<String> {
   }
 }
 
+// ── Rust AST helpers ─────────────────────────────────────────────────
+
+/// Read and parse `target` as a Rust file, applying `check` to the AST.  A
+/// missing target skips; a parse failure fails.
+fn with_rust(
+  dir: &Path,
+  target: &str,
+  check: impl FnOnce(&syn::File) -> CheckOutcome,
+) -> CheckOutcome {
+  match read_file(&dir.join(target)) {
+    FileRead::Found(text) => match syn::parse_file(&text) {
+      Ok(file) => check(&file),
+      Err(error) => CheckOutcome::Fail {
+        detail: format!("{target}: invalid Rust: {error}"),
+      },
+    },
+    FileRead::Missing => CheckOutcome::Skip {
+      reason: format!("{target} not present"),
+    },
+    FileRead::Error(detail) => CheckOutcome::Error { detail },
+  }
+}
+
+fn find_fn<'a>(file: &'a syn::File, name: &str) -> Option<&'a syn::ItemFn> {
+  file.items.iter().find_map(|item| match item {
+    syn::Item::Fn(item) if item.sig.ident == name => Some(item),
+    _ => None,
+  })
+}
+
+fn find_struct<'a>(
+  file: &'a syn::File,
+  name: &str,
+) -> Option<&'a syn::ItemStruct> {
+  file.items.iter().find_map(|item| match item {
+    syn::Item::Struct(item) if item.ident == name => Some(item),
+    _ => None,
+  })
+}
+
+/// The last segment of an attribute's path (`merge_config` for
+/// `#[merge_config(...)]`, `foundation_main` for `#[foundation_main]`).
+fn attr_last_segment(attr: &syn::Attribute) -> Option<String> {
+  attr.path().segments.last().map(|seg| seg.ident.to_string())
+}
+
+fn path_last_segment(path: &syn::Path) -> Option<String> {
+  path.segments.last().map(|seg| seg.ident.to_string())
+}
+
+/// Whether an attribute's nested token text contains `needle` — the
+/// leaf-level substring escape hatch, e.g. `common` in `#[merge_config(common)]`.
+fn attr_tokens_contain(attr: &syn::Attribute, needle: &str) -> bool {
+  match &attr.meta {
+    syn::Meta::List(list) => list.tokens.to_string().contains(needle),
+    _ => false,
+  }
+}
+
+fn rust_fn_has_attr(
+  dir: &Path,
+  target: &str,
+  function: &str,
+  attr: &str,
+) -> CheckOutcome {
+  with_rust(dir, target, |file| match find_fn(file, function) {
+    None => CheckOutcome::Fail {
+      detail: format!("{target}: no fn `{function}`"),
+    },
+    Some(item)
+      if item
+        .attrs
+        .iter()
+        .any(|a| attr_last_segment(a).as_deref() == Some(attr)) =>
+    {
+      CheckOutcome::Pass
+    }
+    Some(_) => CheckOutcome::Fail {
+      detail: format!("{target}: fn `{function}` is not annotated #[{attr}]"),
+    },
+  })
+}
+
+fn rust_struct_has_derive(
+  dir: &Path,
+  target: &str,
+  struct_name: &str,
+  derive: &str,
+) -> CheckOutcome {
+  with_rust(dir, target, |file| match find_struct(file, struct_name) {
+    None => CheckOutcome::Fail {
+      detail: format!("{target}: no struct `{struct_name}`"),
+    },
+    Some(item) if struct_has_derive(item, derive) => CheckOutcome::Pass,
+    Some(_) => CheckOutcome::Fail {
+      detail: format!(
+        "{target}: struct `{struct_name}` does not derive {derive}"
+      ),
+    },
+  })
+}
+
+fn struct_has_derive(item: &syn::ItemStruct, derive: &str) -> bool {
+  item
+    .attrs
+    .iter()
+    .filter(|a| a.path().is_ident("derive"))
+    .any(|a| {
+      a.parse_args_with(
+        syn::punctuated::Punctuated::<syn::Path, syn::Token![,]>::parse_terminated,
+      )
+      .map(|paths| {
+        paths
+          .iter()
+          .any(|p| path_last_segment(p).as_deref() == Some(derive))
+      })
+      .unwrap_or(false)
+    })
+}
+
+fn rust_struct_has_helper_attr(
+  dir: &Path,
+  target: &str,
+  struct_name: &str,
+  attr: &str,
+) -> CheckOutcome {
+  with_rust(dir, target, |file| match find_struct(file, struct_name) {
+    None => CheckOutcome::Fail {
+      detail: format!("{target}: no struct `{struct_name}`"),
+    },
+    Some(item)
+      if item
+        .attrs
+        .iter()
+        .any(|a| attr_last_segment(a).as_deref() == Some(attr)) =>
+    {
+      CheckOutcome::Pass
+    }
+    Some(_) => CheckOutcome::Fail {
+      detail: format!("{target}: struct `{struct_name}` lacks #[{attr}]"),
+    },
+  })
+}
+
+fn rust_struct_field_attr_count(
+  dir: &Path,
+  target: &str,
+  struct_name: &str,
+  attr: &str,
+  contains: Option<&str>,
+  count: u32,
+) -> CheckOutcome {
+  with_rust(dir, target, |file| {
+    find_struct(file, struct_name).map_or_else(
+      || CheckOutcome::Fail {
+        detail: format!("{target}: no struct `{struct_name}`"),
+      },
+      |item| {
+        let actual = item
+          .fields
+          .iter()
+          .filter(|field| {
+            field.attrs.iter().any(|a| {
+              attr_last_segment(a).as_deref() == Some(attr)
+                && contains.is_none_or(|needle| attr_tokens_contain(a, needle))
+            })
+          })
+          .count() as u32;
+        if actual == count {
+          CheckOutcome::Pass
+        } else {
+          CheckOutcome::Fail {
+            detail: format!(
+              "{target}: struct `{struct_name}` has {actual} matching fields, expected {count}"
+            ),
+          }
+        }
+      },
+    )
+  })
+}
+
+fn rust_use_glob(dir: &Path, target: &str, path: &str) -> CheckOutcome {
+  with_rust(dir, target, |file| {
+    if file.items.iter().any(|item| use_glob_matches(item, path)) {
+      CheckOutcome::Pass
+    } else {
+      CheckOutcome::Fail {
+        detail: format!("{target}: no `use {path}::*` import"),
+      }
+    }
+  })
+}
+
+fn use_glob_matches(item: &syn::Item, path: &str) -> bool {
+  let syn::Item::Use(item) = item else {
+    return false;
+  };
+  use_tree_glob_path(&item.tree).is_some_and(|found| found == path)
+}
+
+/// If a use-tree ends in a glob (`a::b::*`), return the `a::b` prefix.
+fn use_tree_glob_path(tree: &syn::UseTree) -> Option<String> {
+  match tree {
+    syn::UseTree::Path(path) => use_tree_glob_path(&path.tree).map(|rest| {
+      if rest.is_empty() {
+        path.ident.to_string()
+      } else {
+        format!("{}::{}", path.ident, rest)
+      }
+    }),
+    syn::UseTree::Glob(_) => Some(String::new()),
+    _ => None,
+  }
+}
+
+fn rust_impl_trait_for(
+  dir: &Path,
+  target: &str,
+  trait_name: &str,
+  self_ty: &str,
+) -> CheckOutcome {
+  with_rust(dir, target, |file| {
+    if file
+      .items
+      .iter()
+      .any(|item| impl_matches(item, trait_name, self_ty))
+    {
+      CheckOutcome::Pass
+    } else {
+      CheckOutcome::Fail {
+        detail: format!("{target}: no `impl {trait_name} for {self_ty}`"),
+      }
+    }
+  })
+}
+
+fn impl_matches(item: &syn::Item, trait_name: &str, self_ty: &str) -> bool {
+  let syn::Item::Impl(item) = item else {
+    return false;
+  };
+  let Some((_, trait_path, _)) = &item.trait_ else {
+    return false;
+  };
+  path_last_segment(trait_path).as_deref() == Some(trait_name)
+    && type_last_segment(&item.self_ty).as_deref() == Some(self_ty)
+}
+
+fn type_last_segment(ty: &syn::Type) -> Option<String> {
+  match ty {
+    syn::Type::Path(path) => path_last_segment(&path.path),
+    _ => None,
+  }
+}
+
+fn rust_method_chain(
+  dir: &Path,
+  target: &str,
+  function: &str,
+  methods: &[String],
+) -> CheckOutcome {
+  with_rust(dir, target, |file| {
+    find_fn(file, function).map_or_else(
+      || CheckOutcome::Fail {
+        detail: format!("{target}: no fn `{function}`"),
+      },
+      |item| {
+        let mut visitor = MethodVisitor::default();
+        syn::visit::visit_item_fn(&mut visitor, item);
+        let missing: Vec<&str> = methods
+          .iter()
+          .map(String::as_str)
+          .filter(|method| !visitor.methods.contains(*method))
+          .collect();
+        if missing.is_empty() {
+          CheckOutcome::Pass
+        } else {
+          CheckOutcome::Fail {
+            detail: format!(
+              "{target}: fn `{function}` does not call: {}",
+              missing.join(", ")
+            ),
+          }
+        }
+      },
+    )
+  })
+}
+
+#[derive(Default)]
+struct MethodVisitor {
+  methods: std::collections::HashSet<String>,
+}
+
+impl<'ast> syn::visit::Visit<'ast> for MethodVisitor {
+  fn visit_expr_method_call(&mut self, call: &'ast syn::ExprMethodCall) {
+    self.methods.insert(call.method.to_string());
+    syn::visit::visit_expr_method_call(self, call);
+  }
+}
+
 // ── Shared helpers ───────────────────────────────────────────────────
 
 /// The outcome of reading a file: present, legitimately absent, or a real I/O
@@ -875,5 +1218,70 @@ mod tests {
       Some("org/repo/x.yml@main")
     );
     assert!(!resolve_yaml(doc, "jobs.missing").exists);
+  }
+
+  #[test]
+  fn rust_ast_predicates() {
+    let source = r#"
+      use rust_template_foundation::logging::*;
+      #[derive(Debug, MergeConfig)]
+      #[merge_config(app_name = "x")]
+      struct Config {
+        #[merge_config(common)]
+        a: u8,
+        #[merge_config(common)]
+        b: u8,
+        #[merge_config(short)]
+        c: u8,
+      }
+      #[foundation_main]
+      fn main() {}
+      impl ServerApp for Config {}
+      fn run() {
+        thing.with_state(state).listen();
+      }
+    "#;
+    let file = syn::parse_file(source).unwrap();
+
+    let main = find_fn(&file, "main").unwrap();
+    assert!(main
+      .attrs
+      .iter()
+      .any(|a| attr_last_segment(a).as_deref() == Some("foundation_main")));
+
+    let config = find_struct(&file, "Config").unwrap();
+    assert!(struct_has_derive(config, "MergeConfig"));
+    assert!(config
+      .attrs
+      .iter()
+      .any(|a| attr_last_segment(a).as_deref() == Some("merge_config")));
+
+    let commons = config
+      .fields
+      .iter()
+      .filter(|field| {
+        field.attrs.iter().any(|a| {
+          attr_last_segment(a).as_deref() == Some("merge_config")
+            && attr_tokens_contain(a, "common")
+        })
+      })
+      .count();
+    assert_eq!(commons, 2);
+
+    assert!(file
+      .items
+      .iter()
+      .any(|item| use_glob_matches(item, "rust_template_foundation::logging")));
+    assert!(file.items.iter().any(|item| impl_matches(
+      item,
+      "ServerApp",
+      "Config"
+    )));
+
+    let run = find_fn(&file, "run").unwrap();
+    let mut visitor = MethodVisitor::default();
+    syn::visit::visit_item_fn(&mut visitor, run);
+    assert!(visitor.methods.contains("with_state"));
+    assert!(visitor.methods.contains("listen"));
   }
 }

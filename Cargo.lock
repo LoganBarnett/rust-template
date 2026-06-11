@@ -2358,6 +2358,7 @@ dependencies = [
  "rust-template-foundation",
  "serde",
  "serde_json",
+ "syn",
  "tap",
  "tempfile",
  "thiserror 2.0.18",
