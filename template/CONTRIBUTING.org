@@ -273,5 +273,5 @@ Each entry should be a complete sentence-or-two written for an adopter reading
 the release notes, not a reviewer reading the diff.  Name what changed in terms
 of the surface the adopter sees, not the implementation.
 
-Omit subheadings with no entries — do not scaffold empty ~** Added~, ~** Fixes~,
-or ~** Breaking~ sections under ~* Upcoming~.
+Write each entry as a numbered list item (~1.~, ~2.~, …) under its subheading,
+not a dash bullet.

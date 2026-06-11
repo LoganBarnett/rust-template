@@ -273,13 +273,16 @@ fn no_stale_literal(dir: &Path) -> Verdict {
   }
 }
 
-fn section_exists(dir: &Path, target: &str, section: &str) -> Verdict {
+fn section_exists(dir: &Path, target: &str, section: &[String]) -> Verdict {
   match read_file(&dir.join(target)) {
     FileRead::Found(text) if org::section_exists(&text, section) => {
       Verdict::Pass
     }
     FileRead::Found(_) => Verdict::Fail {
-      detail: format!("section \"{section}\" not found in {target}"),
+      detail: format!(
+        "section \"{}\" not found in {target}",
+        section.join(" > ")
+      ),
     },
     FileRead::Missing => Verdict::Fail {
       detail: format!("{target} not found"),
@@ -291,7 +294,7 @@ fn section_exists(dir: &Path, target: &str, section: &str) -> Verdict {
 fn mention_present(
   dir: &Path,
   target: &str,
-  section: Option<&str>,
+  section: Option<&[String]>,
   needle: &str,
 ) -> Verdict {
   match read_file(&dir.join(target)) {
@@ -301,7 +304,9 @@ fn mention_present(
       Ok(false) => Verdict::Fail {
         detail: section.map_or_else(
           || format!("\"{needle}\" not found in {target}"),
-          |name| format!("\"{needle}\" not found in {target} § {name}"),
+          |name| {
+            format!("\"{needle}\" not found in {target} § {}", name.join(" > "))
+          },
         ),
       },
       Err(reason) => Verdict::Fail {

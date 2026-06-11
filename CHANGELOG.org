@@ -2,8 +2,11 @@
 #+language:  en
 
 * Upcoming
-** Fixed
 * v0.12.0
+** Added
+1. A freshly emitted =CHANGELOG.org= comes pre-seeded with the =Added= / =Fixes=
+   / =Breaking= subheadings under =* Upcoming=, so a new project starts with the
+   changelog structure already in place and matching the documented conventions.
 * v0.11.0
 * v0.10.0
 ** Fixed

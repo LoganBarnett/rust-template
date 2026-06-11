@@ -126,14 +126,14 @@ id = "llms-template-compliance-section"
 description = "llms.org carries the \"Template compliance\" section."
 kind = "section-exists"
 target = "llms.org"
-section = "Template compliance"
+section = ["Template compliance"]
 
 [[check]]
 id = "llms-template-compliance-points-to-canonical-docs"
 description = "The Template compliance section points to the canonical docs/compliance.org."
 kind = "mention-present"
 target = "llms.org"
-section = "Template compliance"
+section = ["Template compliance"]
 contains = "docs/compliance.org"
 
 [[check]]
@@ -141,14 +141,14 @@ id = "llms-persistent-memory-section"
 description = "llms.org carries the \"Persistent memory\" section."
 kind = "section-exists"
 target = "llms.org"
-section = "Persistent memory"
+section = ["Persistent memory"]
 
 [[check]]
 id = "llms-capturing-plans-section"
 description = "llms.org carries the \"Capturing plans\" section."
 kind = "section-exists"
 target = "llms.org"
-section = "Capturing plans"
+section = ["Capturing plans"]
 
 # ── Foundation pin agreement ─────────────────────────────────────────
 
@@ -770,21 +770,21 @@ id = "llms-server-role-section"
 description = "llms.org documents the server crate's role and scope."
 kind = "section-exists"
 target = "llms.org"
-section = "Server crate: role and scope"
+section = ["Server crate: role and scope"]
 
 [[check]]
 id = "llms-general-code-guidelines-section"
 description = "llms.org documents the general code guidelines."
 kind = "section-exists"
 target = "llms.org"
-section = "General code guidelines"
+section = ["General code guidelines"]
 
 [[check]]
 id = "llms-verification-section"
 description = "llms.org documents the verification workflow."
 kind = "section-exists"
 target = "llms.org"
-section = "Verification"
+section = ["Verification"]
 
 # ---------------------------------------------------------------------------
 # CONTRIBUTING.org: file plus major headings a spawn must keep.
@@ -800,42 +800,84 @@ id = "contributing-code-style-section"
 description = "CONTRIBUTING.org documents code style."
 kind = "section-exists"
 target = "CONTRIBUTING.org"
-section = "Code style"
+section = ["Code style"]
 
 [[check]]
 id = "contributing-error-handling-section"
 description = "CONTRIBUTING.org documents error handling."
 kind = "section-exists"
 target = "CONTRIBUTING.org"
-section = "Error handling"
+section = ["Error handling"]
 
 [[check]]
 id = "contributing-css-section"
 description = "CONTRIBUTING.org documents CSS conventions."
 kind = "section-exists"
 target = "CONTRIBUTING.org"
-section = "CSS"
+section = ["CSS"]
 
 [[check]]
 id = "contributing-systemd-secrets-section"
 description = "CONTRIBUTING.org documents systemd secrets handling."
 kind = "section-exists"
 target = "CONTRIBUTING.org"
-section = "Systemd secrets"
+section = ["Systemd secrets"]
 
 [[check]]
 id = "contributing-logging-levels-section"
 description = "CONTRIBUTING.org documents logging levels."
 kind = "section-exists"
 target = "CONTRIBUTING.org"
-section = "Logging levels"
+section = ["Logging levels"]
 
 [[check]]
 id = "contributing-changelog-conventions-section"
 description = "CONTRIBUTING.org documents changelog conventions."
 kind = "section-exists"
 target = "CONTRIBUTING.org"
-section = "Changelog conventions"
+section = ["Changelog conventions"]
+
+[[check]]
+id = "contributing-changelog-numbered-list"
+description = "CONTRIBUTING.org documents that changelog entries are numbered list items."
+kind = "mention-present"
+target = "CONTRIBUTING.org"
+section = ["Changelog conventions"]
+contains = "numbered list"
+
+# ── Pre-seeded CHANGELOG.org Upcoming scaffold ───────────────────────
+# A fresh emission seeds the Upcoming section with the documented
+# Added/Fixes/Breaking subheadings.  The subheading checks scope to the
+# Upcoming section, so they assert the scaffold specifically rather than
+# matching an identically named heading inside a released version.
+
+[[check]]
+id = "changelog-upcoming-section"
+description = "CHANGELOG.org carries the Upcoming section."
+kind = "section-exists"
+target = "CHANGELOG.org"
+section = ["Upcoming"]
+
+[[check]]
+id = "changelog-upcoming-added"
+description = "The CHANGELOG.org Upcoming section seeds the Added subheading."
+kind = "section-exists"
+target = "CHANGELOG.org"
+section = ["Upcoming", "Added"]
+
+[[check]]
+id = "changelog-upcoming-fixes"
+description = "The CHANGELOG.org Upcoming section seeds the Fixes subheading."
+kind = "section-exists"
+target = "CHANGELOG.org"
+section = ["Upcoming", "Fixes"]
+
+[[check]]
+id = "changelog-upcoming-breaking"
+description = "The CHANGELOG.org Upcoming section seeds the Breaking subheading."
+kind = "section-exists"
+target = "CHANGELOG.org"
+section = ["Upcoming", "Breaking"]
 
 [[check]]
 id = "flake-default-devshell"

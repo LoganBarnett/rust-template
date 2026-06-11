@@ -9,55 +9,78 @@
 
 use orgize::elements::Element;
 use orgize::{Event, Org};
+use std::ops::Range;
 
-/// True when `text` has a heading whose title equals `title`.
-pub fn section_exists(text: &str, title: &str) -> bool {
-  let want = title.trim();
-  Org::parse(text)
-        .iter()
-        .any(|event| matches!(event, Event::Start(Element::Title(t)) if t.raw.trim() == want))
+/// True when `path` resolves to a heading.  `path` is a section path: a
+/// sequence of nested heading titles, outermost first.  A top-level section is
+/// a single-element path; `["Upcoming", "Added"]` is the `** Added` subheading
+/// nested under `* Upcoming`.
+pub fn section_exists(text: &str, path: &[String]) -> bool {
+  let org = Org::parse(text);
+  let events: Vec<_> = org.iter().collect();
+  locate(&events, path).is_some()
 }
 
-/// Whether `needle` appears in `text` (optionally scoped to `section`) after
-/// the relevant text is reconstructed and whitespace-flattened.
+/// Whether `needle` appears in `text` (optionally scoped to the section at
+/// `path`) after the relevant text is reconstructed and whitespace-flattened.
 ///
-/// Returns `Err` with a human reason when a requested `section` does not exist
+/// Returns `Err` with a human reason when a requested `path` does not resolve
 /// — distinct from "the section exists but the phrase is absent".
 pub fn mention_present(
   text: &str,
-  section: Option<&str>,
+  path: Option<&[String]>,
   needle: &str,
 ) -> Result<bool, String> {
   let org = Org::parse(text);
-  let haystack = match section {
-    Some(name) => section_text(&org, name.trim())
-      .ok_or_else(|| format!("section \"{name}\" not found"))?,
+  let haystack = match path {
+    Some(path) => section_text(&org, path)
+      .ok_or_else(|| format!("section \"{}\" not found", path.join(" > ")))?,
     None => document_text(&org),
   };
   Ok(flatten_whitespace(&haystack).contains(&flatten_whitespace(needle)))
 }
 
-/// Reconstruct the inline text of the section whose title equals `want`,
-/// including any subsections (headings deeper than the matched one), or `None`
-/// if no such heading exists.  The section spans from just after its heading to
-/// the next heading at the same level or shallower.
-fn section_text(org: &Org, want: &str) -> Option<String> {
+/// The event range of the body of the heading reached by following `path`:
+/// every event after that heading up to the next heading at its level or
+/// shallower, bounded by the enclosing section.  Each step descends — the next
+/// title must match a heading strictly deeper than its parent and lying within
+/// the parent's body — so a one-element path matches a heading at any level
+/// while a longer path enforces the nesting.  `None` if any step fails.
+fn locate(events: &[Event], path: &[String]) -> Option<Range<usize>> {
+  let mut lo = 0;
+  let mut hi = events.len();
+  let mut parent_level = 0;
+  for title in path {
+    let want = title.trim();
+    let pos = lo
+      + events[lo..hi].iter().position(|event| {
+        matches!(event, Event::Start(Element::Title(t))
+          if t.level > parent_level && t.raw.trim() == want)
+      })?;
+    let Event::Start(Element::Title(heading)) = &events[pos] else {
+      return None;
+    };
+    let level = heading.level;
+    let body_start = pos + 1;
+    hi = events[body_start..hi]
+      .iter()
+      .position(|event| {
+        matches!(event, Event::Start(Element::Title(t)) if t.level <= level)
+      })
+      .map_or(hi, |offset| body_start + offset);
+    lo = body_start;
+    parent_level = level;
+  }
+  Some(lo..hi)
+}
+
+/// Reconstruct the inline text of the section at `path`, including any
+/// subsections (headings deeper than the matched one), or `None` if the path
+/// does not resolve.
+fn section_text(org: &Org, path: &[String]) -> Option<String> {
   let events: Vec<_> = org.iter().collect();
-  let start = events.iter().position(|event| {
-    matches!(event, Event::Start(Element::Title(t)) if t.raw.trim() == want)
-  })?;
-  let Event::Start(Element::Title(heading)) = &events[start] else {
-    return None;
-  };
-  let level = heading.level;
-  let end = events[start + 1..]
-    .iter()
-    .position(|event| {
-      matches!(event, Event::Start(Element::Title(t)) if t.level <= level)
-    })
-    .map_or(events.len(), |offset| start + 1 + offset);
   Some(
-    events[start + 1..end]
+    events[locate(&events, path)?]
       .iter()
       .flat_map(event_text)
       .collect::<Vec<_>>()
@@ -122,18 +145,35 @@ other body
 * Second top
 "#;
 
+  /// Build a section path from string slices, the way the manifest's
+  /// `Vec<String>` arrives at these functions.
+  fn path(parts: &[&str]) -> Vec<String> {
+    parts.iter().map(|part| part.to_string()).collect()
+  }
+
   #[test]
   fn finds_real_headings() {
-    assert!(section_exists(DOC, "Top"));
-    assert!(section_exists(DOC, "History Hygiene"));
-    assert!(!section_exists(DOC, "istory"));
+    assert!(section_exists(DOC, &path(&["Top"])));
+    assert!(section_exists(DOC, &path(&["History Hygiene"])));
+    assert!(!section_exists(DOC, &path(&["istory"])));
+  }
+
+  #[test]
+  fn nested_path_descends_and_rejects_siblings() {
+    // The path descends from a parent into a true subsection.
+    assert!(section_exists(DOC, &path(&["Top", "History Hygiene"])));
+    assert!(section_exists(DOC, &path(&["Top", "History Hygiene", "Nested"])));
+    // "Other" is a sibling of "History Hygiene", not nested under it.
+    assert!(!section_exists(DOC, &path(&["History Hygiene", "Other"])));
+    // A heading that does not exist at that depth fails.
+    assert!(!section_exists(DOC, &path(&["History Hygiene", "Top"])));
   }
 
   #[test]
   fn mention_matches_across_a_line_wrap() {
     assert!(mention_present(
       DOC,
-      Some("History Hygiene"),
+      Some(&path(&["History Hygiene"])),
       "commits that are essentially"
     )
     .unwrap());
@@ -142,13 +182,19 @@ other body
   #[test]
   fn mention_scoped_to_section_includes_subsections_excludes_siblings() {
     // Deeper subsection content is in scope.
-    assert!(
-      mention_present(DOC, Some("History Hygiene"), "nested body").unwrap()
-    );
+    assert!(mention_present(
+      DOC,
+      Some(&path(&["History Hygiene"])),
+      "nested body"
+    )
+    .unwrap());
     // Sibling-section content is not.
-    assert!(
-      !mention_present(DOC, Some("History Hygiene"), "other body").unwrap()
-    );
+    assert!(!mention_present(
+      DOC,
+      Some(&path(&["History Hygiene"])),
+      "other body"
+    )
+    .unwrap());
   }
 
   #[test]
@@ -158,13 +204,18 @@ other body
 
 See [[https://example.com/docs/compliance.org][=docs/compliance.org=]].
 "#;
-    assert!(
-      mention_present(doc, Some("Pointers"), "docs/compliance.org").unwrap()
-    );
+    assert!(mention_present(
+      doc,
+      Some(&path(&["Pointers"])),
+      "docs/compliance.org"
+    )
+    .unwrap());
   }
 
   #[test]
   fn mention_missing_section_is_an_error() {
-    assert!(mention_present(DOC, Some("Nonexistent"), "anything").is_err());
+    assert!(
+      mention_present(DOC, Some(&path(&["Nonexistent"])), "anything").is_err()
+    );
   }
 }

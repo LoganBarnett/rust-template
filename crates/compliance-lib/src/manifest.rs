@@ -45,15 +45,19 @@ pub enum CheckKind {
   /// No stale `rust-template` literals remain (foundation references and the
   /// GitHub URL are expected and excluded).
   NoStaleLiteral,
-  /// `target` (an org document) contains a heading whose text equals
-  /// `section`.
-  SectionExists { target: String, section: String },
+  /// `target` (an org document) contains the heading reached by the `section`
+  /// path: a sequence of nested heading titles, outermost first.  A top-level
+  /// heading is a one-element path; a longer path enforces nesting.
+  SectionExists {
+    target: String,
+    section: Vec<String>,
+  },
   /// `target` contains `contains` as a substring after line-wrapped
   /// paragraphs are flattened; when `section` is set, the search is scoped to
-  /// that section's body.
+  /// the body of the section at that path.
   MentionPresent {
     target: String,
-    section: Option<String>,
+    section: Option<Vec<String>>,
     contains: String,
   },
   /// The foundation revision pinned in `Cargo.lock` equals the one pinned in
@@ -184,7 +188,7 @@ struct RawCheck {
   #[serde(default)]
   path: Option<String>,
   #[serde(default)]
-  section: Option<String>,
+  section: Option<Vec<String>>,
   #[serde(default)]
   contains: Option<String>,
   #[serde(default)]
@@ -239,6 +243,38 @@ fn require_u32(
   })
 }
 
+/// Require a non-empty section-path parameter (a list of heading titles).
+fn require_path(
+  id: &str,
+  kind: &str,
+  name: &str,
+  value: Option<Vec<String>>,
+) -> Result<Vec<String>, ComplianceError> {
+  match value {
+    Some(path) if !path.is_empty() => Ok(path),
+    _ => Err(ComplianceError::ManifestInvalid {
+      id: id.to_string(),
+      message: format!("kind '{kind}' requires a non-empty list '{name}'"),
+    }),
+  }
+}
+
+/// Reject an empty section path while leaving an absent one as `None`.
+fn optional_path(
+  id: &str,
+  kind: &str,
+  name: &str,
+  value: Option<Vec<String>>,
+) -> Result<Option<Vec<String>>, ComplianceError> {
+  match value {
+    Some(path) if path.is_empty() => Err(ComplianceError::ManifestInvalid {
+      id: id.to_string(),
+      message: format!("kind '{kind}' has an empty list '{name}'"),
+    }),
+    other => Ok(other),
+  }
+}
+
 impl RawCheck {
   fn validate(self) -> Result<Check, ComplianceError> {
     let RawCheck {
@@ -282,11 +318,11 @@ impl RawCheck {
       "no-stale-literal" => CheckKind::NoStaleLiteral,
       "section-exists" => CheckKind::SectionExists {
         target: require(&id, &kind, "target", target)?,
-        section: require(&id, &kind, "section", section)?,
+        section: require_path(&id, &kind, "section", section)?,
       },
       "mention-present" => CheckKind::MentionPresent {
         target: require(&id, &kind, "target", target)?,
-        section,
+        section: optional_path(&id, &kind, "section", section)?,
         contains: require(&id, &kind, "contains", contains)?,
       },
       "pins-agree" => CheckKind::PinsAgree,
@@ -427,19 +463,40 @@ mod tests {
             id = "x"
             description = "d"
             kind = "section-exists"
-            target = "llms.org"
-            section = "Template compliance"
+            target = "CHANGELOG.org"
+            section = ["Upcoming", "Added"]
         "#;
     let raw: RawManifest = toml::from_str(toml).unwrap();
     let check = raw.check.into_iter().next().unwrap().validate().unwrap();
     assert_eq!(check.id, "x");
     match check.kind {
       CheckKind::SectionExists { target, section } => {
-        assert_eq!(target, "llms.org");
-        assert_eq!(section, "Template compliance");
+        assert_eq!(target, "CHANGELOG.org");
+        assert_eq!(section, vec!["Upcoming", "Added"]);
       }
       other => panic!("wrong kind: {other:?}"),
     }
+  }
+
+  #[test]
+  fn empty_section_path_is_an_error() {
+    let toml = r#"
+            [[check]]
+            id = "x"
+            description = "d"
+            kind = "section-exists"
+            target = "llms.org"
+            section = []
+        "#;
+    let raw: RawManifest = toml::from_str(toml).unwrap();
+    let error = raw
+      .check
+      .into_iter()
+      .next()
+      .unwrap()
+      .validate()
+      .unwrap_err();
+    assert!(matches!(error, ComplianceError::ManifestInvalid { .. }));
   }
 
   #[test]
