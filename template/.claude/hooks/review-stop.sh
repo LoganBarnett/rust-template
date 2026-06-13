@@ -51,6 +51,20 @@ fi
 #    git (rather than reconstructing edits from the transcript) catches edits
 #    made through Bash/sed/heredoc, not just Edit/Write/MultiEdit.
 qualifying=""
+# The working-tree file list normally comes from git.  Tests set
+# REVIEW_STOP_GIT_FILES_FILE to a fixture holding a newline-separated list, so
+# the gate's behaviour can be exercised without mutating a real working tree.
+if [[ -n "${REVIEW_STOP_GIT_FILES_FILE:-}" ]]; then
+    changed_files="$(cat "$REVIEW_STOP_GIT_FILES_FILE")"
+else
+    changed_files="$(
+        {
+            git -c core.quotepath=false diff --name-only
+            git -c core.quotepath=false diff --cached --name-only
+            git -c core.quotepath=false ls-files --others --exclude-standard
+        } 2>/dev/null | sort --unique
+    )"
+fi
 while IFS= read -r f; do
     [[ -z "$f" ]] && continue
     lower="$(printf '%s' "$f" | tr '[:upper:]' '[:lower:]')"
@@ -59,13 +73,7 @@ while IFS= read -r f; do
         license|*/license|*.license) ;;
         *) qualifying+="$f"$'\n' ;;
     esac
-done < <(
-    {
-        git -c core.quotepath=false diff --name-only
-        git -c core.quotepath=false diff --cached --name-only
-        git -c core.quotepath=false ls-files --others --exclude-standard
-    } 2>/dev/null | sort --unique
-)
+done < <(printf '%s\n' "$changed_files")
 
 if [[ -z "$qualifying" ]]; then
     release
@@ -102,7 +110,11 @@ review="$(jq --slurp --raw-input --argjson skip "$last_prompt_idx" '
     | ([ $all[]
          | select(.type == "assistant")
          | .message.content[]?
-         | select(.type == "tool_use" and .name == "Task"
+         # The subagent-spawning tool is named "Task" in stock Claude Code but
+         # "Agent" in some harnesses; match either so the review is detected
+         # regardless of which one recorded the call.
+         | select(.type == "tool_use"
+                  and (.name == "Task" or .name == "Agent")
                   and (.input.subagent_type == "template-compliance"))
          | .id ]) as $ids
     | ([ $all[]

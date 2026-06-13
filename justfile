@@ -3,7 +3,7 @@
 # This is the single "run everything" entry point invoked by both
 # developers (locally) and CI.  Add new test scripts to this recipe
 # so they are picked up automatically by both environments.
-test: test-integration test-formatters
+test: test-integration test-formatters test-review-stop
 
 # Crate-add and project-emission integration tests.
 #
@@ -22,6 +22,15 @@ test-integration:
 # actually rewrites known-malformed files.
 test-formatters:
     ./test-formatters.sh
+
+# Code-review Stop hook unit test.
+#
+# Drives template/.claude/hooks/review-stop.sh through every release and
+# block branch with crafted transcripts and a faked working-tree file
+# list, guarding in particular the "Agent"-named subagent detection whose
+# regression once wedged a real session.
+test-review-stop:
+    ./test-review-stop.sh
 
 # Audit every registered spawn against the compliance manifest.
 #

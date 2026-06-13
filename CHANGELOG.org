@@ -3,7 +3,19 @@
 
 * Upcoming
 ** Added
+1. The code-review Stop hook (=.claude/hooks/review-stop.sh=) now has a unit
+   test (=test-review-stop.sh=, wired into =just test=) that drives every
+   release and block branch with crafted transcripts and a faked working-tree
+   file list.  The hook gained a =REVIEW_STOP_GIT_FILES_FILE= override so the
+   test can supply that list without mutating a real working tree, and
+   compliance now pins the hook's Task-or-Agent subagent matcher with the
+   =review-gate-hook-matches-agent-tool= check.
 ** Fixes
+1. The code-review Stop hook now recognises the review subagent whether the
+   harness records the tool call as =Task= (stock Claude Code) or =Agent= (some
+   harnesses).  It previously matched only =Task=, so under an =Agent=-naming
+   harness it never saw the passing =template-compliance= review and blocked the
+   turn indefinitely.
 ** Breaking
 * v0.15.0
 ** Added

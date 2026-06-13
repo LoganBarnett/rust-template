@@ -1053,6 +1053,13 @@ target = ".claude/hooks/review-stop.sh"
 contains = "COMPLIANCE:"
 
 [[check]]
+id = "review-gate-hook-matches-agent-tool"
+description = "The review-stop.sh hook detects the review whether the subagent tool is recorded as Task or Agent."
+kind = "file-contains"
+target = ".claude/hooks/review-stop.sh"
+contains = 'or .name == "Agent"'
+
+[[check]]
 id = "review-gate-agent"
 description = "The project ships the template-compliance review subagent."
 kind = "file-present"
