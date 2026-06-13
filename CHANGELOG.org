@@ -3,6 +3,10 @@
 
 * Upcoming
 ** Added
+** Fixes
+** Breaking
+* v0.16.0
+** Added
 1. The code-review Stop hook (=.claude/hooks/review-stop.sh=) now has a unit
    test (=test-review-stop.sh=, wired into =just test=) that drives every
    release and block branch with crafted transcripts and a faked working-tree
@@ -16,7 +20,6 @@
    harnesses).  It previously matched only =Task=, so under an =Agent=-naming
    harness it never saw the passing =template-compliance= review and blocked the
    turn indefinitely.
-** Breaking
 * v0.15.0
 ** Added
 1. The =treefmt= prettier formatter now also formats =*.json=, with
