@@ -3,7 +3,28 @@
 
 * Upcoming
 ** Added
+1. Release runs now build distributable binaries for the crates that opt in.
+   After a publish run tags a release, it dispatches a =release-binaries=
+   workflow that builds each opted-in crate across the mainstream targets
+   (=x86_64=/=aarch64= Linux with both glibc and static musl, =x86_64=/=aarch64=
+   Darwin) and attaches the archives to the tag's GitHub release.  A project
+   that ships no binaries dispatches the workflow and it does nothing.
+2. Each crate now declares whether it ships a release binary via
+   =workspaces.<crate>.release-binary= in =rust-template.json=, and whether (and
+   where) it publishes via an explicit =publish= destination list in its
+   =Cargo.toml= (=publish = ["crates-io"]= or =publish = []=), decoupling
+   publication from privacy.  Three compliance checks keep the release-binaries
+   workflow wiring honest.
+3. CI now builds an emitted project end to end and runs the emission, formatter,
+   and review-stop test scripts in a =template-tests= matrix, and the foundation
+   pin checks are activated rather than dormant.
 ** Fixes
+1. The =MergeConfig= derive now references the consuming crate's =thiserror=
+   rather than emitting a bare =thiserror::= path, so a spawned project's cli
+   and server crates compile.  Those archetypes had never been built in CI; they
+   now compile and pass.
+2. Compliance checks are now owner-agnostic, so a fork of the template passes
+   them without a rename to the upstream owner.
 ** Breaking
 * v0.16.0
 ** Added

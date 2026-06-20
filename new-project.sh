@@ -127,6 +127,17 @@ grep -rl "LoganBarnett/${PROJECT_NAME}" "$OUTPUT" 2>/dev/null \
     sed_inplace "s|LoganBarnett/${PROJECT_NAME}\"|LoganBarnett/rust-template\"|g" "$f"
 done || true
 
+# Write template provenance before adding crates so each crate-add invocation
+# can enrich it with that crate's workspace-inventory entry.  The hashes let
+# subsequent compliance work scope diffs precisely (see docs/compliance.org
+# § "Compliance process").
+TEMPLATE_HASH="$(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")"
+cat > "$OUTPUT/rust-template.json" <<EOF
+{
+  "template_sync_hashes": ["$TEMPLATE_HASH"]
+}
+EOF
+
 # Step 3: Add crates via crate-add.sh.  lib is always included.
 "$SCRIPT_DIR/crate-add.sh" \
     --type lib \
@@ -151,15 +162,6 @@ else
     # Keep CI, branch protection, dependabot, and automerge.
     rm -f "$OUTPUT/.github/workflows/publish.yml"
 fi
-
-# Write template provenance so subsequent compliance work can scope diffs
-# precisely (see docs/compliance.org § "Compliance process").
-TEMPLATE_HASH="$(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")"
-cat > "$OUTPUT/rust-template.json" <<EOF
-{
-  "template_sync_hashes": ["$TEMPLATE_HASH"]
-}
-EOF
 
 # ---------------------------------------------------------------------------
 # Register this spawn in config.json so forward-porting can discover it.

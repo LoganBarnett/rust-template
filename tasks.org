@@ -739,3 +739,17 @@ the panicking variants freely.  This expresses the same policy clippy's narrower
 After this subtask lands the emission CI test is still red — the
 =AppError::Execution= dead-code violation and the =test_version_flag= assertion
 bug remain, each as its own task.
+
+* TODO Trap-clean orphaned temp files in the jq write-and-move idiom
+The =jq ... > "$file.tmp" && mv "$file.tmp" "$file"= pattern protects the
+original file — a failed =jq= skips the =mv= — but the redirect creates and
+truncates =$file.tmp= before =jq= can fail, leaving an orphan temp on error.
+Two sites use this idiom: the workspace-inventory write in =crate-add.sh= (Step
+7) and the spawn registration in =new-project.sh= (=config.json=).
+
+Add an =EXIT=/=ERR= trap that removes the temp so a failed write leaves nothing
+behind, and fix both sites together rather than only the newer one.
+
+Not urgent and not blocking the release-binary work: the original file is never
+clobbered today, only an orphan temp is left.  New work touching this idiom
+should trap-clean inline rather than deferring to this entry.
