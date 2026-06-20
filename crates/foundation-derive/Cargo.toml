@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Derive macros for rust-template-foundation."
+publish = ["crates-io"]
 
 [lib]
 proc-macro = true

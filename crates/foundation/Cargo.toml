@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Shared infrastructure for projects spawned from rust-template."
+publish = ["crates-io"]
 
 [features]
 default = []

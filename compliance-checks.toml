@@ -194,16 +194,16 @@ pointer = "on.pull_request.branches"
 value = "main"
 
 # ---------------------------------------------------------------------------
-# Publish workflow (.github/workflows/publish.yml) — removed from PRIVATE
-# spawns, so every check is gated with when_public = true.
+# Publish workflow (.github/workflows/publish.yml) — emitted in every spawn,
+# public or private.  Whether it publishes to crates.io is governed by each
+# crate's publish destination list, so these checks run unconditionally.
 # ---------------------------------------------------------------------------
 
 [[check]]
 id = "publish-workflow-present"
-description = "The publish workflow file must exist in public spawns."
+description = "The publish workflow file must exist in every spawn."
 kind = "file-present"
 path = ".github/workflows/publish.yml"
-when_public = true
 
 [[check]]
 id = "publish-workflow-uses-reusable"
@@ -212,7 +212,6 @@ kind = "yaml-path-equals"
 target = ".github/workflows/publish.yml"
 pointer = "jobs.publish.uses"
 value = "LoganBarnett/rust-template/.github/workflows/reusable-publish.yml@main"
-when_public = true
 
 [[check]]
 id = "publish-workflow-push-main"
@@ -221,7 +220,6 @@ kind = "yaml-seq-contains"
 target = ".github/workflows/publish.yml"
 pointer = "on.push.branches"
 value = "main"
-when_public = true
 
 [[check]]
 id = "publish-workflow-workflow-dispatch"
@@ -229,7 +227,6 @@ description = "Publish must be dispatchable so dependabot-automerge can fire it 
 kind = "yaml-path-exists"
 target = ".github/workflows/publish.yml"
 pointer = "on.workflow_dispatch"
-when_public = true
 
 [[check]]
 id = "publish-workflow-contents-write"
@@ -238,7 +235,6 @@ kind = "yaml-path-equals"
 target = ".github/workflows/publish.yml"
 pointer = "permissions.contents"
 value = "write"
-when_public = true
 
 [[check]]
 id = "publish-workflow-id-token-write"
@@ -247,7 +243,6 @@ kind = "yaml-path-equals"
 target = ".github/workflows/publish.yml"
 pointer = "permissions.id-token"
 value = "write"
-when_public = true
 
 # ---------------------------------------------------------------------------
 # Branch-protection workflow (.github/workflows/branch-protection.yml) —

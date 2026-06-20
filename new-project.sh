@@ -152,15 +152,14 @@ for crate in "${REQUESTED[@]}"; do
         --project-name "$PROJECT_NAME"
 done
 
-# Step 4: Post-processing.
+# Step 4: Post-processing.  The publish workflow ships in every spawn; whether
+# it reaches crates.io is governed by each crate's publish destination list,
+# not by deleting the file.  A public project publishes its library, so point
+# that crate's destination at crates.io; a private project keeps the empty
+# list, and the workflow's guard skips the crates.io step while still bumping
+# the version, rolling the changelog, and tagging on merge.
 if [[ "$PUBLIC" == true ]]; then
-    # Remove the publish = false guard from the lib crate so it can be
-    # published to crates.io.
-    sed_inplace '/^publish = false$/d' "$OUTPUT/crates/lib/Cargo.toml"
-else
-    # Remove the crates.io publish workflow; it has no use in a private project.
-    # Keep CI, branch protection, dependabot, and automerge.
-    rm -f "$OUTPUT/.github/workflows/publish.yml"
+    sed_inplace 's/^publish = \[\]$/publish = ["crates-io"]/' "$OUTPUT/crates/lib/Cargo.toml"
 fi
 
 # ---------------------------------------------------------------------------
