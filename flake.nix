@@ -55,6 +55,35 @@
       };
     in
       mkRustPackages {inherit self pkgs craneLib crates commonArgs;};
+    # The Linux musl target a given system's static binaries are built for.
+    # Only Linux systems appear here; other systems are absent, and the
+    # packages output skips a musl variant for any system not listed.
+    muslTargetFor = {
+      x86_64-linux = "x86_64-unknown-linux-musl";
+      aarch64-linux = "aarch64-unknown-linux-musl";
+    };
+    # Statically-linked release binaries for a Linux system, built against
+    # musl so the artifact runs on any distribution without a glibc dependency.
+    # The test suite already runs during this release, in both the native
+    # (glibc) build and the workspace test check, so the musl build skips it —
+    # these are the same sources repackaged for a different libc, not new code
+    # to gate.
+    muslPackagesFor = system: let
+      pkgs = pkgsFor system;
+      muslTarget = muslTargetFor.${system};
+      craneLib =
+        (crane.mkLib pkgs).overrideToolchain
+        (p: p.rust-bin.stable.latest.default.override {targets = [muslTarget];});
+      commonArgs = {
+        src = craneLib.cleanCargoSource self;
+        CARGO_BUILD_TARGET = muslTarget;
+        # musl targets link the C runtime statically by default; state it
+        # explicitly so the intent survives a toolchain default change.
+        CARGO_BUILD_RUSTFLAGS = "-C target-feature=+crt-static";
+        doCheck = false;
+      };
+    in
+      (mkRustPackages {inherit self pkgs craneLib crates commonArgs;}).packages;
     devPackages = system: let
       pkgs = pkgsFor system;
       rust = pkgs.rust-bin.stable.latest.default.override {
@@ -107,12 +136,20 @@
     });
 
     # The repo builds its own binaries (currently just compliance-cli) so it
-    # can release them through the same machinery spawned projects use.
+    # can release them through the same machinery spawned projects use.  On
+    # Linux each binary also gets a statically-linked `<name>-musl` variant.
     packages = forAllSystems (
       system: let
         cratePackages = (rustPackagesFor system).packages;
+        muslPackages =
+          if muslTargetFor ? ${system}
+          then
+            nixpkgs.lib.mapAttrs'
+            (name: pkg: nixpkgs.lib.nameValuePair "${name}-musl" pkg)
+            (muslPackagesFor system)
+          else {};
       in
-        cratePackages // {default = cratePackages.compliance-cli;}
+        cratePackages // muslPackages // {default = cratePackages.compliance-cli;}
     );
 
     apps = forAllSystems (system: (rustPackagesFor system).apps);
