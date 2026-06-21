@@ -55,35 +55,7 @@
       };
     in
       mkRustPackages {inherit self pkgs craneLib crates commonArgs;};
-    # The Linux musl target a given system's static binaries are built for.
-    # Only Linux systems appear here; other systems are absent, and the
-    # packages output skips a musl variant for any system not listed.
-    muslTargetFor = {
-      x86_64-linux = "x86_64-unknown-linux-musl";
-      aarch64-linux = "aarch64-unknown-linux-musl";
-    };
-    # Statically-linked release binaries for a Linux system, built against
-    # musl so the artifact runs on any distribution without a glibc dependency.
-    # The test suite already runs during this release, in both the native
-    # (glibc) build and the workspace test check, so the musl build skips it —
-    # these are the same sources repackaged for a different libc, not new code
-    # to gate.
-    muslPackagesFor = system: let
-      pkgs = pkgsFor system;
-      muslTarget = muslTargetFor.${system};
-      craneLib =
-        (crane.mkLib pkgs).overrideToolchain
-        (p: p.rust-bin.stable.latest.default.override {targets = [muslTarget];});
-      commonArgs = {
-        src = craneLib.cleanCargoSource self;
-        CARGO_BUILD_TARGET = muslTarget;
-        # musl targets link the C runtime statically by default; state it
-        # explicitly so the intent survives a toolchain default change.
-        CARGO_BUILD_RUSTFLAGS = "-C target-feature=+crt-static";
-        doCheck = false;
-      };
-    in
-      (mkRustPackages {inherit self pkgs craneLib crates commonArgs;}).packages;
+    mkMuslPackages = import ./nix/lib/mkMuslPackages.nix;
     devPackages = system: let
       pkgs = pkgsFor system;
       rust = pkgs.rust-bin.stable.latest.default.override {
@@ -141,13 +113,10 @@
     packages = forAllSystems (
       system: let
         cratePackages = (rustPackagesFor system).packages;
-        muslPackages =
-          if muslTargetFor ? ${system}
-          then
-            nixpkgs.lib.mapAttrs'
-            (name: pkg: nixpkgs.lib.nameValuePair "${name}-musl" pkg)
-            (muslPackagesFor system)
-          else {};
+        muslPackages = mkMuslPackages {
+          inherit self crane crates system;
+          pkgs = pkgsFor system;
+        };
       in
         cratePackages // muslPackages // {default = cratePackages.compliance-cli;}
     );
@@ -164,6 +133,7 @@
       mkNixosService = import ./nix/lib/mkNixosService.nix;
       mkDarwinService = import ./nix/lib/mkDarwinService.nix;
       mkRustPackages = import ./nix/lib/mkRustPackages.nix;
+      mkMuslPackages = import ./nix/lib/mkMuslPackages.nix;
       cargoHuskyHookSnippet = import ./nix/lib/cargoHuskyHookSnippet.nix;
     };
   };

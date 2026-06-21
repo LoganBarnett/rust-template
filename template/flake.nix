@@ -61,8 +61,14 @@
       rustPackages = foundation.lib.mkRustPackages {
         inherit self pkgs craneLib crates commonArgs;
       };
+      # On Linux each binary also gets a statically-linked `<name>-musl`
+      # variant; on other systems mkMuslPackages returns an empty set.
+      muslPackages = foundation.lib.mkMuslPackages {
+        inherit self pkgs system crates crane;
+      };
       packages =
         rustPackages.packages
+        // muslPackages
         // {
           default =
             craneLib.buildPackage (commonArgs // {pname = "rust-template";});
