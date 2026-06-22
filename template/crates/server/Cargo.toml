@@ -22,6 +22,10 @@ clap = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+# Required by the `MergeConfig` derive: it generates a `ConfigError` that
+# derives thiserror's `Error`, whose expansion resolves `thiserror` in this
+# crate.
+thiserror = { workspace = true }
 # Enables method chaining and reduces superfluous local variables that only
 # exist to name intermediate results.  Prefer .tap() over temporary variables
 # when it improves readability.

@@ -2155,7 +2155,7 @@ dependencies = [
 
 [[package]]
 name = "rust-template-foundation"
-version = "0.1.0"
+version = "0.16.0"
 dependencies = [
  "aide",
  "axum",
@@ -2185,7 +2185,7 @@ dependencies = [
 
 [[package]]
 name = "rust-template-foundation-derive"
-version = "0.1.0"
+version = "0.16.0"
 dependencies = [
  "proc-macro2",
  "quote",
