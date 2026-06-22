@@ -1,3 +1,10 @@
+// Integration tests under tests/ may use the panicking variants (unwrap,
+// expect, panic) freely — see llms.org's "No unwrap or expect" test exemption.
+// clippy's is_in_test heuristic does not recognize tests/ integration tests as
+// test code, so the workspace-level denials reach them and must be allowed at
+// the file level.
+#![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
+
 use std::{path::PathBuf, process::Command};
 
 fn get_binary_path() -> PathBuf {
@@ -61,9 +68,12 @@ fn test_version_flag() {
         output.status.code()
       );
       let stdout = String::from_utf8_lossy(&output.stdout);
+      // clap prints the app name (the `merge_config(app_name = ...)` value,
+      // which also drives env-var prefixes), not the binary name, so the
+      // version line reads "<app> <version>".
       assert!(
-        stdout.contains("rust-template-cli"),
-        "Expected version text to contain 'rust-template-cli', got: {}",
+        stdout.contains("rust-template"),
+        "Expected version text to contain 'rust-template', got: {}",
         stdout
       );
     }
