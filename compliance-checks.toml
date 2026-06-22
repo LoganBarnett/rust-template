@@ -256,6 +256,34 @@ pointer = "permissions.id-token"
 value = "write"
 
 # ---------------------------------------------------------------------------
+# Release-binaries workflow (.github/workflows/release-binaries.yml) — emitted
+# in every spawn, dispatched by the publish run after it tags a release.
+# Whether it produces any artifact is governed by each crate's release-binary
+# flag in rust-template.json, so its presence is checked unconditionally.
+# ---------------------------------------------------------------------------
+
+[[check]]
+id = "release-binaries-workflow-present"
+description = "The release-binaries workflow file must exist in every spawn."
+kind = "file-present"
+path = ".github/workflows/release-binaries.yml"
+
+[[check]]
+id = "release-binaries-workflow-uses-reusable"
+description = "The release-binaries job must delegate to the rust-template reusable workflow."
+kind = "yaml-path-contains"
+target = ".github/workflows/release-binaries.yml"
+pointer = "jobs.release-binaries.uses"
+contains = "rust-template/.github/workflows/reusable-release-binaries.yml@main"
+
+[[check]]
+id = "release-binaries-workflow-dispatch"
+description = "Release-binaries must be dispatchable so the publish run can fire it after tagging."
+kind = "yaml-path-exists"
+target = ".github/workflows/release-binaries.yml"
+pointer = "on.workflow_dispatch"
+
+# ---------------------------------------------------------------------------
 # Branch-protection workflow (.github/workflows/branch-protection.yml) —
 # always emitted.
 # ---------------------------------------------------------------------------

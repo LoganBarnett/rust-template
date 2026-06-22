@@ -11,6 +11,13 @@ on:
       changelog-file:
         type: string
         default: "CHANGELOG.org"
+      release-binaries-workflow:
+        description: >-
+          File name of the release-binaries workflow to dispatch after the
+          release is tagged.  Set to an empty string to skip the dispatch (e.g.
+          a project that ships no binaries, though that workflow no-ops anyway).
+        type: string
+        default: "release-binaries.yml"
 
 jobs:
   publish:
@@ -140,3 +147,18 @@ jobs:
           git tag --annotate "v${{ steps.bump.outputs.version }}" \
             --message "Release v${{ steps.bump.outputs.version }}"
           git push origin "v${{ steps.bump.outputs.version }}"
+
+      # Dispatch the release-binaries build for the tag just pushed.  A tag
+      # pushed with GITHUB_TOKEN does not trigger downstream workflows, so the
+      # build is kicked off explicitly via workflow_dispatch (the cascade-exempt
+      # event), passing the tag to check out and build.  Skipped when the
+      # consumer set the workflow name to empty.
+      - name: Dispatch release-binaries
+        if: inputs.release-binaries-workflow != ''
+        run: |
+          gh workflow run "$WORKFLOW" --repo "$REPO" --ref main \
+            --field tag="v${{ steps.bump.outputs.version }}"
+        env:
+          REPO: ${{ github.repository }}
+          WORKFLOW: ${{ inputs.release-binaries-workflow }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,24 @@
+name: Release binaries
+
+# This repo's own release-binaries caller, dispatched by its publish run after
+# tagging.  Self-references the reusable workflow via the local path (rather
+# than LoganBarnett/rust-template/...@main) so a change to it is tested against
+# the SHA being released, not whatever is on main — the same contract ci.yml
+# uses.
+# Spawned projects use the @main form (see template/.github/workflows).
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The release tag to build binaries for (e.g. v0.17.0).
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release-binaries:
+    uses: ./.github/workflows/reusable-release-binaries.yml
+    with:
+      tag: ${{ inputs.tag }}

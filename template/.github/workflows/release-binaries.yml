@@ -1,0 +1,24 @@
+name: Release binaries
+
+# Dispatched by a publish run after it tags a release — a tag pushed by
+# GITHUB_TOKEN does not trigger workflows on its own, so the publish job invokes
+# this one explicitly via workflow_dispatch.  It builds the tag's release
+# binaries (those whose crate is marked release-binary in rust-template.json)
+# and attaches them to the tag's GitHub release.  A project with no release
+# binaries dispatches this and it does nothing.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The release tag to build binaries for (e.g. v0.17.0).
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release-binaries:
+    uses: LoganBarnett/rust-template/.github/workflows/reusable-release-binaries.yml@main
+    with:
+      tag: ${{ inputs.tag }}

@@ -1,0 +1,145 @@
+name: Release binaries (reusable)
+
+# Builds the release binaries for a tag and attaches them to that tag's GitHub
+# release.  Invoked by a thin consumer wrapper that a publish run dispatches
+# after it creates the tag (a tag pushed by GITHUB_TOKEN does not itself trigger
+# downstream workflows, so the publish job dispatches this one explicitly — the
+# same workflow_dispatch escape hatch reusable-dependabot-automerge.yml uses).
+#
+# Which crates ship a binary comes from each project's rust-template.json
+# `workspaces.<crate>.release-binary` flags, so the same workflow serves a
+# project with one binary or several, and one with none does nothing.
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: The release tag to build and attach binaries for (e.g. v0.17.0).
+        required: true
+        type: string
+
+jobs:
+  # Read the binary set from rust-template.json so the build matrix and the
+  # whole workflow can short-circuit when a project ships no release binaries.
+  crates:
+    name: Resolve release binaries
+    runs-on: ubuntu-latest
+    outputs:
+      list: ${{ steps.read.outputs.list }}
+      any: ${{ steps.read.outputs.any }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+
+      - id: read
+        run: |
+          list=$(jq --compact-output \
+            '[.workspaces | to_entries[]
+              | select(.value."release-binary") | .key]' \
+            rust-template.json)
+          echo "list=$list" >> "$GITHUB_OUTPUT"
+          if [ "$list" = "[]" ]; then
+            echo "any=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "any=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # Create the release the matrix uploads into, once, before any build starts so
+  # the concurrent upload steps have a release to attach to.  Idempotent: a
+  # re-run against an existing release is a no-op rather than a failure.
+  release:
+    name: Create release
+    needs: crates
+    if: needs.crates.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+
+      - name: Create the release if absent
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; reusing it."
+          else
+            gh release create "$TAG" --title "$TAG" --generate-notes
+          fi
+        env:
+          TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # One job per (target, crate).  Linux targets build both a glibc and a static
+  # musl artifact; macOS builds the native binary.  aarch64-linux uses GitHub's
+  # ARM runner.  fail-fast is off so one target's failure does not cancel the
+  # rest, and each crate × target surfaces as its own job.
+  build:
+    name: ${{ matrix.crate }} (${{ matrix.target.label }})
+    needs: [crates, release]
+    if: needs.crates.outputs.any == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        crate: ${{ fromJSON(needs.crates.outputs.list) }}
+        target:
+          - { system: x86_64-linux, runner: ubuntu-latest, variant: gnu, label: x86_64-linux-gnu }
+          - { system: x86_64-linux, runner: ubuntu-latest, variant: musl, label: x86_64-linux-musl }
+          - { system: aarch64-linux, runner: ubuntu-24.04-arm, variant: gnu, label: aarch64-linux-gnu }
+          - { system: aarch64-linux, runner: ubuntu-24.04-arm, variant: musl, label: aarch64-linux-musl }
+          - { system: x86_64-darwin, runner: macos-13, variant: native, label: x86_64-darwin }
+          - { system: aarch64-darwin, runner: macos-14, variant: native, label: aarch64-darwin }
+    runs-on: ${{ matrix.target.runner }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+
+      - uses: DeterminateSystems/nix-installer-action@main
+
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+
+      # The shipped Cargo.lock may record the foundation git dependency as a
+      # stale local path with no revision, which a sandboxed `nix build` cannot
+      # resolve offline.  Relocking records a concrete revision crane vendors
+      # through a fixed-output derivation, so the build needs no network of its
+      # own.
+      - name: Relock the dependency graph
+        run: nix develop --command cargo generate-lockfile
+
+      # The musl variant is the `<crate>-musl` package; gnu and native are the
+      # plain `<crate>` package.  `--print-out-paths` yields the store path; the
+      # single binary under bin/ is whatever name the crate declares.
+      - name: Build and package
+        id: package
+        run: |
+          attr="${{ matrix.crate }}"
+          if [ "${{ matrix.target.variant }}" = "musl" ]; then
+            attr="${attr}-musl"
+          fi
+          out=$(nix build \
+            ".#packages.${{ matrix.target.system }}.${attr}" \
+            --no-link --print-out-paths)
+          binary=$(ls "$out/bin")
+          asset="${binary}-${{ inputs.tag }}-${{ matrix.target.label }}.tar.gz"
+          # Run the archive and checksum tools from the devShell so coreutils is
+          # the same on macOS and Linux (the host `shasum`/`sha256sum` split
+          # would otherwise need per-OS handling).
+          nix develop --command bash -c "
+            tar --create --gzip --file '$asset' --directory '$out/bin' '$binary'
+            sha256sum '$asset' > '$asset.sha256'
+          "
+          echo "asset=$asset" >> "$GITHUB_OUTPUT"
+
+      - name: Upload to the release
+        run: |
+          gh release upload "$TAG" \
+            "${{ steps.package.outputs.asset }}" \
+            "${{ steps.package.outputs.asset }}.sha256" \
+            --clobber
+        env:
+          TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
