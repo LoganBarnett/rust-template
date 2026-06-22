@@ -17,6 +17,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=script-common.sh
+source "$SCRIPT_DIR/script-common.sh"
 TMPBASE="$(mktemp --directory)"
 SPAWN="$TMPBASE/format-coverage-test"
 SPAWN_NAME="format-coverage-test"
@@ -94,6 +96,12 @@ echo "Spawning test project at $SPAWN ..."
     --crates cli \
     --description "format coverage test scratch" \
     > /dev/null
+
+# Point the spawn's foundation at this checkout before any flake evaluation.
+# The emitted flake calls foundation library functions (e.g. mkMuslPackages)
+# that exist on the branch under test but not on published main, so a spawn left
+# at the github URL fails to evaluate `.#packages` against the older lib.
+localize_foundation "$SPAWN"
 
 # ── Assertion 1: the spawn's emitted code is already treefmt-clean ──────
 # Catches regressions where a template file drifts out of formatter

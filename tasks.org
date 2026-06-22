@@ -827,3 +827,29 @@ behind, and fix both sites together rather than only the newer one.
 Not urgent and not blocking the release-binary work: the original file is never
 clobbered today, only an orphan temp is left.  New work touching this idiom
 should trap-clean inline rather than deferring to this entry.
+
+* TODO Make the template fork-aware: derive owner (and host) from the remote
+
+The template hardcodes =LoganBarnett/rust-template= in ~30 places — the emitted
+=flake.nix=, =Cargo.toml=, =workspace-deps.toml=, and workflow callers, plus the
+generation scripts and the compliance manifest.  A fork (or a non-GitHub mirror;
+this repo's own origin is =gitea.proton:logan/rust-template=) cannot use the
+template as-is: its spawns reference the upstream author's repository rather
+than their own.
+
+The owner — and the host — are derivable from =git remote get-url origin= (the
+path component before =/rust-template=, and the host).  Spawn emission should
+substitute them into every foundation/cargo/flake reference so a spawn points at
+the rust-template it was generated from.  The compliance checker should likewise
+derive the owner from its =--template-dir= remote and verify against it, rather
+than the owner being baked into =compliance-checks.toml=.
+
+Compliance was already loosened to be owner-agnostic (the foundation and
+reusable-workflow checks match on the repo name, not =<owner>/=), so a fork's
+spawns pass today; this entry is the remaining, larger half — making emission
+emit the fork's references in the first place.
+
+Out of scope / harder: the GitHub-Actions =uses: <owner>/<repo>/...@main=
+workflow callers are GitHub-specific and cannot point at a gitea-hosted
+rust-template at all; a non-GitHub forge needs a different reusable-workflow
+mechanism entirely, which is a separate problem from the cargo/flake refs.

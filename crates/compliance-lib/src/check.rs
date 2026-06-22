@@ -1201,7 +1201,11 @@ fn stale_literals(dir: &Path) -> Vec<String> {
     let stale = text.lines().any(|line| {
       line.contains("rust-template")
         && !line.contains("rust-template-foundation")
-        && !line.contains("LoganBarnett/rust-template")
+        // Any `<owner>/rust-template` reference — the foundation git URL or
+        // flake input under any fork's owner — and a `file://` path to an
+        // on-disk rust-template both spell "/rust-template"; neither is a stale
+        // substitution.  See tasks.org for full fork support.
+        && !line.contains("/rust-template")
     });
     if stale {
       offenders.push(relative_display(dir, &path));
