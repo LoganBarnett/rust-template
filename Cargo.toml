@@ -104,3 +104,13 @@ question_mark = "warn"
 single_match_else = "warn"
 collapsible_match = "warn"
 redundant_pattern_matching = "warn"
+
+# This workspace ships compliance-cli as a release artifact, so optimize the
+# release profile for the end user rather than for build speed.  lto and a
+# single codegen unit let the optimizer work across crate boundaries (faster
+# runtime, smaller code), and strip removes symbols to shrink the download.
+# opt-level stays at the default 3 — tuned for speed, not size.
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
