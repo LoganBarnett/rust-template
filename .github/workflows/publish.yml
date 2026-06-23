@@ -18,6 +18,11 @@ permissions:
   # so the permission has to be declared by the caller — the
   # reusable workflow cannot grant it to itself.
   id-token: write
+  # Granted so the publish job's post-tag step can dispatch the
+  # release-binaries build.  Creating a workflow_dispatch event through
+  # the API requires actions: write; contents and id-token do not imply
+  # it, and a caller cannot grant the reusable job more than it holds.
+  actions: write
 
 jobs:
   publish:

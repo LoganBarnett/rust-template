@@ -4,6 +4,10 @@
 * Upcoming
 ** Added
 ** Fixes
+1. Release binaries are now actually built and attached to each release.  The
+   pipeline announced in v0.17.0 never ran to completion, so those releases
+   carry no binaries; opted-in crates now produce their archives on the release
+   as intended.
 ** Breaking
 * v0.17.0
 ** Added
