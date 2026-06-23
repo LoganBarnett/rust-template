@@ -31,6 +31,12 @@ jobs:
       # revokes that token when the job ends.  No long-lived secret
       # is involved.
       id-token: write
+      # Required so the post-tag step can dispatch the release-binaries
+      # build: a workflow_dispatch event through the API needs actions:
+      # write, which contents and id-token do not imply.  The caller's
+      # workflow-level permissions must grant it too, since a reusable
+      # job's token cannot exceed what the caller holds.
+      actions: write
     steps:
       - uses: actions/checkout@v4
         with:

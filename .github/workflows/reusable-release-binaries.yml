@@ -102,14 +102,13 @@ jobs:
 
       - uses: DeterminateSystems/magic-nix-cache-action@main
 
-      # The shipped Cargo.lock may record the foundation git dependency as a
-      # stale local path with no revision, which a sandboxed `nix build` cannot
-      # resolve offline.  Relocking records a concrete revision crane vendors
-      # through a fixed-output derivation, so the build needs no network of its
-      # own.
-      - name: Relock the dependency graph
-        run: nix develop --command cargo generate-lockfile
-
+      # Build straight from the committed Cargo.lock.  Crane vendors the locked
+      # dependencies through a fixed-output derivation, so the build needs no
+      # network of its own.  Deliberately no `cargo generate-lockfile` here:
+      # regenerating the lockfile re-resolves every git dependency to its latest
+      # commit, silently bumping deps past breaking API changes so the build
+      # then fails against source pinned to the older, locked revision.
+      #
       # The musl variant is the `<crate>-musl` package; gnu and native are the
       # plain `<crate>` package.  `--print-out-paths` yields the store path; the
       # single binary under bin/ is whatever name the crate declares.
