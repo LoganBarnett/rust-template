@@ -15,23 +15,33 @@ jobs:
   ci:
     uses: ./.github/workflows/reusable-ci.yml
 
-  # Formatter coverage lives in this repo's CI rather than in
-  # `reusable-ci.yml` because it is a property of rust-template itself,
-  # not of spawned projects.  It exercises `new-project.sh` to produce
-  # a fresh spawn, then verifies every formatter declared in the
-  # template's `treefmt.toml` is on PATH inside the spawn's devShell
-  # and actually rewrites a known-malformed file.  Half-failures (a
-  # formatter declared but not in the devShell, or vice versa) both
-  # surface as a failed assertion.
+  # rust-template's own test scripts, distinct from `reusable-ci.yml` (which
+  # tests the workspace crates): these exercise the project generator
+  # (`new-project.sh`, `crate-add.sh`) and rust-template-specific tooling, so
+  # they are a property of this repo rather than of spawned projects and live
+  # here instead of in the reusable workflow.  The same scripts run locally via
+  # `just test`; both lists must gain a script for it to gate everywhere.
   #
-  # `install-nix-action` plus `magic-nix-cache-action` get treefmt and
-  # the per-language formatter binaries from the nixpkgs binary cache
-  # rather than reinstalling each formatter via apt/cargo/npm — that
-  # divergence between local-via-Nix and CI-via-ad-hoc is the class of
-  # bug the template is built to capture as code in the first place.
-  formatter-coverage:
-    name: Formatter coverage
+  # Each runs inside the rust-template devShell: the scripts do not bootstrap
+  # their own environment — they expect the caller to provide treefmt, cargo,
+  # and the tools `new-project.sh` needs.  `install-nix-action` plus
+  # `magic-nix-cache-action` pull those from the nixpkgs binary cache rather
+  # than reinstalling each via apt/cargo/npm — that local-vs-CI divergence is
+  # the class of bug the template is built to capture as code.
+  #
+  # `fail-fast: false` so one failing script does not cancel the others, and
+  # each surfaces as its own named check.
+  template-tests:
+    name: Template test (${{ matrix.script }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        script:
+          - test-crate-add.sh
+          - test-formatters.sh
+          - ci-test.sh
+          - test-review-stop.sh
     steps:
       - uses: actions/checkout@v4
 
@@ -39,9 +49,5 @@ jobs:
 
       - uses: DeterminateSystems/magic-nix-cache-action@main
 
-      # Run inside the rust-template devShell so `new-project.sh` (which
-      # the test invokes) has `treefmt` and the per-language formatter
-      # binaries on PATH -- the script itself does not bootstrap into a
-      # devShell; it expects the caller to have set up their environment.
-      - name: Run formatter-coverage test
-        run: nix develop --command ./test-formatters.sh
+      - name: Run ${{ matrix.script }}
+        run: nix develop --command ./${{ matrix.script }}

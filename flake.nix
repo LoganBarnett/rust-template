@@ -29,7 +29,34 @@
       (import rust-overlay)
     ];
     pkgsFor = system: import nixpkgs {inherit overlays system;};
-    packages = system: let
+    mkRustPackages = import ./nix/lib/mkRustPackages.nix;
+    # Binary crates this repo ships as release artifacts.  Mirrors the
+    # release-binary = true entries in rust-template.json: compliance-cli is the
+    # only binary; the foundation crates and compliance-lib are libraries.
+    crates = {
+      compliance-cli = {
+        name = "rust-template-compliance-cli";
+        binary = "rust-template-compliance-cli";
+      };
+    };
+    # Crane-built workspace binaries for one system, assembled the same way
+    # template/flake.nix builds a spawned project's cli/server so the repo
+    # dogfoods its own release-binary machinery.
+    rustPackagesFor = system: let
+      pkgs = pkgsFor system;
+      craneLib =
+        (crane.mkLib pkgs).overrideToolchain
+        (p: p.rust-bin.stable.latest.default);
+      commonArgs = {
+        src = craneLib.cleanCargoSource self;
+        # mkRustPackages chooses the test scope per crate (a bin-only crate
+        # would error on `cargo test --lib`) and adds a workspace-wide test
+        # check, so no cargoTestExtraArgs is set here.
+      };
+    in
+      mkRustPackages {inherit self pkgs craneLib crates commonArgs;};
+    mkMuslPackages = import ./nix/lib/mkMuslPackages.nix;
+    devPackages = system: let
       pkgs = pkgsFor system;
       rust = pkgs.rust-bin.stable.latest.default.override {
         extensions = [
@@ -76,9 +103,29 @@
   in {
     devShells = forAllSystems (system: {
       default = (pkgsFor system).mkShell {
-        buildInputs = packages system;
+        buildInputs = devPackages system;
       };
     });
+
+    # The repo builds its own binaries (currently just compliance-cli) so it
+    # can release them through the same machinery spawned projects use.  On
+    # Linux each binary also gets a statically-linked `<name>-musl` variant.
+    packages = forAllSystems (
+      system: let
+        cratePackages = (rustPackagesFor system).packages;
+        muslPackages = mkMuslPackages {
+          inherit self crane crates system;
+          pkgs = pkgsFor system;
+        };
+      in
+        cratePackages // muslPackages // {default = cratePackages.compliance-cli;}
+    );
+
+    apps = forAllSystems (system: (rustPackagesFor system).apps);
+
+    # `nix flake check` builds these, which runs the workspace's unit tests
+    # (every member's lib and bin tests, integration tests excluded).
+    checks = forAllSystems (system: (rustPackagesFor system).checks);
 
     # Reusable helpers for spawned projects.  Imported via:
     #   inputs.foundation.lib.mkNixosService { name = "my-app-server"; self = self; }
@@ -86,6 +133,7 @@
       mkNixosService = import ./nix/lib/mkNixosService.nix;
       mkDarwinService = import ./nix/lib/mkDarwinService.nix;
       mkRustPackages = import ./nix/lib/mkRustPackages.nix;
+      mkMuslPackages = import ./nix/lib/mkMuslPackages.nix;
       cargoHuskyHookSnippet = import ./nix/lib/cargoHuskyHookSnippet.nix;
     };
   };

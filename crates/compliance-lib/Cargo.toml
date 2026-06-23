@@ -5,7 +5,7 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-publish = false
+publish = []
 
 [dependencies]
 # Shared config-staging, logging, and error infrastructure the engine builds on.

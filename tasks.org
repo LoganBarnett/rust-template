@@ -49,6 +49,7 @@ Cross-reference: depends on the existing [[*Publish crates for public projects][
 for the =publish.yml= workflow the trust configs authorize.
 
 * TODO Backfill trusted-publishing across existing public projects
+
 Walk every public project in the fleet and run =trusted-publish-setup.sh=
 against it to claim crate names and register trust configs.  Current fleet is
 about 22 projects and growing.
@@ -60,6 +61,79 @@ spawned without =--public= despite being intended as public, so the manifest is
 known-stale in places.  Reconcile each project's manifest entry against live
 GitHub visibility before running the setup script — fix the manifest where it
 diverges so future forward-ports treat the project correctly.
+
+* TODO Reliable launchd reload for Darwin user-agent services
+
+nix-darwin's activation reloads launchd units with the legacy =launchctl load
+-w= / =unload= API (=modules/system/launchd.nix=), which is unreliable for *user
+agents* on modern macOS: the agent lives in the user's =gui/<uid>= (Aqua)
+domain, but activation runs as root, and that domain only exists while the user
+is logged into a GUI session.  The net effect is that a deployed plist change
+gets written but the running agent is never cycled — it only picks up the change
+on the next reboot/login.
+
+Root/system daemons (the =system= domain, addressable directly from the root
+activation) are largely unaffected, which is why =nix/lib/mkDarwinService.nix= —
+which emits root services — does not hit this.  It surfaced in sytter, which
+hand-rolls a =launchd.user.agents= agent: every deploy needed a manual
+=launchctl bootout gui/$uid/<label> && launchctl bootstrap gui/$uid <plist>=.
+
+If the template grows a user-agent Darwin service helper (or sytter-style agents
+adopt =mkDarwinService=), bake in a =postActivation= reload shim that does the
+modern =bootout= + =bootstrap gui/<uid>= dance, guarded on an active GUI session
+for the target user.  Leave root/system services on the standard path.
+
+Use the service's configured health endpoint as the liveness signal — the helper
+already knows it (it drives the optional healthcheck agent).  After =bootout=,
+poll the health URL until it stops answering (service genuinely down) before
+=bootstrap=; after =bootstrap=, poll until it returns healthy to confirm the
+reload actually landed, and fail the activation loudly if it does not — rather
+than fire-and-forget leaving a dead agent (the exact failure mode that hid
+sytter's breakage).  Caveats: =Input/output error (5)= is launchd finishing its
+domain teardown, which can lag process exit slightly, so still wrap =bootstrap=
+in a bounded retry; and when no health URL is configured, fall back to a
+TCP-connect (or =launchctl print= state) probe.
+
+The general fix belongs upstream (nix-darwin#1255 "Broken LaunchAgents with
+launchctl 2.0"; #1199 "manually removed units not re-added"); the template shim
+is the pragmatic local workaround until that lands.
+
+* TODO Health check is mishandled in the Darwin service helper (3 bugs)
+=/healthz= is a guaranteed base infrastructure route in every foundation server
+(=crates/foundation/src/server/runner.rs:347=, exercised by
+=crates/foundation/tests/server_integration.rs=), but the Nix service layer
+mishandles it three ways.  Surfaced while wiring a launchd reload that wants a
+reliable liveness signal (see the user-agent reload task above).
+
+** TODO Fix the health-check URL path: =/health= -> =/healthz=
+Every health reference in =nix/= and =template/nix/= points at =/health= (8
+occurrences); the server only serves =/healthz=.  So =healthCheck.url='s default
+(=http://127.0.0.1:${cfg.port}/health=) and the module examples all
+404. The opt-in default (=enable = false=) is the only reason this has not
+     bitten: enable the agent with the default URL and it curls a 404, marks the
+     server unhealthy, kills it, and =KeepAlive= crash-loops it.
+- Point the default and all examples at =/healthz=.
+- Forward-port the corrected default to spawned projects that inherited the
+  broken =/health= (same fleet-walk shape as the trusted-publishing backfill).
+
+** TODO Remove the =healthCheck.enable= option — always run the check
+=healthCheck.enable= is a =mkEnableOption= (default =false=), so the liveness
+check is opt-in even though =/healthz= is always present.  Remove the option
+entirely (not merely default it true): there is no good reason to run a server
+without its health check — it costs virtually nothing, and a deviation that
+strong implies you are off the template's rails and would want an ejection
+mechanism anyway (which does not exist yet; the template is still /compacting/
+toward "why would you not want this when it comes for free?").  Baking the
+assumption in also lets deployment machinery rely on it unconditionally
+(k8s-style =/healthz= expectations, even when not on k8s).
+
+** TODO Reconcile NixOS health-check parity
+=mkNixosService= has no health-check agent at all — the curl-and-kill agent is
+Darwin-only.  This is plausibly fine (systemd has its own watchdog/restart
+idioms, and the =/healthz= /endpoint/ exists on both platforms regardless), so
+resolve it deliberately: either add an equivalent always-on liveness check for
+NixOS (systemd watchdog, or a timer probing =/healthz=), or document that the
+endpoint is the contract and systemd owns restart on Linux.
 
 * DONE Reusable publish workflow should create an annotated tag per release
 The reusable publish workflow (=reusable-publish.yml=) does version bump →
@@ -739,3 +813,43 @@ the panicking variants freely.  This expresses the same policy clippy's narrower
 After this subtask lands the emission CI test is still red — the
 =AppError::Execution= dead-code violation and the =test_version_flag= assertion
 bug remain, each as its own task.
+
+* TODO Trap-clean orphaned temp files in the jq write-and-move idiom
+The =jq ... > "$file.tmp" && mv "$file.tmp" "$file"= pattern protects the
+original file — a failed =jq= skips the =mv= — but the redirect creates and
+truncates =$file.tmp= before =jq= can fail, leaving an orphan temp on error.
+Two sites use this idiom: the workspace-inventory write in =crate-add.sh= (Step
+7) and the spawn registration in =new-project.sh= (=config.json=).
+
+Add an =EXIT=/=ERR= trap that removes the temp so a failed write leaves nothing
+behind, and fix both sites together rather than only the newer one.
+
+Not urgent and not blocking the release-binary work: the original file is never
+clobbered today, only an orphan temp is left.  New work touching this idiom
+should trap-clean inline rather than deferring to this entry.
+
+* TODO Make the template fork-aware: derive owner (and host) from the remote
+
+The template hardcodes =LoganBarnett/rust-template= in ~30 places — the emitted
+=flake.nix=, =Cargo.toml=, =workspace-deps.toml=, and workflow callers, plus the
+generation scripts and the compliance manifest.  A fork (or a non-GitHub mirror;
+this repo's own origin is =gitea.proton:logan/rust-template=) cannot use the
+template as-is: its spawns reference the upstream author's repository rather
+than their own.
+
+The owner — and the host — are derivable from =git remote get-url origin= (the
+path component before =/rust-template=, and the host).  Spawn emission should
+substitute them into every foundation/cargo/flake reference so a spawn points at
+the rust-template it was generated from.  The compliance checker should likewise
+derive the owner from its =--template-dir= remote and verify against it, rather
+than the owner being baked into =compliance-checks.toml=.
+
+Compliance was already loosened to be owner-agnostic (the foundation and
+reusable-workflow checks match on the repo name, not =<owner>/=), so a fork's
+spawns pass today; this entry is the remaining, larger half — making emission
+emit the fork's references in the first place.
+
+Out of scope / harder: the GitHub-Actions =uses: <owner>/<repo>/...@main=
+workflow callers are GitHub-specific and cannot point at a gitea-hosted
+rust-template at all; a non-GitHub forge needs a different reusable-workflow
+mechanism entirely, which is a separate problem from the cargo/flake refs.

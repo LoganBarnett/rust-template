@@ -3,7 +3,7 @@ use rust_template_foundation::config::{
   credential_secret_path, ConfigFileError,
 };
 use rust_template_foundation::server::runner::{ServerApp, ServerRunConfig};
-use rust_template_foundation::MergeConfig;
+use rust_template_foundation::{CliApp, MergeConfig};
 use rust_template_lib::{LogFormat, LogLevel};
 use serde::Deserialize;
 use std::path::PathBuf;

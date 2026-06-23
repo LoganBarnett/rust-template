@@ -14,8 +14,10 @@ use tracing::info;
 
 #[derive(Debug, Error)]
 enum AppError {
-  #[error("Application execution failed: {0}")]
-  Execution(String),
+  // Add semantic error variants for your application's failure modes — name
+  // each for what failed and carry context, e.g.:
+  //   #[error("could not read the input file: {0}")]
+  //   InputFileRead(#[from] std::io::Error),
 }
 
 #[foundation_main]

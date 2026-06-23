@@ -1,3 +1,10 @@
+// Integration tests under tests/ may use the panicking variants (unwrap,
+// expect, panic) freely — see llms.org's "No unwrap or expect" test exemption.
+// clippy's is_in_test heuristic does not recognize tests/ integration tests as
+// test code, so the workspace-level denials reach them and must be allowed at
+// the file level.
+#![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
+
 use std::path::PathBuf;
 
 // ── config tests ────────────────────────────────────────────────────

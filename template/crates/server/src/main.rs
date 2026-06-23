@@ -13,7 +13,7 @@ use std::process::ExitCode;
 
 #[foundation_main]
 pub async fn main(
-  config: Config,
+  _config: Config,
   server: Server,
 ) -> Result<ExitCode, rust_template_foundation::ServerError> {
   let server = server.with_state(|base| AppState { base });

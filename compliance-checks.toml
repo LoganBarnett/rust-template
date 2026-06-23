@@ -89,14 +89,22 @@ id = "ci-uses-reusable-workflows"
 description = "CI calls the reusable workflows from rust-template."
 kind = "file-contains"
 target = ".github/workflows/ci.yml"
-contains = "LoganBarnett/rust-template/"
+# The owner is omitted so a fork's spawns (which call their own
+# fork/rust-template reusable workflows) pass too; only the repo name and the
+# reusable-workflow path are fixed.  See tasks.org for full fork support.
+contains = "rust-template/"
 
 [[check]]
 id = "flake-foundation-input"
 description = "The flake references rust-template as its foundation input."
 kind = "file-contains"
 target = "flake.nix"
-contains = "LoganBarnett/rust-template"
+# Match the bare project name rather than the GitHub URL: a spawn normally
+# points its foundation input at github:LoganBarnett/rust-template, but a test
+# (or a local-development checkout) may point it at a file:// path to an
+# on-disk rust-template instead.  Both spell "rust-template" in the input URL,
+# and that string appears nowhere else in a spawn's flake.nix.
+contains = "rust-template"
 
 [[check]]
 id = "server-foundation-auth-feature"
@@ -172,10 +180,13 @@ kind = "pins-current"
 [[check]]
 id = "ci-workflow-uses-reusable"
 description = "The ci job must delegate to the rust-template reusable-ci workflow."
-kind = "yaml-path-equals"
+kind = "yaml-path-contains"
 target = ".github/workflows/ci.yml"
 pointer = "jobs.ci.uses"
-value = "LoganBarnett/rust-template/.github/workflows/reusable-ci.yml@main"
+# Owner-agnostic (a fork delegates to its own copy); the repo name and
+# reusable-workflow path are still required.  See tasks.org for full fork
+# support.
+contains = "rust-template/.github/workflows/reusable-ci.yml@main"
 
 [[check]]
 id = "ci-workflow-push-main"
@@ -194,25 +205,24 @@ pointer = "on.pull_request.branches"
 value = "main"
 
 # ---------------------------------------------------------------------------
-# Publish workflow (.github/workflows/publish.yml) — removed from PRIVATE
-# spawns, so every check is gated with when_public = true.
+# Publish workflow (.github/workflows/publish.yml) — emitted in every spawn,
+# public or private.  Whether it publishes to crates.io is governed by each
+# crate's publish destination list, so these checks run unconditionally.
 # ---------------------------------------------------------------------------
 
 [[check]]
 id = "publish-workflow-present"
-description = "The publish workflow file must exist in public spawns."
+description = "The publish workflow file must exist in every spawn."
 kind = "file-present"
 path = ".github/workflows/publish.yml"
-when_public = true
 
 [[check]]
 id = "publish-workflow-uses-reusable"
 description = "The publish job must delegate to the rust-template reusable-publish workflow."
-kind = "yaml-path-equals"
+kind = "yaml-path-contains"
 target = ".github/workflows/publish.yml"
 pointer = "jobs.publish.uses"
-value = "LoganBarnett/rust-template/.github/workflows/reusable-publish.yml@main"
-when_public = true
+contains = "rust-template/.github/workflows/reusable-publish.yml@main"
 
 [[check]]
 id = "publish-workflow-push-main"
@@ -221,7 +231,6 @@ kind = "yaml-seq-contains"
 target = ".github/workflows/publish.yml"
 pointer = "on.push.branches"
 value = "main"
-when_public = true
 
 [[check]]
 id = "publish-workflow-workflow-dispatch"
@@ -229,7 +238,6 @@ description = "Publish must be dispatchable so dependabot-automerge can fire it 
 kind = "yaml-path-exists"
 target = ".github/workflows/publish.yml"
 pointer = "on.workflow_dispatch"
-when_public = true
 
 [[check]]
 id = "publish-workflow-contents-write"
@@ -238,7 +246,6 @@ kind = "yaml-path-equals"
 target = ".github/workflows/publish.yml"
 pointer = "permissions.contents"
 value = "write"
-when_public = true
 
 [[check]]
 id = "publish-workflow-id-token-write"
@@ -247,7 +254,34 @@ kind = "yaml-path-equals"
 target = ".github/workflows/publish.yml"
 pointer = "permissions.id-token"
 value = "write"
-when_public = true
+
+# ---------------------------------------------------------------------------
+# Release-binaries workflow (.github/workflows/release-binaries.yml) — emitted
+# in every spawn, dispatched by the publish run after it tags a release.
+# Whether it produces any artifact is governed by each crate's release-binary
+# flag in rust-template.json, so its presence is checked unconditionally.
+# ---------------------------------------------------------------------------
+
+[[check]]
+id = "release-binaries-workflow-present"
+description = "The release-binaries workflow file must exist in every spawn."
+kind = "file-present"
+path = ".github/workflows/release-binaries.yml"
+
+[[check]]
+id = "release-binaries-workflow-uses-reusable"
+description = "The release-binaries job must delegate to the rust-template reusable workflow."
+kind = "yaml-path-contains"
+target = ".github/workflows/release-binaries.yml"
+pointer = "jobs.release-binaries.uses"
+contains = "rust-template/.github/workflows/reusable-release-binaries.yml@main"
+
+[[check]]
+id = "release-binaries-workflow-dispatch"
+description = "Release-binaries must be dispatchable so the publish run can fire it after tagging."
+kind = "yaml-path-exists"
+target = ".github/workflows/release-binaries.yml"
+pointer = "on.workflow_dispatch"
 
 # ---------------------------------------------------------------------------
 # Branch-protection workflow (.github/workflows/branch-protection.yml) —
@@ -263,10 +297,10 @@ path = ".github/workflows/branch-protection.yml"
 [[check]]
 id = "branch-protection-workflow-uses-reusable"
 description = "The apply job must delegate to the rust-template reusable-branch-protection workflow."
-kind = "yaml-path-equals"
+kind = "yaml-path-contains"
 target = ".github/workflows/branch-protection.yml"
 pointer = "jobs.apply.uses"
-value = "LoganBarnett/rust-template/.github/workflows/reusable-branch-protection.yml@main"
+contains = "rust-template/.github/workflows/reusable-branch-protection.yml@main"
 
 [[check]]
 id = "branch-protection-workflow-push-main"
@@ -290,10 +324,10 @@ path = ".github/workflows/dependabot-automerge.yml"
 [[check]]
 id = "dependabot-automerge-uses-reusable"
 description = "The automerge job must delegate to the rust-template reusable-dependabot-automerge workflow."
-kind = "yaml-path-equals"
+kind = "yaml-path-contains"
 target = ".github/workflows/dependabot-automerge.yml"
 pointer = "jobs.automerge.uses"
-value = "LoganBarnett/rust-template/.github/workflows/reusable-dependabot-automerge.yml@main"
+contains = "rust-template/.github/workflows/reusable-dependabot-automerge.yml@main"
 
 [[check]]
 id = "dependabot-automerge-workflow-run-ci"

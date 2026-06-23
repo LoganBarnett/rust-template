@@ -51,23 +51,31 @@
       };
       commonArgs = {
         src = craneLib.cleanCargoSource self;
-        # Run only unit tests (--lib --bins), skip integration tests in
-        # tests/ directories.  Integration tests may require external
-        # services not available in the Nix sandbox.
+        # This governs only the whole-workspace `default` package below; the
+        # per-crate packages and the workspace test check get their test scope
+        # from mkRustPackages, which overrides this.  Run only unit tests
+        # (--lib --bins) and skip the integration tests under tests/, which may
+        # need services unavailable in the Nix sandbox.
         cargoTestExtraArgs = "--lib --bins";
       };
       rustPackages = foundation.lib.mkRustPackages {
         inherit self pkgs craneLib crates commonArgs;
       };
+      # On Linux each binary also gets a statically-linked `<name>-musl`
+      # variant; on other systems mkMuslPackages returns an empty set.
+      muslPackages = foundation.lib.mkMuslPackages {
+        inherit self pkgs system crates crane;
+      };
       packages =
         rustPackages.packages
+        // muslPackages
         // {
           default =
             craneLib.buildPackage (commonArgs // {pname = "rust-template";});
         };
     in {
       inherit packages;
-      inherit (rustPackages) apps;
+      inherit (rustPackages) apps checks;
       devShell = pkgs.mkShell {
         buildInputs = [
           # Rust toolchain (compiler, cargo, rustfmt, rust-analyzer).
@@ -135,6 +143,7 @@
       nixpkgs.lib.mapAttrs (_: p: {default = p.devShell;}) perSystem;
     packages = nixpkgs.lib.mapAttrs (_: p: p.packages) perSystem;
     apps = nixpkgs.lib.mapAttrs (_: p: p.apps) perSystem;
+    checks = nixpkgs.lib.mapAttrs (_: p: p.checks) perSystem;
 
     # ================================================================
     # NIXOS MODULES

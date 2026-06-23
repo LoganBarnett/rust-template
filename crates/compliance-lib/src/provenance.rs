@@ -3,9 +3,12 @@
 //! Beyond the `template_sync_hashes` list (used by the compliance *process*,
 //! not this checker), the file may carry a `compliance-ignores` key listing the
 //! checks a project has deliberately opted out of.  An ignored check is
-//! reported distinctly and does not count as a failure.
+//! reported distinctly and does not count as a failure.  The `workspaces` map
+//! records, per workspace member, whether that crate ships a release binary;
+//! the release-binary workflow and its compliance check read it.
 
 use serde::Deserialize;
+use std::collections::BTreeMap;
 use std::io::ErrorKind;
 use std::path::Path;
 
@@ -18,6 +21,17 @@ pub struct Provenance {
   pub template_sync_hashes: Vec<String>,
   #[serde(default, rename = "compliance-ignores")]
   pub compliance_ignores: Vec<Ignore>,
+  #[serde(default)]
+  pub workspaces: BTreeMap<String, WorkspaceConfig>,
+}
+
+/// Per-member release settings from the `workspaces` map.  Every workspace
+/// member the template adds is recorded here; `release-binary` is `true` for
+/// binary archetypes (cli, server) and `false` for libs.
+#[derive(Debug, Default, Deserialize)]
+pub struct WorkspaceConfig {
+  #[serde(default, rename = "release-binary")]
+  pub release_binary: bool,
 }
 
 /// A single `compliance-ignores` entry: either a bare check id, or an object

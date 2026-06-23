@@ -1,0 +1,8 @@
+{
+  "workspaces": {
+    "foundation": { "release-binary": false },
+    "foundation-derive": { "release-binary": false },
+    "compliance-lib": { "release-binary": false },
+    "compliance-cli": { "release-binary": true }
+  }
+}

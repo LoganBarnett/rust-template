@@ -464,10 +464,17 @@ fn mc_gen_config_error(attrs: &McStructAttrs) -> proc_macro2::TokenStream {
     }
   });
 
+  // The generated `ConfigError` derives thiserror's `Error` via the consuming
+  // crate's own `thiserror`, not foundation's.  thiserror's derive expands to
+  // bare `thiserror::...` paths that must resolve in the crate the code lands
+  // in, so re-exporting the path through foundation is not enough — the
+  // consumer must depend on thiserror directly.  Using `::thiserror` keeps the
+  // derive and its generated references on one version (the consumer's), which
+  // is also the version the consumer uses for its own error types.
   quote! {
     #[derive(
       ::std::fmt::Debug,
-      ::rust_template_foundation::thiserror::Error,
+      ::thiserror::Error,
     )]
     pub enum ConfigError {
       #[error("Failed to load configuration file: {0}")]

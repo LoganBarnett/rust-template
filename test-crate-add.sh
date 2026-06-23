@@ -2,6 +2,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=script-common.sh
+source "$SCRIPT_DIR/script-common.sh"
 TMPBASE="$(mktemp -d)"
 trap 'rm -rf "$TMPBASE"' EXIT
 
@@ -243,6 +245,12 @@ test_new_project_cli_only() {
     assert_file_contains "$dir/flake.nix" '# CRATE:cli:begin'
     assert_file_not_contains "$dir/flake.nix" '# CRATE:server:begin'
 
+    # The publish workflow ships in private spawns too, not just public ones.
+    assert_file_exists "$dir/.github/workflows/publish.yml"
+
+    # Private spawns keep an empty publish list — nothing reaches crates.io.
+    assert_file_not_contains "$dir/crates/lib/Cargo.toml" 'crates-io'
+
     assert_compliant "$dir" "cli" || return 1
 
     assert_flake_eval "$dir" || return 1
@@ -272,8 +280,10 @@ test_new_project_server_only() {
 }
 
 # ---------------------------------------------------------------------------
-# Test 3b: new-project.sh --public — exercises the publish.yml machinery and
-# the when_public-gated compliance checks, which the private emissions skip.
+# Test 3b: new-project.sh --public — exercises the public-only behavior, namely
+# pointing the library crate's publish destination at crates.io.  The publish
+# workflow itself ships in every spawn, so its presence is asserted in the
+# private emissions too.
 # ---------------------------------------------------------------------------
 test_new_project_public() {
     local dir="$TMPBASE/test-public"
@@ -282,8 +292,20 @@ test_new_project_public() {
         --output "$dir" \
         --public
 
-    # The publish workflow is emitted only for public spawns.
+    # The publish workflow ships in every spawn; public toggles its destination,
+    # not its presence.
     assert_file_exists "$dir/.github/workflows/publish.yml"
+
+    # Public spawns point the library's publish destination at crates.io.
+    assert_file_contains "$dir/crates/lib/Cargo.toml" 'crates-io'
+
+    # Point foundation at the on-disk rust-template and relock so the foundation
+    # pin checks run against a real, agreeing revision rather than skipping on
+    # the stale path placeholder the template ships.  This is the one spawn that
+    # exercises the pins; they are an emission-invariant property, so verifying
+    # them here covers the others.
+    localize_foundation "$dir" || return 1
+    assert_file_contains "$dir/Cargo.lock" 'source = "git+file://'
 
     # Compliance with public = true so the gated publish checks actually run.
     assert_compliant "$dir" "cli,server" true || return 1

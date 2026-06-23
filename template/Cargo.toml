@@ -13,7 +13,7 @@ repository = "https://github.com/yourusername/rust-template"
 
 [workspace.dependencies]
 # Foundation infrastructure crate (config, logging, health, metrics, auth).
-rust-template-foundation = { git = "https://github.com/LoganBarnett/rust-template.git" }
+rust-template-foundation = { git = "https://github.com/LoganBarnett/rust-template.git", version = ">=0.16" }
 
 # Logging and tracing
 tracing = "0.1"
@@ -87,6 +87,14 @@ opt-level = 3
 
 [profile.release]
 debug = false
+# These binaries are shipped as release artifacts, so optimize them for the
+# end user rather than for build speed.  lto and a single codegen unit let the
+# optimizer work across crate boundaries (faster runtime, smaller code), and
+# strip removes symbols from the artifact to shrink the download.  opt-level
+# stays at the default 3 — tuned for speed, not size.
+lto = true
+codegen-units = 1
+strip = true
 
 # ============================================================================
 # LINTS

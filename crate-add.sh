@@ -165,7 +165,33 @@ ${sentinel_indent}};\\
 ${sentinel_indent}# CRATE:${CRATE_NAME}:end" "$PROJECT_DIR/flake.nix"
 fi
 
-# Step 7: Merge workspace dependencies from workspace-deps.toml.
+# Step 7: Record the crate in rust-template.json's workspace inventory.  Every
+# member gets an entry; the release-binary flag marks binary archetypes (cli,
+# server), which ship a release binary, versus libs, which do not.  The
+# release-binary workflow reads this inventory to decide what to build, and
+# compliance checks that every workspace member is listed here.
+if [[ "$CRATE_TYPE" == "lib" ]]; then
+    release_binary=false
+else
+    release_binary=true
+fi
+provenance="$PROJECT_DIR/rust-template.json"
+# jq has no in-place edit, so write a sibling temp and move it back — the same
+# idiom new-project.sh uses for config.json.  A missing provenance file is the
+# normal case for spawns created before this inventory existed, so seed a fresh
+# object; a malformed existing file is left to fail loudly rather than be
+# silently replaced.
+if [[ -f "$provenance" ]]; then
+    jq --arg name "$CRATE_NAME" --argjson release "$release_binary" \
+       '.workspaces[$name] = {"release-binary": $release}' \
+       "$provenance" > "$provenance.tmp" && mv "$provenance.tmp" "$provenance"
+else
+    jq --null-input --arg name "$CRATE_NAME" --argjson release "$release_binary" \
+       '{workspaces: {($name): {"release-binary": $release}}}' \
+       > "$provenance.tmp" && mv "$provenance.tmp" "$provenance"
+fi
+
+# Step 8: Merge workspace dependencies from workspace-deps.toml.
 deps_file="$TEMPLATE_DIR/crates/$CRATE_TYPE/workspace-deps.toml"
 if [[ -f "$deps_file" ]]; then
     # Read each dependency line (skip comments and section headers).
