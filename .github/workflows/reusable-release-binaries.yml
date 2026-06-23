@@ -93,6 +93,14 @@ jobs:
     runs-on: ${{ matrix.target.runner }}
     permissions:
       contents: write
+      # Build provenance attestation is keyless: the job mints a GitHub OIDC
+      # token (id-token) that Sigstore exchanges for a short-lived signing
+      # certificate, then writes the resulting attestation to the repository's
+      # attestation store (attestations).  As with the publish job, the caller's
+      # workflow-level permissions must grant both, since a reusable job's token
+      # cannot exceed what its caller holds.
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -132,6 +140,16 @@ jobs:
             sha256sum '$asset' > '$asset.sha256'
           "
           echo "asset=$asset" >> "$GITHUB_OUTPUT"
+
+      # Record a keyless build-provenance attestation for the archive: a signed
+      # SLSA statement binding it to this workflow run and the source commit,
+      # verifiable with `gh attestation verify`.  Attest before upload so a
+      # published asset always has matching provenance.  The .sha256 is a plain
+      # integrity digest and needs none.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ steps.package.outputs.asset }}
 
       - name: Upload to the release
         run: |

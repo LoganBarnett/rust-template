@@ -3,6 +3,10 @@
 
 * Upcoming
 ** Added
+1. Release archives now carry a GitHub build-provenance attestation — a keyless,
+   signed record of what built each binary and from which commit, verifiable by
+   anyone with =gh attestation verify=.  This is supply-chain provenance, not
+   macOS =.app= code signing; the binaries remain unsigned and un-notarized.
 ** Fixes
 ** Breaking
 * v0.18.0

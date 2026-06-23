@@ -283,6 +283,22 @@ kind = "yaml-path-exists"
 target = ".github/workflows/release-binaries.yml"
 pointer = "on.workflow_dispatch"
 
+[[check]]
+id = "release-binaries-workflow-id-token-write"
+description = "Release-binaries must grant id-token: write so the build can mint the Sigstore signing token for build-provenance attestation."
+kind = "yaml-path-equals"
+target = ".github/workflows/release-binaries.yml"
+pointer = "permissions.id-token"
+value = "write"
+
+[[check]]
+id = "release-binaries-workflow-attestations-write"
+description = "Release-binaries must grant attestations: write so the build can record build-provenance attestations for each artifact."
+kind = "yaml-path-equals"
+target = ".github/workflows/release-binaries.yml"
+pointer = "permissions.attestations"
+value = "write"
+
 # ---------------------------------------------------------------------------
 # Branch-protection workflow (.github/workflows/branch-protection.yml) —
 # always emitted.
@@ -1011,6 +1027,22 @@ kind = "mention-present"
 target = "CONTRIBUTING.org"
 section = ["Changelog conventions"]
 contains = "numbered list"
+
+[[check]]
+id = "contributing-changelog-required-per-pr"
+description = "CONTRIBUTING.org states that every pull request must add at least one changelog entry under Upcoming."
+kind = "mention-present"
+target = "CONTRIBUTING.org"
+section = ["Changelog conventions"]
+contains = "Every pull request must add at least one entry under"
+
+[[check]]
+id = "contributing-changelog-ci-enforced"
+description = "CONTRIBUTING.org states that CI rejects a pull request that adds no changelog entry."
+kind = "mention-present"
+target = "CONTRIBUTING.org"
+section = ["Changelog conventions"]
+contains = "CI rejects a pull request that adds none"
 
 # ── Pre-seeded CHANGELOG.org Upcoming scaffold ───────────────────────
 # A fresh emission seeds the Upcoming section with the documented

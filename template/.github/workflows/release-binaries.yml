@@ -16,6 +16,12 @@ on:
 
 permissions:
   contents: write
+  # Granted so the reusable build job can mint a keyless build-provenance
+  # attestation: id-token for the OIDC-to-Sigstore exchange, attestations to
+  # write the result to the repo's attestation store.  A reusable job's token
+  # cannot exceed what its caller grants, so both are declared here too.
+  id-token: write
+  attestations: write
 
 jobs:
   release-binaries:

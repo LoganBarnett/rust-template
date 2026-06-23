@@ -130,9 +130,16 @@ of the surface the adopter sees, not the implementation.
 Write each entry as a numbered list item (=1.=, =2.=, …) under its subheading,
 not a dash bullet.
 
+Every pull request must add at least one entry under =* Upcoming=; CI rejects a
+pull request that adds none.  This keeps the changelog written incrementally,
+while the context is fresh, rather than reconstructed from the diff at release
+time.
+
 * Commit workflow
 
 1. Make your changes on a feature branch.
 2. Ensure =cargo fmt= and =cargo clippy --workspace= produce no warnings.
 3. Run =cargo test --workspace= and confirm all tests pass.
-4. Open a pull request against =main=.
+4. Add a =CHANGELOG.org= entry under =* Upcoming= describing the change; CI
+   rejects pull requests that add none.
+5. Open a pull request against =main=.
