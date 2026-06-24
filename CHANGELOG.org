@@ -3,6 +3,16 @@
 
 * Upcoming
 ** Added
+1. Release archives now carry a GitHub build-provenance attestation — a keyless,
+   signed record of what built each binary and from which commit, verifiable by
+   anyone with =gh attestation verify=.  This is supply-chain provenance, not
+   macOS =.app= code signing; the binaries remain unsigned and un-notarized.
+2. macOS release binaries are now cross-compiled on Linux (via zig) rather than
+   on a macOS CI runner, so a release no longer waits on scarce, slow macOS
+   runner capacity.  Pure executables need no change.  A crate that links Apple
+   frameworks opts in by setting =config.allowUnfree= / =allowUnsupportedSystem=
+   and passing =appleSdk = pkgs.apple-sdk.src= to =mkDarwinCrossPackages= in its
+   =flake.nix= — see =CONTRIBUTING.org=.
 ** Fixes
 ** Breaking
 * v0.18.0

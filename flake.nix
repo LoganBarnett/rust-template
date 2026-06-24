@@ -56,6 +56,7 @@
     in
       mkRustPackages {inherit self pkgs craneLib crates commonArgs;};
     mkMuslPackages = import ./nix/lib/mkMuslPackages.nix;
+    mkDarwinCrossPackages = import ./nix/lib/mkDarwinCrossPackages.nix;
     devPackages = system: let
       pkgs = pkgsFor system;
       rust = pkgs.rust-bin.stable.latest.default.override {
@@ -109,7 +110,10 @@
 
     # The repo builds its own binaries (currently just compliance-cli) so it
     # can release them through the same machinery spawned projects use.  On
-    # Linux each binary also gets a statically-linked `<name>-musl` variant.
+    # Linux each binary also gets a statically-linked `<name>-musl` variant, and
+    # the x86_64-linux build cross-compiles macOS `<key>-<arch>-darwin` variants
+    # via zig.  compliance-cli is libSystem-only, so no `appleSdk` is passed and
+    # the cross build stays licence-free.
     packages = forAllSystems (
       system: let
         cratePackages = (rustPackagesFor system).packages;
@@ -117,8 +121,15 @@
           inherit self crane crates system;
           pkgs = pkgsFor system;
         };
+        darwinCrossPackages = mkDarwinCrossPackages {
+          inherit self crane crates system;
+          pkgs = pkgsFor system;
+        };
       in
-        cratePackages // muslPackages // {default = cratePackages.compliance-cli;}
+        cratePackages
+        // muslPackages
+        // darwinCrossPackages
+        // {default = cratePackages.compliance-cli;}
     );
 
     apps = forAllSystems (system: (rustPackagesFor system).apps);
@@ -134,6 +145,7 @@
       mkDarwinService = import ./nix/lib/mkDarwinService.nix;
       mkRustPackages = import ./nix/lib/mkRustPackages.nix;
       mkMuslPackages = import ./nix/lib/mkMuslPackages.nix;
+      mkDarwinCrossPackages = import ./nix/lib/mkDarwinCrossPackages.nix;
       cargoHuskyHookSnippet = import ./nix/lib/cargoHuskyHookSnippet.nix;
     };
   };

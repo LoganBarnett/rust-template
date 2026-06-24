@@ -853,3 +853,126 @@ Out of scope / harder: the GitHub-Actions =uses: <owner>/<repo>/...@main=
 workflow callers are GitHub-specific and cannot point at a gitea-hosted
 rust-template at all; a non-GitHub forge needs a different reusable-workflow
 mechanism entirely, which is a separate problem from the cargo/flake refs.
+
+* TODO ~mkDarwinCrossPackages~: build macOS release binaries on Linux
+
+Cross-compile the darwin release binaries on Linux runners instead of GitHub's
+scarce, slow macOS runners (a free-tier =x86_64-darwin= job sat queued for
+hours, never producing an artifact).  The whole approach was proven end to end
+with a throwaway probe (=~/dev/darwin-cross-probe=); this entry records the
+recipe so it can become a real foundation-lib function.  The probe cross-built,
+on Linux builders, three running signed Mach-O =aarch64-apple-darwin= binaries:
+=hello= and the repo's own =compliance-cli= (libSystem-only, on a Raspberry Pi),
+and =sonify-health='s cli (=cpal= -> CoreAudio/AudioToolbox, on an x86_64-linux
+box).  All three ran natively on Apple Silicon.
+
+** Design: a third ~mk*Packages~ sibling
+
+~mkDarwinCrossPackages~ sits beside ~mkRustPackages~ (native) and
+~mkMuslPackages~ (static-musl variant), and follows the same shape: it yields
+outputs only when the build platform is Linux and returns an empty set
+otherwise.  The release-binaries CI matrix's darwin rows then move from macOS
+runners building =.#packages.<darwin>.<crate>= natively to Linux runners
+building the cross attr.  The native darwin path stays for Mac-local dev and as
+a reproducibility oracle; it just leaves the artifact-production critical path.
+
+** The proven recipe
+
+- Build platform is =x86_64-linux= specifically — not "any Linux".  The
+  =apple-sdk= deps fail to build on =aarch64-linux= (=libsbuf= meson breakage);
+  =x86_64-linux= is also what GitHub CI provides.  (libSystem-only crates do
+  cross fine on =aarch64-linux= — the Pi proved it — but the framework SDK does
+  not, so standardise on =x86_64-linux=.)
+- Codegen: rustc with the =aarch64-apple-darwin= target added via rust-overlay
+  (=rust-bin...override { targets = [...]; }=), exactly as ~mkMuslPackages~ adds
+  the musl target.
+- Linker: =zig= via =cargo-zigbuild=.  This is the crux — nixpkgs' native cross
+  stdenv is blocked because =cctools= (Apple's =ld64=) is darwin-gated
+  (=meta.platforms= excludes Linux); zig ships its own Mach-O linker that runs
+  on Linux and sidesteps it entirely.
+- Startup/runtime glue and ad-hoc code signing come free from zig — the linked
+  binaries carry =flags=0x20002(adhoc,linker-signed)=, which is what lets an
+  arm64 Mach-O execute at all.  No =codesign= / =rcodesign= step needed.
+- libSystem-only crates need *no* Apple SDK: zig bundles the libSystem stubs.
+  This is the clean, license-free path and should be the default.
+- Framework crates need Apple's interface data — headers (for any bindgen) and
+  =.tbd= link stubs.  Crucially this is *inert fetched data*, available as
+  =pkgs.apple-sdk.src= (a plain =fetchurl= of =MacOSX<ver>.sdk=).  The full
+  =apple-sdk= package does *not* build on Linux (its =Csu= component shells out
+  to =clang=, absent on a gcc stdenv), but we never need the assembled package —
+  only its =.src=, which realises on Linux as a copy-not-compile step and
+  carries the CoreAudio/AudioToolbox frameworks.  So consume =apple-sdk.src=
+  directly; do not fight the wrapper.
+- zig's Mach-O linker does not derive the framework search path from
+  =-isysroot=, so the framework path must be handed to the linker explicitly,
+  target-scoped so host proc-macro links keep the native linker:
+  =CARGO_TARGET_AARCH64_APPLE_DARWIN_RUSTFLAGS= =
+  ="-Clink-arg=-F${sdk}/System/Library/Frameworks -Clink-arg=-L${sdk}/usr/lib"=.
+- Dep vendoring via crane's ~vendorCargoDeps~ so the build runs offline in the
+  sandbox (the git =orgize= dep vendored cleanly this way).
+
+** The SDK is passed as a derivation, not a boolean
+
+~mkDarwinCrossPackages~ takes a per-call ~appleSdk~ argument that is the SDK
+*derivation* (default ~null~), not a flag.  When it is set the function wires
+=SDKROOT= + the framework search path; when it is null the build is pure zig
+with no SDK — the clean, licence-free path for projects whose executables only
+hit libSystem (the =cli= archetype, =compliance-cli=, most tools).  Passing a
+derivation rather than a boolean avoids special-casing, and leaves room to one
+day pass a pinned version (=apple-sdk_15.src=) or a non-nixpkgs SDK.
+
+Rejected the boolean (and the Cargo.lock auto-detect) deliberately: the SDK is
+genuinely not free, so it cannot be always-on (that would force =allowUnfree=
+fleet-wide), and auto-detecting "does a crate link frameworks" is too much magic
+for something this consequential — the framework need lives only in the crates'
+build-time link directives, with no Nix-level marker (it is implicit in the
+native darwin stdenv), so any auto-detect would be a heuristic lockfile scan.
+
+The cross-build itself is *always on* — it is strictly better than macOS runners
+and free for libSystem executables, so the template-emitted =flake.nix= always
+calls ~mkDarwinCrossPackages~ (beside ~mkMuslPackages~), with no =appleSdk=.  A
+project that links Apple frameworks (anything pulling =cpal=, =objc2-*=,
+=core-foundation=, =security-framework=, =coreaudio-sys=, …) — and note this is
+not CLI-specific; the =server= crate links them just as readily — touches two
+visible spots in its own =flake.nix=:
+1. its nixpkgs import gains =config.allowUnfree = true= and
+   =config.allowUnsupportedSystem = true= (the latter whenever that =pkgs= is
+   non-darwin, i.e. Linux CI), because =apple-sdk= is unfree and darwin-gated;
+2. it passes =appleSdk = pkgs.apple-sdk.src= to the already-present
+   ~mkDarwinCrossPackages~ call.  Keeping the unfree acceptance in the spawn's
+   own =pkgs= config is a feature: the licence consent is visible in the spawn's
+   file, not smuggled into a foundation boolean.  =apple-sdk.src= is a
+   =fetchurl= (content-addressed, platform- independent output), so the
+   consumer's =pkgs.apple-sdk.src= realises fine on the x86_64-linux builder
+   regardless of which =pkgs= it came from.  The matrix wiring lives in
+   =.github/workflows/reusable-release-binaries.yml= once implemented.
+
+** Implementation steps
+
+- Add ~mkDarwinCrossPackages~ to the foundation nix lib (sibling of
+  =nix/lib/mkMuslPackages.nix=), taking an ~appleSdk~ derivation arg (default
+  ~null~).
+- Expose its outputs from the template =flake.nix= the way =muslPackages= is
+  inherited today, with no =appleSdk= by default.
+- Switch the release-binaries matrix's darwin targets to build the cross attr on
+  an =x86_64-linux= runner; keep linux gnu/musl as-is.  Confirm the GitHub
+  =x86_64-linux= runner can realise =apple-sdk.src= (it is a fetch, so it
+  should) within the build.
+- Land it on the =cli= archetype first (libSystem, no =appleSdk=), then offer
+  =sonify-health= the =appleSdk = pkgs.apple-sdk.src= path as the framework
+  pilot.
+- Reproducibility check worth adding: diff a cross-built artifact against a
+  native darwin build of the same revision, so the opaque-builder concern from
+  the attestation discussion is answered by an independent rebuild.
+
+** Caveats observed
+- =cpal= 0.17 uses the =objc2-*= framework crates (static bindings), so no
+  bindgen ran; =libclang= + =BINDGEN_EXTRA_CLANG_ARGS= were wired but unused.  A
+  crate that *does* use bindgen (e.g. =coreaudio-sys= directly) would need them,
+  so keep them wired whenever =appleSdk= is set.
+- The raw =apple-sdk.src= skips the =process-stubs= pass the full package runs;
+  it did not bite for CoreAudio/AudioToolbox, but a framework whose =.tbd= needs
+  reprocessing could surface here.
+- nixpkgs may add Linux-host =apple-sdk= support in a future release (a
+  maintainer flagged 25.11/26.05 as possible); revisit whether the =.src=
+  shortcut is still needed then.

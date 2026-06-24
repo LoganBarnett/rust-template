@@ -15,6 +15,25 @@ on from commit zero.
 
 * Features
 
+The short version, in page order; each has its own section below.
+
+- *Server* — graceful shutdown, health checks, Prometheus metrics, OIDC
+  authentication, OpenAPI documentation, systemd and launchd integration
+- *Web UI* — strongly typed frontend, light and dark mode, simple CSS
+- Auto-formatted code
+- Starter integration tests
+- Separated concerns with LLM guardrails
+- Types as validation
+- Selective crate generation
+- *GitHub Actions* — tests and formatting on every push, declarative branch
+  protection, Dependabot with guarded auto-merge, changelog enforcement,
+  automatic version cutting and publishing, automatic cross-platform binary
+  publishing, build provenance attestation
+- Structured logging
+- Staged configuration
+- Semantic error types
+- Nix development shell
+
 ** Server
 
 *** Graceful shutdown
@@ -152,6 +171,26 @@ On merge to =main=, the =publish= workflow bumps the minor version, stamps the
 changelog, commits with =[skip ci]=, publishes the lib crate to crates.io, and
 tags the release commit with an annotated =v<version>= tag.  No manual version
 dance, no forgotten publishes.  (Requires =--public= at generation time.)
+
+*** Automatic cross-platform binary publishing
+
+After a release is tagged, the crates that opt in are built and attached to the
+GitHub release across the mainstream Unix-like targets — Linux and macOS, on
+both =x86_64= and =aarch64=, with a statically linked musl variant alongside
+glibc on Linux.  Windows is not built.  Each archive carries a =.sha256= for
+integrity, and which crates produce a binary is declared per crate in
+=rust-template.json= rather than hard-coded into the workflow.
+
+*** Build provenance attestation
+
+Every release archive carries a GitHub build-provenance attestation
+(=actions/attest-build-provenance=): a keyless, signed SLSA record binding the
+artifact to the workflow run and the source commit, verifiable by anyone with
+=gh attestation verify=.  This is supply-chain authenticity — proof of /what
+built it/ — and deliberately /not/ macOS =.app= code signing.  The binaries are
+not Developer-ID signed or notarized, so a browser-downloaded macOS build may
+need =xattr -d com.apple.quarantine= before it runs; a terminal-launched CLI
+generally does not.
 
 ** Structured logging
 

@@ -66,9 +66,18 @@
       muslPackages = foundation.lib.mkMuslPackages {
         inherit self pkgs system crates crane;
       };
+      # The x86_64-linux build cross-compiles macOS `<key>-<arch>-darwin`
+      # variants via zig so a release needs no macOS runner; empty on other
+      # systems.  Add `appleSdk = pkgs.apple-sdk.src;` here (and set
+      # config.allowUnfree / config.allowUnsupportedSystem on the pkgs import
+      # above) only if a crate links Apple frameworks — see CONTRIBUTING.org.
+      darwinCrossPackages = foundation.lib.mkDarwinCrossPackages {
+        inherit self pkgs system crates crane;
+      };
       packages =
         rustPackages.packages
         // muslPackages
+        // darwinCrossPackages
         // {
           default =
             craneLib.buildPackage (commonArgs // {pname = "rust-template";});

@@ -71,10 +71,13 @@ jobs:
           TAG: ${{ inputs.tag }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # One job per (target, crate).  Linux targets build both a glibc and a static
-  # musl artifact; macOS builds the native binary.  aarch64-linux uses GitHub's
-  # ARM runner.  fail-fast is off so one target's failure does not cancel the
-  # rest, and each crate × target surfaces as its own job.
+  # One job per (target, crate).  Every target builds on a Linux runner: the
+  # Linux artifacts natively (glibc and static musl, x86_64 plus GitHub's ARM
+  # runner) and the macOS artifacts cross-compiled via zig
+  # (mkDarwinCrossPackages), so a release never waits on a scarce macOS runner.
+  # The target's `suffix` selects the package variant under the same
+  # `.#packages.<system>` set.  fail-fast is off so one target's failure does
+  # not cancel the rest, and each crate × target surfaces as its own job.
   build:
     name: ${{ matrix.crate }} (${{ matrix.target.label }})
     needs: [crates, release]
@@ -84,15 +87,23 @@ jobs:
       matrix:
         crate: ${{ fromJSON(needs.crates.outputs.list) }}
         target:
-          - { system: x86_64-linux, runner: ubuntu-latest, variant: gnu, label: x86_64-linux-gnu }
-          - { system: x86_64-linux, runner: ubuntu-latest, variant: musl, label: x86_64-linux-musl }
-          - { system: aarch64-linux, runner: ubuntu-24.04-arm, variant: gnu, label: aarch64-linux-gnu }
-          - { system: aarch64-linux, runner: ubuntu-24.04-arm, variant: musl, label: aarch64-linux-musl }
-          - { system: x86_64-darwin, runner: macos-13, variant: native, label: x86_64-darwin }
-          - { system: aarch64-darwin, runner: macos-14, variant: native, label: aarch64-darwin }
+          - { system: x86_64-linux, runner: ubuntu-latest, suffix: "", label: x86_64-linux-gnu }
+          - { system: x86_64-linux, runner: ubuntu-latest, suffix: -musl, label: x86_64-linux-musl }
+          - { system: aarch64-linux, runner: ubuntu-24.04-arm, suffix: "", label: aarch64-linux-gnu }
+          - { system: aarch64-linux, runner: ubuntu-24.04-arm, suffix: -musl, label: aarch64-linux-musl }
+          - { system: x86_64-linux, runner: ubuntu-latest, suffix: -x86_64-darwin, label: x86_64-darwin }
+          - { system: x86_64-linux, runner: ubuntu-latest, suffix: -aarch64-darwin, label: aarch64-darwin }
     runs-on: ${{ matrix.target.runner }}
     permissions:
       contents: write
+      # Build provenance attestation is keyless: the job mints a GitHub OIDC
+      # token (id-token) that Sigstore exchanges for a short-lived signing
+      # certificate, then writes the resulting attestation to the repository's
+      # attestation store (attestations).  As with the publish job, the caller's
+      # workflow-level permissions must grant both, since a reusable job's token
+      # cannot exceed what its caller holds.
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -109,29 +120,37 @@ jobs:
       # commit, silently bumping deps past breaking API changes so the build
       # then fails against source pinned to the older, locked revision.
       #
-      # The musl variant is the `<crate>-musl` package; gnu and native are the
-      # plain `<crate>` package.  `--print-out-paths` yields the store path; the
+      # The target's `suffix` selects the package variant: "" for the native
+      # glibc build, "-musl" for the static build, "-<arch>-darwin" for the
+      # zig-cross macOS build.  `--print-out-paths` yields the store path; the
       # single binary under bin/ is whatever name the crate declares.
       - name: Build and package
         id: package
         run: |
-          attr="${{ matrix.crate }}"
-          if [ "${{ matrix.target.variant }}" = "musl" ]; then
-            attr="${attr}-musl"
-          fi
+          attr="${{ matrix.crate }}${{ matrix.target.suffix }}"
           out=$(nix build \
             ".#packages.${{ matrix.target.system }}.${attr}" \
             --no-link --print-out-paths)
           binary=$(ls "$out/bin")
           asset="${binary}-${{ inputs.tag }}-${{ matrix.target.label }}.tar.gz"
-          # Run the archive and checksum tools from the devShell so coreutils is
-          # the same on macOS and Linux (the host `shasum`/`sha256sum` split
-          # would otherwise need per-OS handling).
+          # Run tar and sha256sum from the devShell so the archive is built with
+          # the project's pinned coreutils rather than whatever the runner image
+          # happens to ship.
           nix develop --command bash -c "
             tar --create --gzip --file '$asset' --directory '$out/bin' '$binary'
             sha256sum '$asset' > '$asset.sha256'
           "
           echo "asset=$asset" >> "$GITHUB_OUTPUT"
+
+      # Record a keyless build-provenance attestation for the archive: a signed
+      # SLSA statement binding it to this workflow run and the source commit,
+      # verifiable with `gh attestation verify`.  Attest before upload so a
+      # published asset always has matching provenance.  The .sha256 is a plain
+      # integrity digest and needs none.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ steps.package.outputs.asset }}
 
       - name: Upload to the release
         run: |
