@@ -3,6 +3,10 @@
 
 * Upcoming
 ** Added
+** Fixes
+** Breaking
+* v0.19.0
+** Added
 1. Release archives now carry a GitHub build-provenance attestation — a keyless,
    signed record of what built each binary and from which commit, verifiable by
    anyone with =gh attestation verify=.  This is supply-chain provenance, not
@@ -13,8 +17,6 @@
    frameworks opts in by setting =config.allowUnfree= / =allowUnsupportedSystem=
    and passing =appleSdk = pkgs.apple-sdk.src= to =mkDarwinCrossPackages= in its
    =flake.nix= — see =CONTRIBUTING.org=.
-** Fixes
-** Breaking
 * v0.18.0
 ** Fixes
 1. Release binaries are now actually built and attached to each release.  The
