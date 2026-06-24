@@ -107,6 +107,13 @@ target = "flake.nix"
 contains = "rust-template"
 
 [[check]]
+id = "flake-darwin-cross-wired"
+description = "The flake wires mkDarwinCrossPackages so macOS binaries cross-compile on Linux instead of on a macOS runner."
+kind = "file-contains"
+target = "flake.nix"
+contains = "mkDarwinCrossPackages"
+
+[[check]]
 id = "server-foundation-auth-feature"
 description = "A server-crate spawn enables the foundation \"auth\" feature."
 kind = "foundation-feature"

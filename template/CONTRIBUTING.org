@@ -251,6 +251,34 @@ See [[file:docs/systemd.org][docs/systemd.org]] for the full pattern and how to 
 - ~debug!~ — detailed diagnostic information.
 - ~trace!~ — very verbose debugging.
 
+* Release binaries
+
+A release builds your binary crates for the mainstream targets and attaches them
+to the GitHub release.  The macOS binaries are *cross-compiled on Linux* (via
+zig) rather than on a macOS runner, so a release never waits on scarce macOS CI
+capacity.  This is automatic — ~mkDarwinCrossPackages~ is already wired into
+~flake.nix~ and needs no configuration.
+
+The one exception is a crate that links Apple frameworks — anything that
+(transitively) pulls ~cpal~, ~objc2-*~, ~core-foundation~, ~security-framework~,
+~coreaudio-sys~, and similar.  This is not CLI-specific; the ~server~ crate can
+link them just as readily.  Such a crate needs Apple's framework headers and
+link stubs, which come from the (unfree) Apple SDK.  To enable it, touch two
+spots in ~flake.nix~:
+
+1. add ~config.allowUnfree = true~ and ~config.allowUnsupportedSystem = true~ to
+   the ~nixpkgs~ import (the latter is needed whenever that ~pkgs~ is
+   non-darwin, i.e. in Linux CI), because ~apple-sdk~ is unfree and
+   darwin-gated; and
+2. pass ~appleSdk = pkgs.apple-sdk.src~ to the ~mkDarwinCrossPackages~ call.
+
+~apple-sdk.src~ is a plain fetch of the SDK's inert data (headers and ~.tbd~
+stubs); the full ~apple-sdk~ package does not build on Linux, but its ~.src~
+does.  Keeping the ~allowUnfree~ acceptance in your own ~flake.nix~ is
+deliberate — the licence consent is visible in your project, not hidden in the
+foundation library.  A pure-libSystem executable does nothing: zig bundles the
+libSystem stubs, so it cross-compiles licence-free.
+
 * Changelog conventions
 
 ~CHANGELOG.org~'s ~* Upcoming~ section uses three subheadings:
