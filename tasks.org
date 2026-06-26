@@ -854,7 +854,17 @@ workflow callers are GitHub-specific and cannot point at a gitea-hosted
 rust-template at all; a non-GitHub forge needs a different reusable-workflow
 mechanism entirely, which is a separate problem from the cargo/flake refs.
 
-* TODO ~mkDarwinCrossPackages~: build macOS release binaries on Linux
+* DONE ~mkDarwinCrossPackages~: build macOS release binaries on Linux
+
+Landed in v0.19.0: the function ships in =nix/lib/mkDarwinCrossPackages.nix=,
+both flakes are wired, the release-binaries matrix builds the macOS targets on
+x86_64-linux runners, and a =flake-darwin-cross-wired= compliance check guards
+the spawn wiring.  Proven in production — v0.19.0 attached all six targets
+(Linux gnu/musl + cross-compiled =aarch64-darwin= / =x86_64-darwin=), each a
+signed, attested, verified-running Mach-O, with no macOS runner touched.  The
+libSystem tier is dogfooded by this repo's own =compliance-cli= on every
+release; the framework tier was proven on =sonify-health= (its =appleSdk= pilot
+is the follow-up below).  Original design notes retained for reference:
 
 Cross-compile the darwin release binaries on Linux runners instead of GitHub's
 scarce, slow macOS runners (a free-tier =x86_64-darwin= job sat queued for
@@ -976,3 +986,158 @@ visible spots in its own =flake.nix=:
 - nixpkgs may add Linux-host =apple-sdk= support in a future release (a
   maintainer flagged 25.11/26.05 as possible); revisit whether the =.src=
   shortcut is still needed then.
+
+* TODO Mark internal-only commits so they do not cut a release
+Every push to =main= cuts a release: a minor version bump, a crates.io publish,
+and a release-binaries build.  Some commits produce *no outward-facing change* —
+the build output is byte-for-byte identical to the prior release.  Adding an
+internal test crate (the =darwin-cross-probe= idea), flipping a =tasks.org= TODO
+to DONE, or an internal-only documentation edit all fall here.  Cutting a full
+release for these — a new crates.io version nobody needs, a fresh binary build —
+is waste.  We want a way to mark such a commit as internal-only so the publish
+pipeline skips the version bump / publish / binary build (or skips the release
+entirely).
+
+Design notes:
+- The honest test is *artifact byte-identity*, not "it's only docs".  This ties
+  to the reproducibility thread from the build-provenance work: a reproducible
+  build lets the pipeline /verify/ the claim (rebuild the prior release's
+  artifact and diff) rather than trust a label.  A weaker first cut is a
+  path-based guard — the commit touches nothing under the artifact-affecting
+  paths (=crates/=, =Cargo.*=, build inputs) — but the binary-match check is the
+  real guarantee.
+- Not all documentation is internal-only.  =CONTRIBUTING.org=, =tasks.org=, and
+  =README.org= never ship, so they qualify; but anything that lands /in/ the
+  distributed artifact does not — e.g. man pages once we ship them (see the
+  man-page task below), or embedded help text.  The marker must key on "does the
+  artifact change", not "is this a doc".
+- An internal-only commit also has no changelog entry (nothing user-facing),
+  which currently trips the =changelog-required= CI gate.  The same marker
+  should exempt it from that gate — the principled resolution of the tension
+  where a docs-only or internal PR is forced to invent a changelog entry.
+- Open questions: how the marker is expressed (a commit trailer, a PR label, a
+  =rust-template.json= flag?), how =publish.yml= detects it, and whether it
+  skips the whole release or only the version bump + publish while still
+  attaching binaries.
+
+* TODO Ship man pages with the distributed binaries
+A man page is immensely helpful and cheap to produce: =clap= can generate one
+from a command's definition via =clap_mangen=, so the cli (and server)
+archetypes can emit =share/man/man1/<binary>.1= with no hand-maintained content.
+Ship it inside the release archive alongside the binary so a user who extracts
+the tarball — or a downstream packager (nix, homebrew) — gets the man page on
+the standard man path.
+
+Notes:
+- Generate at build time from the =clap= =Command= (a small =build.rs= or an
+  xtask/just step), so the man page never drifts from the actual flags.
+- Decide the archive layout: a =man/= directory beside =bin/=, or the full
+  =share/man/man1/= prefix so an installer can copy the tree wholesale.
+- This is the canonical example for the internal-only task above: a man-page
+  change /does/ alter the shipped artifact, so it is *not* an internal-only
+  commit.
+
+* TODO Build artifacts once on the branch, promote them at release
+The magic-wand build architecture: a feature branch does /everything/ a release
+does — builds every artifact across every target — but stores them instead of
+publishing.  A merge means "main and the branch are now the same repo state", so
+main should not re-run the tests and builds that already gated the merge; the
+release should just flip a bit marking the cached artifacts public.  This is the
+grand version of the internal-only-commit task above; both turn on /artifact
+byte-identity/.
+
+How much Nix already gives us, and what blocks the rest:
+- Nix store paths are content-addressed by their inputs, so a branch build
+  pushed to a shared binary cache /is/ the "store it somewhere" mechanism, and
+  main building the same tree is a cache *substitution*, not a rebuild.  "Flip a
+  bit to release" becomes "the publish job uploads the already-built store
+  path".  So the substrate exists; we are not starting from zero.
+- The specific thing that breaks byte-identity in our pipeline is the
+  version-bump release commit: the branch builds at the pre-bump version, the
+  release rewrites =Cargo.toml= and rebuilds, and cargo bakes
+  =CARGO_PKG_VERSION= into the binary — so the released artifact genuinely
+  differs from what the branch built.  Injecting the version at publish time
+  instead of committing it into =Cargo.toml= would make the branch artifact
+  bit-identical to the release, but that is an invasive change to how versioning
+  works.
+- GitHub's other two walls: a merge creates a new commit (a fast-forward or
+  squash keeps the tree content identical, so the Nix source hash matches; the
+  =[skip ci]= bump commit does not), and Actions has no native "promote a
+  previously-built artifact" verb.  Operator flagged this is probably not fully
+  achievable without fighting Actions, so this is a direction/someday, not a
+  committed plan.
+- DONE — near-term stepping stone: PR CI now builds every x86_64-producible
+  release artifact (the =release-artifacts= job in =ci.yml=), so a branch proves
+  the artifacts build even though =main= still rebuilds them.  The rest of this
+  entry (the predictive RC-branch promote) remains the open work.
+
+Refinement — the predictive "release-candidate" branch.  Rather than relying on
+a persistent Nix cache (which needs private infrastructure, with the attendant
+trust and operational cost), exploit that our versioning is /predictable/ (next
+= minor + 1).  After a PR's checks pass, spin a release-candidate branch off it
+that does the whole release prep speculatively: "if this merged now it would be
+=v0.19.0=", so bump =Cargo.toml=/=Cargo.lock=, roll the changelog, tag, and
+build the =v0.19.0= artifacts — the exact bytes main would produce.  This
+dissolves the version-bump byte-identity problem above, because the artifact is
+built /at/ the post-bump version, not before it.  Merge then degenerates to a
+promote:
+- The binaries persist with no private cache — attach them to a *draft* GitHub
+  release; merging publishes the draft.  crates.io can be upload-not-rebuild
+  too: =cargo package= produces the exact =.crate= on the RC branch, and the
+  publish step just uploads that file.
+- Main does almost nothing: fast-forward to the RC tip (the bump, changelog, and
+  tag commits already exist there, so no =[skip ci]= commit is needed), publish
+  the draft release, upload the prebuilt =.crate=.  No rebuild.
+- The version prediction is only valid against the actual =main= tip, so two PRs
+  that both predict =v0.19.0= would collide.  Two ways to serialize:
+  - A formal GitHub merge queue.
+  - Lighter, and preferred here: an invalidate-and-regenerate loop.  When A
+    merges, delete every other open PR's now-stale RC branch (B predicted
+    =v0.19.0=, which is taken).  B must rebase onto the new =main= anyway — that
+    required rebase is the trigger to regenerate B's RC, now predicting
+    =v0.20.0=.  So the RC generation is uniform: "after a PR's checks pass on
+    any push (including a rebase), build its RC at the current predicted
+    version", plus "on merge, drop the other PRs' RCs."  The only waste is the
+    loser's speculative build, thrown away and rebuilt on rebase.  For this
+    fleet that churn is rare: human PRs are effectively one-at-a-time, and
+    dependabot PRs go through the same RC flow but do not pile up because the
+    existing dependabot auto-merge drains them serially as each goes green — so
+    the invalidate-and-regenerate loop just runs automatically as they clear,
+    rather than accumulating into a parallel backlog.  That is why the lighter
+    loop beats standing up a merge queue.
+
+* TODO Enforce linear history on spawns' main branch
+Give spawns the merge philosophy (no merge commits on =main=) through the
+branch-protection-as-code mechanism the template already ships.  GitHub has no
+native repo-root file for these settings — the =.github/settings.yml= people
+reach for belongs to a third-party app (Probot "Settings"), not GitHub itself —
+but =reusable-branch-protection.yml= already =PUT=s
+=template/.github/branch-protection.json= to the branch-protection API on
+change, which is our self-contained equivalent.
+
+- Add =required_linear_history: true= to the template's
+  =.github/branch-protection.json=.  This forbids merge commits on =main=,
+  forcing squash or rebase-and-merge — the enforceable equivalent of ff-only.
+  (A literal git fast-forward is not a GitHub merge button; it always mints new
+  commit objects — even rebase-and-merge rewrites SHAs — so linear history is as
+  close as the platform gets.)
+- Optional, to remove the "Create a merge commit" button entirely: set
+  =allow_merge_commit: false= via the repo-settings endpoint (=PATCH
+  /repos/{owner}/{repo}=) — a different API than branch protection, which the
+  same workflow could also call.
+- Tie-in: =required_linear_history= is a prerequisite for the release-candidate
+  promote vision above — "fast-forward =main= to the RC tip" only works on a
+  linear-history branch.
+
+* TODO Refine the rustfmt.toml byte-match into value checks
+=rustfmt.toml= is currently guarded by =file-matches-template= (byte-for-byte
+equality with the template).  That is the blunt stopgap the "Choosing a check
+kind" guidance in =docs/compliance.org= warns against: it forbids a spawn from
+adding its own rustfmt settings, even though that is a legitimate additive
+deviation.  Replace it with value checks (=toml-path-equals=) on the settings
+that actually matter — the ones the template means to keep in lockstep — so a
+spawn can extend the file without tripping compliance.  Same shape as the
+=treefmt= checks, which already assert wiring is present rather than demanding
+an exact file.  Audit the other =file-matches-template= uses (if any) the same
+way; the goal is that nothing relies on byte-equality unless an exact match is
+genuinely required, which may be nowhere.

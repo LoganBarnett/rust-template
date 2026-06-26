@@ -165,6 +165,14 @@ kind = "section-exists"
 target = "llms.org"
 section = ["Capturing plans"]
 
+[[check]]
+id = "llms-capturing-plans-flips-todo-in-pr"
+description = "The Capturing plans section states that completing a TODO flips it to DONE in the same PR."
+kind = "mention-present"
+target = "llms.org"
+section = ["Capturing plans"]
+contains = "in the same change set that does the work"
+
 # ── Foundation pin agreement ─────────────────────────────────────────
 
 [[check]]

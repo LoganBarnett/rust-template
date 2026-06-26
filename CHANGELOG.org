@@ -3,6 +3,15 @@
 
 * Upcoming
 ** Added
+1. A project's CI now builds every release artifact on each PR — the native
+   binary, the static musl variant, and the cross-compiled macOS variants — so
+   an artifact that will not build fails the PR rather than only surfacing when
+   a release runs the binaries matrix.  Driven off the =release-binary= flags in
+   =rust-template.json=; a project that ships no binaries builds nothing.
+2. =llms.org= now documents that a change which completes a =tasks.org= TODO
+   flips that entry to DONE in the same PR — the =Closes #1234= analog — rather
+   than leaving the status flip for a follow-up commit, and compliance verifies
+   the guidance is present.
 ** Fixes
 ** Breaking
 * v0.19.0

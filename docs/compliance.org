@@ -253,6 +253,35 @@ enforces what can be expressed as a structural rule; the diff and emission
 comparisons remain authoritative for everything a static rule cannot capture.  A
 green checker run is necessary, not sufficient, for full compliance.
 
+** Choosing a check kind
+
+Default to /presence/ checks — =section-exists= for a heading, =mention-present=
+for a load-bearing phrase, =file-present= for a required file, and a value check
+(=toml-path-equals=, =yaml-path-equals=, =toml-seq-contains=, …) for a specific
+setting.  They assert that what the template lays down is /there/, without
+forbidding anything a spawn adds on top.  That additive freedom is the point: a
+project may extend =llms.org= with its own conventions, take on a new file type
+and add a formatter to =treefmt.toml=, or grow a section — and stay compliant,
+because the check verifies the required content is present rather than that the
+file is unchanged.  The =treefmt= checks are the model: each asserts one shipped
+formatter's wiring is present, so a spawn can add its own without tripping
+anything.
+
+Prefer the narrowest precise check that captures the convention.  Reaching for
+=file-matches-template= (byte-for-byte equality with the template) is almost
+always a sign the precise check has not been written yet, not that an exact
+match is genuinely required — and it carries a real cost: it forbids every
+additive deviation, so a spawn that legitimately extends the file fails.  Treat
+an existing byte-match (=rustfmt.toml= today) as a candidate to refine into
+value checks on the settings that actually matter, not a pattern to copy.  If
+content genuinely must match the template exactly, justify why in the change —
+that case is rare, if it arises at all.
+
+This additive freedom is distinct from the opt-out below.  Presence checks make
+/deviation by addition/ free and need no declaration; =compliance-ignores= is
+for the other case — deliberately /violating/ a required rule — which must be
+declared with a reason so the deviation stays honest.
+
 ** Opting out of a check
 
 A project may deliberately deviate from what the template lays down.  To keep

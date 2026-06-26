@@ -205,3 +205,45 @@ jobs:
             --input-file "${{ inputs.changelog-file }}" \
             --base "$base" \
             --under Breaking
+
+  release-artifacts:
+    name: Release artifacts build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: DeterminateSystems/nix-installer-action@main
+
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+
+      # Build every release artifact an x86_64-linux runner can produce — the
+      # native glibc binary, the static musl variant, and the two zig-cross
+      # macOS variants — for each crate that ships a binary, so an artifact that
+      # will not build fails the PR rather than only surfacing when a release
+      # runs the binaries matrix.  The macOS builds cross-compile on Linux (no
+      # macOS runner, no Apple SDK for a libSystem crate), so the cost is a
+      # normal compile plus a cached toolchain, not a darwin-runner queue.  The
+      # aarch64-linux gnu/musl targets are omitted: they run the same
+      # mk*Packages code path as the x86_64 variants with only a different
+      # target triple, so the x86_64 set transitively covers them without an ARM
+      # runner.
+      # The crate set comes from rust-template.json's release-binary flags — the
+      # same source the release-binaries workflow uses — so a project that ships
+      # no binaries builds nothing.
+      - name: Build the x86_64-producible release attrs
+        run: |
+          crates=$(jq --compact-output \
+            '[.workspaces | to_entries[]
+              | select(.value."release-binary") | .key]' \
+            rust-template.json)
+          if [ "$crates" = "[]" ]; then
+            echo "No release-binary crates; nothing to build."
+            exit 0
+          fi
+          attrs=()
+          for crate in $(echo "$crates" | jq --raw-output '.[]'); do
+            for suffix in "" -musl -aarch64-darwin -x86_64-darwin; do
+              attrs+=(".#packages.x86_64-linux.${crate}${suffix}")
+            done
+          done
+          nix build --no-link --print-out-paths "${attrs[@]}"
