@@ -3,6 +3,10 @@
 
 * Upcoming
 ** Added
+** Fixes
+** Breaking
+* v0.20.0
+** Added
 1. A project's CI now builds every release artifact on each PR — the native
    binary, the static musl variant, and the cross-compiled macOS variants — so
    an artifact that will not build fails the PR rather than only surfacing when
@@ -12,8 +16,6 @@
    flips that entry to DONE in the same PR — the =Closes #1234= analog — rather
    than leaving the status flip for a follow-up commit, and compliance verifies
    the guidance is present.
-** Fixes
-** Breaking
 * v0.19.0
 ** Added
 1. Release archives now carry a GitHub build-provenance attestation — a keyless,
