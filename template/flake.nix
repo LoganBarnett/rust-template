@@ -62,9 +62,11 @@
         inherit self pkgs craneLib crates commonArgs;
       };
       # On Linux each binary also gets a statically-linked `<name>-musl`
-      # variant; on other systems mkMuslPackages returns an empty set.
+      # variant; on other systems mkMuslPackages returns an empty set.  It
+      # threads the same commonArgs, so a project's native dependencies (such as
+      # alsa) reach the musl build as they do the native one.
       muslPackages = foundation.lib.mkMuslPackages {
-        inherit self pkgs system crates crane;
+        inherit self pkgs system crates crane commonArgs;
       };
       # The x86_64-linux build cross-compiles macOS `<key>-<arch>-darwin`
       # variants via zig so a release needs no macOS runner; empty on other
@@ -72,7 +74,7 @@
       # config.allowUnfree / config.allowUnsupportedSystem on the pkgs import
       # above) only if a crate links Apple frameworks — see CONTRIBUTING.org.
       darwinCrossPackages = foundation.lib.mkDarwinCrossPackages {
-        inherit self pkgs system crates crane;
+        inherit self pkgs system crates crane commonArgs;
       };
       packages =
         rustPackages.packages

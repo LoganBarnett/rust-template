@@ -18,7 +18,7 @@
 #
 #   packages =
 #     rustPackages.packages
-#     // mkMuslPackages {inherit self pkgs system crates crane;}
+#     // mkMuslPackages {inherit self pkgs system crates crane commonArgs;}
 #     // {default = ...;};
 #
 # Returns a single-system attrset of `<name>-musl` packages (empty on
@@ -35,6 +35,11 @@
   crates,
   # The crane flake input, used to build a musl-targeted crane lib.
   crane,
+  # The caller's crane commonArgs (such as buildInputs, nativeBuildInputs, or
+  # env), threaded through so a project's native dependencies reach the musl
+  # build the same way they reach mkRustPackages; the musl target-specifics
+  # below are overlaid on top.  Defaults to empty for callers that pass none.
+  commonArgs ? {},
 }: let
   mkRustPackages = import ./mkRustPackages.nix;
   # The musl target triple for each Linux system.  Systems absent here have no
@@ -51,16 +56,21 @@ in
     craneLib =
       (crane.mkLib pkgs).overrideToolchain
       (p: p.rust-bin.stable.latest.default.override {targets = [muslTarget];});
-    commonArgs = {
-      src = craneLib.cleanCargoSource self;
-      CARGO_BUILD_TARGET = muslTarget;
-      # musl targets link the C runtime statically by default; state it
-      # explicitly so the intent survives a toolchain default change.
-      CARGO_BUILD_RUSTFLAGS = "-C target-feature=+crt-static";
-      doCheck = false;
-    };
+    muslArgs =
+      commonArgs
+      // {
+        src = craneLib.cleanCargoSource self;
+        CARGO_BUILD_TARGET = muslTarget;
+        # musl targets link the C runtime statically by default; state it
+        # explicitly so the intent survives a toolchain default change.
+        CARGO_BUILD_RUSTFLAGS = "-C target-feature=+crt-static";
+        doCheck = false;
+      };
     muslPackages =
-      (mkRustPackages {inherit self pkgs craneLib crates commonArgs;}).packages;
+      (mkRustPackages {
+        inherit self pkgs craneLib crates;
+        commonArgs = muslArgs;
+      }).packages;
   in
     pkgs.lib.mapAttrs'
     (name: pkg: pkgs.lib.nameValuePair "${name}-musl" pkg)

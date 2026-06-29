@@ -4,6 +4,19 @@
 * Upcoming
 ** Added
 ** Fixes
+1. The musl and macOS-cross release variants now receive the project's whole
+   =commonArgs= (=buildInputs=, =nativeBuildInputs=, =env=, every crane knob),
+   so a crate with a native dependency — alsa for =cpal=, say — builds for every
+   target, not just the native one.  Previously =mkMuslPackages= and
+   =mkDarwinCrossPackages= assembled their own args and dropped the caller's, so
+   such a project failed the musl build (and a darwin build needing a
+   non-framework native lib would have failed too), even though the native build
+   linked the dependency fine.  =mkDarwinCrossPackages= now routes through
+   crane's two-phase build (like =mkMuslPackages=) rather than a hand-rolled
+   derivation, which is what lets the caller's full =commonArgs= reach the
+   dependency-compile phase; the cross target-specifics (the zig linker, the SDK
+   env) are overlaid on top, so the contract matches =mkRustPackages=: the
+   caller owns the knobs.
 ** Breaking
 * v0.20.0
 ** Added
