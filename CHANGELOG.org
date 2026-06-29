@@ -4,6 +4,9 @@
 * Upcoming
 ** Added
 ** Fixes
+** Breaking
+* v0.21.0
+** Fixes
 1. The musl and macOS-cross release variants now receive the project's whole
    =commonArgs= (=buildInputs=, =nativeBuildInputs=, =env=, every crane knob),
    so a crate with a native dependency — alsa for =cpal=, say — builds for every
@@ -17,7 +20,6 @@
    dependency-compile phase; the cross target-specifics (the zig linker, the SDK
    env) are overlaid on top, so the contract matches =mkRustPackages=: the
    caller owns the knobs.
-** Breaking
 * v0.20.0
 ** Added
 1. A project's CI now builds every release artifact on each PR — the native
