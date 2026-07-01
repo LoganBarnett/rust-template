@@ -3,6 +3,10 @@
 
 * Upcoming
 ** Added
+** Fixes
+** Breaking
+* v0.22.0
+** Added
 1. A build-only =cross-fixture= crate and a =Darwin cross fixture build= CI job
    now guard the macOS cross-compile against the two paths the template's own
    pure-Rust crates never exercise: a C-compiling dependency (=ring=, compiled
@@ -22,7 +26,6 @@
    =mkDarwinCrossPackages= now sets the =cc=-crate cross variables
    (=CC_<triple>= / =CXX_<triple>=) to =zig cc= wrappers, which every cargo
    phase honours.  Pure-Rust workspaces are unaffected.
-** Breaking
 * v0.21.0
 ** Fixes
 1. The musl and macOS-cross release variants now receive the project's whole
