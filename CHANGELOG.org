@@ -3,7 +3,25 @@
 
 * Upcoming
 ** Added
+1. A build-only =cross-fixture= crate and a =Darwin cross fixture build= CI job
+   now guard the macOS cross-compile against the two paths the template's own
+   pure-Rust crates never exercise: a C-compiling dependency (=ring=, compiled
+   by zig in crane's deps-only phase) and Apple framework linking
+   (=CoreFoundation=, resolved against the SDK's =.tbd= stubs).  The fixture is
+   never published or attached to a release; it exists so a regression in either
+   darwin path fails the PR rather than surfacing only when a real consumer with
+   those dependencies builds.
 ** Fixes
+1. The macOS-cross release build now compiles C and assembly dependencies (a TLS
+   stack's =ring=, say) through zig in every build phase, so a workspace with a
+   =cc=-crate dependency cross-builds for darwin instead of failing.  Previously
+   only the final =cargo zigbuild= link got the zig C toolchain; crane's shared
+   deps-only phase runs a plain =cargo check=, and a build script compiling C
+   there fell back to the host =gcc=, which rejects the Apple flags (=-arch=,
+   =-mmacosx-version-min=) the =cc= crate emits for a =*-apple-darwin= target.
+   =mkDarwinCrossPackages= now sets the =cc=-crate cross variables
+   (=CC_<triple>= / =CXX_<triple>=) to =zig cc= wrappers, which every cargo
+   phase honours.  Pure-Rust workspaces are unaffected.
 ** Breaking
 * v0.21.0
 ** Fixes

@@ -29,6 +29,19 @@
       (import rust-overlay)
     ];
     pkgsFor = system: import nixpkgs {inherit overlays system;};
+    # Same nixpkgs, but accepting the unfree, darwin-gated Apple SDK so the
+    # cross-fixture's framework-linking build can evaluate `apple-sdk.src` on a
+    # Linux builder.  The acceptance stays visible here rather than depending on
+    # a NIXPKGS_ALLOW_UNFREE env var, matching what CONTRIBUTING.org tells
+    # consumers whose crates link Apple frameworks.
+    pkgsUnfreeFor = system:
+      import nixpkgs {
+        inherit overlays system;
+        config = {
+          allowUnfree = true;
+          allowUnsupportedSystem = true;
+        };
+      };
     mkRustPackages = import ./nix/lib/mkRustPackages.nix;
     # Binary crates this repo ships as release artifacts.  Mirrors the
     # release-binary = true entries in rust-template.json: compliance-cli is the
@@ -37,6 +50,18 @@
       compliance-cli = {
         name = "rust-template-compliance-cli";
         binary = "rust-template-compliance-cli";
+      };
+    };
+    # A build-only regression fixture, cross-compiled with the Apple SDK to
+    # guard the two darwin paths the release crates never hit: a C-compiling
+    # dependency (compiled via zig in crane's deps-only phase) and Apple
+    # framework linking.  Kept out of `crates` above so it is never built
+    # native/musl or shipped as a release artifact — only the darwin-cross
+    # fixture attrs below reference it.
+    fixtureCrates = {
+      cross-fixture = {
+        name = "rust-template-cross-fixture";
+        binary = "rust-template-cross-fixture";
       };
     };
     # Crane-built workspace binaries for one system, assembled the same way
@@ -113,7 +138,8 @@
     # Linux each binary also gets a statically-linked `<name>-musl` variant, and
     # the x86_64-linux build cross-compiles macOS `<key>-<arch>-darwin` variants
     # via zig.  compliance-cli is libSystem-only, so no `appleSdk` is passed and
-    # the cross build stays licence-free.
+    # its cross build stays licence-free.  The cross-fixture is built separately
+    # with the Apple SDK to guard framework linking — see fixtureCrates.
     packages = forAllSystems (
       system: let
         cratePackages = (rustPackagesFor system).packages;
@@ -125,10 +151,20 @@
           inherit self crane crates system;
           pkgs = pkgsFor system;
         };
+        # The fixture links Apple frameworks, so it needs the Apple SDK and the
+        # unfree-accepting pkgs.  Empty except on x86_64-linux, like the other
+        # cross outputs.
+        fixtureDarwinPackages = mkDarwinCrossPackages {
+          inherit self crane system;
+          pkgs = pkgsUnfreeFor system;
+          crates = fixtureCrates;
+          appleSdk = (pkgsUnfreeFor system).apple-sdk.src;
+        };
       in
         cratePackages
         // muslPackages
         // darwinCrossPackages
+        // fixtureDarwinPackages
         // {default = cratePackages.compliance-cli;}
     );
 

@@ -2368,6 +2368,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "rust-template-cross-fixture"
+version = "0.21.0"
+dependencies = [
+ "ring",
+ "tap",
+]
+
+[[package]]
 name = "rust-template-foundation"
 version = "0.21.0"
 dependencies = [

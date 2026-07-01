@@ -1,6 +1,114 @@
 #+title:     rust-template Tasks
 #+language:  en
 
+* DONE mkDarwinCrossPackages fails for workspaces with C-compiling deps
+Fixed by setting the ~cc~-crate cross vars ~CC_<triple>~ / ~CXX_<triple>~ (the
+underscored target triple, e.g. ~CC_aarch64_apple_darwin~) in ~darwinArgs~ to
+~zig cc~ / ~zig c++~ wrapper scripts, so every cargo phase — including crane's
+deps-only ~cargo check~ — compiles C through zig, not just the final ~cargo
+zigbuild~.  The wrappers mirror the ones ~cargo-zigbuild~ writes internally
+(~cargo-zigbuild zig cc -- -g -fno-sanitize=all -target <arch>-macos-none~), and
+it honours ours because it only sets its own when the var is unset
+(~add_env_if_missing~).  ~SDKROOT~ from ~sdkEnv~ is picked up by the ~zig cc~
+shim for framework builds; a libSystem-only crate like ~ring~ needs no SDK.
+
+Two corrections to the diagnosis below: ~cargo-zigbuild~ /does/ have a ~check~
+subcommand, but the env-var route is preferable because it is
+invocation-independent (covers check, deps-only, build, and any future phase
+uniformly).  ~AR~ / ~RANLIB~ were left on the host tools, matching
+~cargo-zigbuild~'s own default — only C /compilation/ was failing, not
+archiving.
+
+Validated by temporarily adding ~ring~ to =crates/compliance-cli= and building
+~.#packages.x86_64-linux.compliance-cli-aarch64-darwin~ on the Linux builder: it
+produced a clean arm64 Mach-O with no ~gcc: … '-arch'~ errors and the
+~cargo-package-deps~ derivation built successfully.
+
+To keep it from regressing, a permanent guard was added: =crates/cross-fixture=,
+a build-only crate (never published or released) that carries a macos-gated
+~ring~ dependency (the C path) and links ~CoreFoundation~ (the framework/SDK
+path).  The root =flake.nix= cross-builds it with =apple-sdk.src= via an
+unfree-accepting pkgs, and a =Darwin cross fixture build= CI job builds both
+=cross-fixture-<arch>-darwin= attrs on every PR, so a future break in either
+path fails the build.  The escape happened because the template's own crates are
+pure Rust with no C or framework deps, so CI only ever exercised the happy path;
+the fixture supplies the missing consumer-workspace shapes.
+
+The macOS-cross release build (=nix/lib/mkDarwinCrossPackages.nix=) fails for
+any workspace whose dependency tree compiles C or assembly in a build script —
+e.g.  ~ring~ (pulled in by a rustls TLS stack).  The pure-Rust cross-compile is
+fine; only the C portions break, because they are compiled with the host ~gcc~
+instead of ~zig cc~.
+
+** Symptom
+First observed in sonify-health (PR #11, Actions run 28544803071, job "Release
+artifacts build"):
+
+#+begin_src text :exports code
+building '/nix/store/…-cargo-package-deps-0.1.0.drv'...
+error: Cannot build '/nix/store/…-cargo-package-deps-0.1.0.drv'.
+       Reason: builder failed with exit code 101.
+       >   cargo:warning=gcc: error: unrecognized debug output level 'full'
+       >   cargo:warning=gcc: error: unrecognized command-line option '-arch'
+       >   cargo:warning=gcc: error: unrecognized command-line option '-mmacosx-version-min=10.7'
+error: Cannot build '…-sonify-health-cli-0.1.0.drv'.    Reason: 1 dependency failed.
+error: Cannot build '…-sonify-health-server-0.1.0.drv'. Reason: 1 dependency failed.
+#+end_src
+
+~-arch~, ~-mmacosx-version-min=…~, and ~-g full~ are Apple/clang flags the ~cc~
+crate emits when ~TARGET=*-apple-darwin~.  The host ~gcc~ rejects them and the
+build script aborts.
+
+** Root cause
+~darwinArgs~ swaps only the build command to zig:
+
+#+begin_src nix :exports code
+cargoBuildCommand = "cargo zigbuild --release";
+CARGO_BUILD_TARGET = target; # aarch64-apple-darwin / x86_64-apple-darwin
+#+end_src
+
+~cargo-zigbuild~ sets the ~cc~-crate cross env (~CC_<target>=zig cc …~) only for
+that one wrapped invocation.  But crane runs other cargo invocations that also
+execute build scripts — notably the shared deps build
+(=nix/lib/mkRustPackages.nix=, ~cargoArtifacts = craneLib.buildDepsOnly
+commonArgs~), which runs crane's default ~cargoCheckCommand~ (plain ~cargo
+check~, not zigbuild).  During those, ~ring~'s build script calls the ~cc~ crate
+for the darwin target with ~CC_<target>~ unset, so it falls back to the host
+~gcc~ with Apple flags → failure.  The zig CC override is scoped to ~cargo
+zigbuild~; the C-compiling build scripts that run under ~cargo check~ /
+deps-only are not covered.
+
+** Fix direction
+Make the darwin-target C toolchain env explicit and invocation-independent
+rather than relying on ~cargo zigbuild~ to set it.  In ~darwinArgs~, set the
+~cc~-crate cross vars to zig-based wrappers so every cargo phase (check,
+deps-only, build) compiles C through zig:
+
+- ~CC_<target>~, ~CXX_<target>~, and likely ~AR_<target>~ pointed at ~zig cc~ /
+  ~zig c++~ / ~zig ar~ wrapper scripts targeting ~aarch64-macos~ /
+  ~x86_64-macos~, reusing the existing ~SDKROOT~ / framework paths from
+  ~sdkEnv~.
+- Confirm ~CARGO_TARGET_<TARGET>_LINKER~ still points at the zig linker for the
+  final link.
+- Overriding ~cargoCheckCommand~ to zig is not viable — ~cargo-zigbuild~ has no
+  ~check~ subcommand — so set the env vars directly.  ~cargo-zigbuild~ builds
+  equivalent wrappers internally; the task is exposing them to crane's
+  non-zigbuild phases.
+
+** Reproduce and verify
+Add a ~ring~-pulling dependency (any ~cc~-crate C dep) to a spawn and build
+~.#packages.x86_64-linux.<crate>-aarch64-darwin~ and ~-x86_64-darwin~.  It
+should compile the C deps via ~zig cc~ with no ~gcc: unrecognized … '-arch'~
+errors.
+
+** Notes
+- Only affects workspaces with C-compiling deps; the template's archetype crates
+  have none, which is why it surfaced only once sonify-health (TLS → ~ring~) ran
+  the release-artifacts build.
+- Affects both darwin targets; each has its own deps build.
+- Unrelated to the concurrent ~magic-nix-cache~ ~HTTP 418~ throttling in the
+  same CI run, which is a separate infrastructure issue.
+
 * DONE Reusable CI checks should gate branch pushes, not just pull requests
 The reusable workflow's ~changelog~ and ~abi~ jobs both gate on
 ~github.event_name == 'pull_request'~, so a contributor who pushes directly to a

@@ -5,6 +5,9 @@ members = [
     "crates/foundation",
     "crates/compliance-lib",
     "crates/compliance-cli",
+    # A build-only regression fixture for mkDarwinCrossPackages (C-compiling and
+    # framework-linking cross paths); never published or released.
+    "crates/cross-fixture",
 ]
 
 # Shared metadata for workspace members.  Each crate inherits these
