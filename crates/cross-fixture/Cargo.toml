@@ -1,0 +1,31 @@
+[package]
+name = "rust-template-cross-fixture"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+# A regression fixture, never released to crates.io or attached to a release.
+publish = []
+
+[[bin]]
+name = "rust-template-cross-fixture"
+path = "src/main.rs"
+
+[dependencies]
+# Required by the crates-defer-to-workspace-tap compliance check, which holds
+# every workspace crate to the single workspace tap declaration.  Used trivially
+# in main so the dependency is not dead weight.
+tap = { workspace = true }
+
+# The C-compiling dependency that guards mkDarwinCrossPackages.  ring's build
+# script compiles C and assembly for the target, which — for a darwin target —
+# runs in crane's deps-only `cargo check` phase, the exact place a host-gcc
+# fallback broke before the CC/CXX cross vars were set.  It is gated to macos
+# targets so it is compiled (via zig) only in the darwin-cross build; the
+# native and static-musl builds never pull it and pay nothing.
+[target.'cfg(target_os = "macos")'.dependencies]
+ring = "0.17"
+
+[lints]
+workspace = true

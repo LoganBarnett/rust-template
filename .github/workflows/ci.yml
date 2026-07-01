@@ -51,3 +51,29 @@ jobs:
 
       - name: Run ${{ matrix.script }}
         run: nix develop --command ./${{ matrix.script }}
+
+  # Guards mkDarwinCrossPackages against the two darwin cross-compile paths the
+  # release crates never exercise: a C-compiling dependency (`ring`, compiled by
+  # zig in crane's deps-only phase) and Apple framework linking (CoreFoundation,
+  # resolved against the SDK's `.tbd` stubs).  The cross-fixture crate carries
+  # both; building its darwin attrs here fails the PR if either path regresses.
+  # This lives in rust-template's own workflow rather than reusable-ci.yml
+  # because the fixture is specific to this repo — spawned projects have no such
+  # crate.  Only x86_64-linux produces the cross output, hence ubuntu.
+  darwin-cross-fixture:
+    name: Darwin cross fixture build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: DeterminateSystems/nix-installer-action@main
+
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+
+      # Unfree acceptance for the Apple SDK lives in flake.nix (pkgsUnfreeFor),
+      # so no NIXPKGS_ALLOW_UNFREE is needed here.
+      - name: Build the cross-fixture darwin variants
+        run: |
+          nix build --no-link --print-out-paths \
+            '.#packages.x86_64-linux.cross-fixture-aarch64-darwin' \
+            '.#packages.x86_64-linux.cross-fixture-x86_64-darwin'

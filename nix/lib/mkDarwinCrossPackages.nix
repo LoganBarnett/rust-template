@@ -99,6 +99,33 @@ in
           (crane.mkLib pkgs).overrideToolchain
           (p: p.rust-bin.stable.latest.default.override {targets = [target];});
         frameworks = "${toString appleSdk}/System/Library/Frameworks";
+        # The C/C++ cross toolchain for this darwin target.  A dependency whose
+        # build script compiles C or assembly through the `cc` crate (`ring`,
+        # say, pulled in by a TLS stack) does so in every cargo phase —
+        # including crane's deps-only `cargo check`, not just the final
+        # `cargo zigbuild`.  cargo-zigbuild sets the cc-crate cross vars only
+        # for its own invocation, so those other phases fall back to the host
+        # `gcc`, which chokes on the Apple flags (`-arch`,
+        # `-mmacosx-version-min`, …) the `cc` crate emits for a `*-apple-darwin`
+        # target.  Pointing CC/CXX at the zig-cc wrappers here makes the C
+        # toolchain identical in every phase.  These mirror the wrappers
+        # cargo-zigbuild writes internally — same
+        # `zig cc`/`zig c++` shim, same args — and it honours ours because it
+        # only sets its own when the var is unset.  zig is forced onto PATH so
+        # the wrapper works even under a build script that scrubs it.
+        zigArch = lib.head (lib.splitString "-" target);
+        ccEnvTarget = lib.replaceStrings ["-"] ["_"] target;
+        zigCcArgs = "-g -fno-sanitize=all -target ${zigArch}-macos-none";
+        zigCc = pkgs.writeShellScript "zigcc-${target}" ''
+          export PATH="${pkgs.zig}/bin:$PATH"
+          exec ${pkgs.cargo-zigbuild}/bin/cargo-zigbuild zig cc \
+            -- ${zigCcArgs} "$@"
+        '';
+        zigCxx = pkgs.writeShellScript "zigcxx-${target}" ''
+          export PATH="${pkgs.zig}/bin:$PATH"
+          exec ${pkgs.cargo-zigbuild}/bin/cargo-zigbuild zig c++ \
+            -- ${zigCcArgs} "$@"
+        '';
         # Framework crates need the SDK's headers (bindgen) and `.tbd` stubs
         # (linker); a libSystem-only crate needs none of this.  zig's Mach-O
         # linker does not derive the framework search path from -isysroot, so it
@@ -121,6 +148,11 @@ in
           // {
             src = craneLib.cleanCargoSource self;
             CARGO_BUILD_TARGET = target;
+            # See the zigCc/zigCxx comment above: these route the C
+            # compilation of every cargo phase through zig, not just the final
+            # zigbuild.  The env var name is the cc-crate's underscored triple.
+            "CC_${ccEnvTarget}" = "${zigCc}";
+            "CXX_${ccEnvTarget}" = "${zigCxx}";
             # zig is the linker; cargo-zigbuild drives it for the final link.
             cargoBuildCommand = "cargo zigbuild --release";
             # Built artifacts are Mach-O: the x86_64-linux host can neither run
