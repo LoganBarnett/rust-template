@@ -22,9 +22,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: DeterminateSystems/nix-installer-action@main
-
-      - uses: DeterminateSystems/magic-nix-cache-action@main
+      # Install Nix + restore/save the `/nix` store cache.  See
+      # `.github/actions/setup-nix` for the rationale.
+      - uses: LoganBarnett/rust-template/.github/actions/setup-nix@main
 
       # `Swatinem/rust-cache` caches `~/.cargo/registry` and `target/`
       # — orthogonal to the Nix store cache above, which holds the
@@ -45,9 +45,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: DeterminateSystems/nix-installer-action@main
-
-      - uses: DeterminateSystems/magic-nix-cache-action@main
+      # Install Nix + restore/save the `/nix` store cache.  See
+      # `.github/actions/setup-nix` for the rationale.
+      - uses: LoganBarnett/rust-template/.github/actions/setup-nix@main
 
       - name: Check formatting
         run: nix develop --command cargo fmt --all -- --check
@@ -58,9 +58,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: DeterminateSystems/nix-installer-action@main
-
-      - uses: DeterminateSystems/magic-nix-cache-action@main
+      # Install Nix + restore/save the `/nix` store cache.  See
+      # `.github/actions/setup-nix` for the rationale.
+      - uses: LoganBarnett/rust-template/.github/actions/setup-nix@main
 
       - uses: Swatinem/rust-cache@v2
 
@@ -95,9 +95,9 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: DeterminateSystems/nix-installer-action@main
-
-      - uses: DeterminateSystems/magic-nix-cache-action@main
+      # Install Nix + restore/save the `/nix` store cache.  See
+      # `.github/actions/setup-nix` for the rationale.
+      - uses: LoganBarnett/rust-template/.github/actions/setup-nix@main
 
       # Diff target depends on the event:
       # - PR or push to a non-main branch: `origin/main` (the merge
@@ -139,9 +139,9 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: DeterminateSystems/nix-installer-action@main
-
-      - uses: DeterminateSystems/magic-nix-cache-action@main
+      # Install Nix + restore/save the `/nix` store cache.  See
+      # `.github/actions/setup-nix` for the rationale.
+      - uses: LoganBarnett/rust-template/.github/actions/setup-nix@main
 
       - uses: Swatinem/rust-cache@v2
 
@@ -212,9 +212,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: DeterminateSystems/nix-installer-action@main
-
-      - uses: DeterminateSystems/magic-nix-cache-action@main
+      # Install Nix; restore-only.  `save-store: "false"` keeps this
+      # job's large musl/zig-cross-darwin closures from bloating and
+      # LRU-evicting the shared toolchain cache — see
+      # `.github/actions/setup-nix` for the full rationale.
+      - uses: LoganBarnett/rust-template/.github/actions/setup-nix@main
+        with:
+          save-store: "false"
 
       # Build every release artifact an x86_64-linux runner can produce — the
       # native glibc binary, the static musl variant, and the two zig-cross

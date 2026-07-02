@@ -4,6 +4,17 @@
 * Upcoming
 ** Added
 ** Fixes
+1. CI now installs Nix and caches the =/nix= store through
+   =nixbuild/nix-quick-install-action= + =nix-community/cache-nix-action=
+   instead of the deprecated Determinate Magic Nix Cache, whose free backend
+   shut down in February 2025 and whose reverse-engineered revival throttled CI
+   with =HTTP 418= crashes.  The installer-and-cache pair is factored into a
+   =.github/actions/setup-nix= composite action shared across every workflow, so
+   the store is cached in the GitHub Actions cache with no external service or
+   signing key.  The heavy cross-compile jobs (release artifacts, the
+   release-binaries matrix, the darwin cross fixture) run restore-only so their
+   large =musl= / zig-cross-darwin closures do not evict the shared toolchain
+   cache the light jobs depend on.
 ** Breaking
 * v0.23.0
 ** Added
