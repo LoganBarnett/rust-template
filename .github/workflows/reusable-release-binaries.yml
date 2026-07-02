@@ -109,9 +109,16 @@ jobs:
         with:
           ref: ${{ inputs.tag }}
 
-      - uses: DeterminateSystems/nix-installer-action@main
-
-      - uses: DeterminateSystems/magic-nix-cache-action@main
+      # Install Nix; restore-only (`save-store: "false"`).  Each matrix
+      # leg builds a full glibc/musl/zig-cross closure, and the matrix
+      # spans both x86_64 and aarch64 Linux runners — writing would
+      # churn the shared 10 GB cache (and the arch is already in the
+      # key, so a save here could not help the other arch anyway).  It
+      # still restores the toolchain a same-arch light job cached.  See
+      # `.github/actions/setup-nix`.
+      - uses: LoganBarnett/rust-template/.github/actions/setup-nix@main
+        with:
+          save-store: "false"
 
       # Build straight from the committed Cargo.lock.  Crane vendors the locked
       # dependencies through a fixed-output derivation, so the build needs no

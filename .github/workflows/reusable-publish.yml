@@ -42,9 +42,9 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: DeterminateSystems/nix-installer-action@main
-
-      - uses: DeterminateSystems/magic-nix-cache-action@main
+      # Install Nix + restore/save the `/nix` store cache.  See
+      # `.github/actions/setup-nix` for the rationale.
+      - uses: LoganBarnett/rust-template/.github/actions/setup-nix@main
 
       - uses: Swatinem/rust-cache@v2
 
