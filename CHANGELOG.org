@@ -4,6 +4,9 @@
 * Upcoming
 ** Added
 ** Fixes
+** Breaking
+* v0.24.0
+** Fixes
 1. CI now installs Nix and caches the =/nix= store through
    =nixbuild/nix-quick-install-action= + =nix-community/cache-nix-action=
    instead of the deprecated Determinate Magic Nix Cache, whose free backend
@@ -15,7 +18,6 @@
    release-binaries matrix, the darwin cross fixture) run restore-only so their
    large =musl= / zig-cross-darwin closures do not evict the shared toolchain
    cache the light jobs depend on.
-** Breaking
 * v0.23.0
 ** Added
 1. A =.github/actions/setup-nix= composite action encapsulates installing Nix
