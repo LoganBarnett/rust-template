@@ -1,0 +1,61 @@
+name: Set up Nix with cached store
+description: >-
+  Install Nix (daemon-free, flakes enabled) and restore/save the `/nix`
+  store through the GitHub Actions cache.  Replaces the deprecated
+  `DeterminateSystems/nix-installer-action` + `magic-nix-cache-action`
+  pair: Determinate shut the free Magic Nix Cache backend down in
+  February 2025, and the reverse-engineered revival throttles against
+  GitHub's cache API with HTTP 418s.
+
+# Consumed both by rust-template's own `ci.yml` (via a local `./` ref, so a
+# PR editing this action is tested against the PR's own copy) and by the
+# `reusable-*.yml` workflows (via the `LoganBarnett/rust-template/...@main`
+# form — a `./` ref inside a reusable workflow resolves against the *caller's*
+# checkout, i.e. the spawned project, which does not have this file).
+
+inputs:
+  save-store:
+    description: >-
+      Whether to save the store back to the cache after the job.  Set to
+      "false" for heavy cross-compile jobs (release artifacts, the
+      release-binaries matrix, the darwin cross fixture): their large
+      musl/zig-cross-darwin closures would bloat and LRU-evict the shared
+      10 GB toolchain cache the light jobs depend on.  A restore-only job
+      still reads that toolchain; only its cross closures go uncached.
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    # `nix-quick-install-action` does a daemon-free install whose `/nix` is
+    # a plain directory — exactly what `cache-nix-action` needs to tar and
+    # restore the store.  It writes the supplied `nix_conf` verbatim and,
+    # unlike the Determinate installer, does not enable flakes by default,
+    # so `experimental-features` is set here explicitly.
+    # `keep-outputs`/`keep-env-derivations` keep the `nix develop` devShell's
+    # build inputs as GC roots so the toolchain closure (rustfmt, clippy,
+    # changelog-roller, treefmt, ...) lands in the cached tarball.
+    - uses: nixbuild/nix-quick-install-action@v30
+      with:
+        nix_conf: |
+          experimental-features = nix-command flakes
+          keep-env-derivations = true
+          keep-outputs = true
+
+    # `cache-nix-action` stores `/nix` in the GitHub Actions cache — no
+    # external service or signing key, the Magic-Nix-Cache property worth
+    # keeping.  The key is the flake-input hash plus runner OS/arch (arch
+    # matters: the release-binaries matrix runs both x86_64 and aarch64 Linux
+    # runners, which must not share a store cache).
+    # `restore-prefixes-first-match` warm-starts from the newest same-prefix
+    # cache when only the lockfile moved.  `gc-max-store-size-linux` bounds
+    # the saved tarball; the kept devShell roots survive the pre-save GC.
+    # No `purge` — it needs `actions: write` in every consumer, and GitHub's
+    # own 10 GB LRU eviction retires stale keys, so omitting it keeps this
+    # action drop-in for spawned projects.
+    - uses: nix-community/cache-nix-action@v7
+      with:
+        primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
+        restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}-
+        gc-max-store-size-linux: 5G
+        save: ${{ inputs.save-store }}
