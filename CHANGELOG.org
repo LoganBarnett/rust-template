@@ -3,14 +3,16 @@
 
 * Upcoming
 ** Added
+** Fixes
+** Breaking
+* v0.23.0
+** Added
 1. A =.github/actions/setup-nix= composite action encapsulates installing Nix
    (daemon-free, flakes enabled) and restoring/saving the =/nix= store cache, so
    the CI workflows can share one definition instead of repeating the installer
    and cache steps in every job.  It lands on its own here so the reusable
    workflows' =@main= references to it resolve once they adopt it in the
    follow-up change.
-** Fixes
-** Breaking
 * v0.22.0
 ** Added
 1. A build-only =cross-fixture= crate and a =Darwin cross fixture build= CI job
