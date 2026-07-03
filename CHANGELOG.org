@@ -3,6 +3,10 @@
 
 * Upcoming
 ** Added
+** Fixes
+** Breaking
+* v0.25.0
+** Added
 1. A dedicated =ci= devShell, built from a new =mkCiShell= helper in foundation,
    carries just the Rust toolchain and the release CLIs the CI jobs invoke
    (=changelog-roller=, =cargo-semver-checks=).  The reusable workflows now
@@ -12,8 +16,6 @@
    overridable argument so a spawn can extend or replace it, and both shells
    export a =RUST_TEMPLATE_SHELL= marker that a new =dev-shell-env= compliance
    check evaluates and reads back to confirm each shell resolves and carries it.
-** Fixes
-** Breaking
 * v0.24.0
 ** Fixes
 1. CI now installs Nix and caches the =/nix= store through
