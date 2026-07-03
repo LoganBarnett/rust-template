@@ -334,6 +334,91 @@ If only one crate needs it:
 specific-crate = "1.0"  # Not in workspace dependencies
 #+end_src
 
+* Customizing the CI shell
+
+The reusable CI workflow runs every job inside ~nix develop .#ci --command ...~,
+so the tools CI needs come from a dedicated ~ci~ devShell rather than from
+per-job installs.  That shell is deliberately minimal — the Rust toolchain plus
+the release CLIs the CI jobs invoke — and omits the interactive ~default~ dev
+shell's extras (the Elm toolchain, the treefmt formatter stack, ~just~), so it
+is cheaper to realize.  (The Elm frontend, when a project ships one, is a
+package-build input under ~nix build~, not something any devShell provides.)
+
+** What the baseline provides
+
+The ~ci~ shell is built by the foundation helper ~mkCiShell~, wired in
+~flake.nix~:
+
+#+begin_src nix :exports code
+ci = foundation.lib.mkCiShell {
+  inherit pkgs system;
+  toolchain = rust;
+};
+#+end_src
+
+~mkCiShell~ seeds the shell with three packages, each an overridable argument:
+
+- ~toolchain~ — the Rust toolchain CI compiles and lints with.  The call site
+  passes the same ~rust~ the dev shell uses, so local and CI toolchains match.
+- ~changelogRoller~ — ~changelog-roller~, used by the ~changelog~ and ~abi~
+  jobs, the publish flow, and the dependabot automerge flow.
+- ~semverChecks~ — ~cargo-semver-checks~, the ~abi~ job's crates.io ABI gate.
+
+** Adding tools
+
+Extra release tooling goes in ~buildInputs~.  It is /added/ to the baseline, not
+replacing it:
+
+#+begin_src nix :exports code
+ci = foundation.lib.mkCiShell {
+  inherit pkgs system;
+  toolchain = rust;
+  buildInputs = [pkgs.cosign];
+};
+#+end_src
+
+** Setting environment variables
+
+Any attribute that is not a recognised ~mkShell~ input becomes an exported
+environment variable, so CI variables are just extra fields:
+
+#+begin_src nix :exports code
+ci = foundation.lib.mkCiShell {
+  inherit pkgs system;
+  toolchain = rust;
+  CARGO_TERM_COLOR = "always";
+};
+#+end_src
+
+For a value computed at shell entry, append to ~shellHook~ instead; it is
+appended to the baseline hook and runs before ~nix develop .#ci --command~
+executes its command.
+
+** Overriding or dropping a baseline package
+
+Pass your own derivation for ~toolchain~, ~changelogRoller~, or ~semverChecks~
+to swap it:
+
+#+begin_src nix :exports code
+ci = foundation.lib.mkCiShell {
+  inherit pkgs system;
+  changelogRoller = myFork.packages.${system}.default;
+};
+#+end_src
+
+There is no dedicated "turn this off" flag: passing ~null~ simply produces a
+broken ~buildInputs~.  To run a genuinely different CI shell, stop calling
+~mkCiShell~ and write your own ~mkShell~ under ~devShells.ci~ — the reusable
+workflow only requires that a ~.#ci~ shell exists.
+
+** The RUST_TEMPLATE_SHELL marker
+
+Both shells export ~RUST_TEMPLATE_SHELL~ naming which shell it is (~default~ or
+~ci~), so ~echo $RUST_TEMPLATE_SHELL~ tells you which shell you are in.  A
+compliance check reads this marker back with ~nix eval~ to confirm each shell
+evaluates and exposes it; keep it in place when customizing, or the check will
+flag the shell as missing its marker.
+
 * Next Steps
 
 - Review [[file:getting-started.org][getting-started.org]] for development workflow
@@ -344,9 +429,9 @@ specific-crate = "1.0"  # Not in workspace dependencies
 * Forward-porting template updates
 
 When the template is updated after your project was emitted, pull in the
-relevant infrastructure changes using =rust-template.json= at the project
-root. =docs/compliance.org= owns the authoritative process; the summary below
-      shows which of the two paths applies to your repo.
+relevant infrastructure changes using =rust-template.json= at the project root.
+=docs/compliance.org= owns the authoritative process; the summary below shows
+which of the two paths applies to your repo.
 
 ** Diff-based — when =template_sync_hashes= is non-empty
 
@@ -362,9 +447,9 @@ business logic; apply infrastructure changes to your project.
 
 ** Fresh-emission — when =template_sync_hashes= is empty or the file is absent
 
-Your project predates template provenance, so there is no commit to diff
-from. Emit a fresh project from the current template into a temporary directory
-      and compare against it file by file:
+Your project predates template provenance, so there is no commit to diff from.
+Emit a fresh project from the current template into a temporary directory and
+compare against it file by file:
 
 #+begin_src sh :exports code
 ./new-project.sh \

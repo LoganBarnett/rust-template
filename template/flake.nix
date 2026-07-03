@@ -87,71 +87,95 @@
     in {
       inherit packages;
       inherit (rustPackages) apps checks;
-      devShell = pkgs.mkShell {
-        buildInputs = [
-          # Rust toolchain (compiler, cargo, rustfmt, rust-analyzer).
-          rust
-          # Prunes stale per-profile artifacts from target/ to reclaim disk.
-          pkgs.cargo-sweep
-          # JSON parsing for the shellHook's cargo-package listing and ad-hoc
-          # scripting in the dev shell.
-          pkgs.jq
-          # Elm toolchain for the frontend/ app: compiler, formatter, and the
-          # elm2nix bridge that pins Elm deps for reproducible builds.
-          pkgs.elmPackages.elm
-          pkgs.elmPackages.elm-format
-          pkgs.elm2nix
-          # Unified formatter and the per-language binaries it invokes.
-          pkgs.treefmt
-          pkgs.alejandra
-          pkgs.prettier
-          # Command runner for the project's justfile recipes.
-          pkgs.just
-          # Rolls the CHANGELOG on release; used by the reusable CI workflow's
-          # `changelog` job and runnable locally for the same flow.
-          changelog-roller.packages.${system}.default
-          # Formats org-mode documents (treefmt delegates .org files to it).
-          org-fmt.packages.${system}.default
-          # ABI baseline check used by the reusable CI workflow's `abi`
-          # job.  Compares the workspace's current public API against the
-          # previous version on crates.io and reports breaking changes;
-          # the job then gates on an Upcoming → Breaking changelog entry
-          # when a break is detected.  Provided here so contributors can
-          # run `nix develop --command cargo semver-checks ...` locally
-          # before opening a PR.
-          #
-          # `doCheck = false` skips upstream's `target_feature_*`
-          # snapshot tests, which assert against snapshots recorded on
-          # x86_64 and therefore fail when building on aarch64-darwin.
-          # We only ship the binary, not its test suite, so disabling
-          # the check phase does not affect what the workflow runs.
-          (pkgs.cargo-semver-checks.overrideAttrs (_: {doCheck = false;}))
-        ];
-        shellHook = ''
-          ${foundation.lib.cargoHuskyHookSnippet pkgs}
-          echo "Rust Template development environment"
-          echo ""
-          echo "Available Cargo packages (use 'cargo build -p <name>'):"
-          cargo metadata --no-deps --format-version 1 2>/dev/null | \
-            jq --raw-output '.packages[].name' | \
-            sort | \
-            sed 's/^/  • /' || echo "  Run 'cargo init' to get started"
+      devShells = {
+        default = pkgs.mkShell {
+          buildInputs = [
+            # Rust toolchain (compiler, cargo, rustfmt, rust-analyzer).
+            rust
+            # Prunes stale per-profile artifacts from target/ to reclaim disk.
+            pkgs.cargo-sweep
+            # JSON parsing for the shellHook's cargo-package listing and ad-hoc
+            # scripting in the dev shell.
+            pkgs.jq
+            # Elm toolchain for the frontend/ app: compiler, formatter, and the
+            # elm2nix bridge that pins Elm deps for reproducible builds.
+            pkgs.elmPackages.elm
+            pkgs.elmPackages.elm-format
+            pkgs.elm2nix
+            # Unified formatter and the per-language binaries it invokes.
+            pkgs.treefmt
+            pkgs.alejandra
+            pkgs.prettier
+            # Command runner for the project's justfile recipes.
+            pkgs.just
+            # Rolls the CHANGELOG on release; used by the reusable CI workflow's
+            # `changelog` job and runnable locally for the same flow.
+            changelog-roller.packages.${system}.default
+            # Formats org-mode documents (treefmt delegates .org files to it).
+            org-fmt.packages.${system}.default
+            # ABI baseline check used by the reusable CI workflow's `abi`
+            # job.  Compares the workspace's current public API against the
+            # previous version on crates.io and reports breaking changes;
+            # the job then gates on an Upcoming → Breaking changelog entry
+            # when a break is detected.  Provided here so contributors can
+            # run `nix develop --command cargo semver-checks ...` locally
+            # before opening a PR.
+            #
+            # `doCheck = false` skips upstream's `target_feature_*`
+            # snapshot tests, which assert against snapshots recorded on
+            # x86_64 and therefore fail when building on aarch64-darwin.
+            # We only ship the binary, not its test suite, so disabling
+            # the check phase does not affect what the workflow runs.
+            (pkgs.cargo-semver-checks.overrideAttrs (_: {doCheck = false;}))
+          ];
+          shellHook = ''
+            ${foundation.lib.cargoHuskyHookSnippet pkgs}
+            echo "Rust Template development environment"
+            echo ""
+            echo "Available Cargo packages (use 'cargo build -p <name>'):"
+            cargo metadata --no-deps --format-version 1 2>/dev/null | \
+              jq --raw-output '.packages[].name' | \
+              sort | \
+              sed 's/^/  • /' || echo "  Run 'cargo init' to get started"
 
-          echo ""
-          echo "Elm frontend (frontend/):"
-          echo "  Build:   cd frontend && elm make src/Main.elm --output public/elm.js"
-          echo "  Format:  treefmt"
-          echo "  After changing elm.json dependency versions, regenerate Nix files:"
-          echo "    cd frontend"
-          echo "    elm2nix convert 2>/dev/null > elm-srcs.nix"
-          echo "    elm2nix snapshot"
-          echo "    git add elm-srcs.nix registry.dat && git commit"
-        '';
+            echo ""
+            echo "Elm frontend (frontend/):"
+            echo "  Build:   cd frontend && elm make src/Main.elm --output public/elm.js"
+            echo "  Format:  treefmt"
+            echo "  After changing elm.json dependency versions, regenerate Nix files:"
+            echo "    cd frontend"
+            echo "    elm2nix convert 2>/dev/null > elm-srcs.nix"
+            echo "    elm2nix snapshot"
+            echo "    git add elm-srcs.nix registry.dat && git commit"
+          '';
+          # A runtime marker identifying this as rust-template's default dev
+          # shell.  A compliance check reads it back with `nix eval` to
+          # confirm this shell evaluates and carries the marker; the `ci`
+          # shell carries the same marker with the value "ci".
+          RUST_TEMPLATE_SHELL = "default";
+        };
+        # Minimal shell for the reusable CI workflow: the Rust toolchain
+        # plus the release CLIs the `nix develop .#ci` jobs invoke.  It
+        # omits the interactive dev shell's extras (the Elm toolchain, the
+        # treefmt formatter stack, just), so it is cheaper to realize; the
+        # Elm frontend is a package-build input under `nix build`, not
+        # something a devShell provides.  Its baseline comes from
+        # foundation's mkCiShell: the same `rust` toolchain the dev shell
+        # uses (so CI compiles and lints with the project's pinned
+        # toolchain), changelog-roller (the `changelog` and `abi` jobs,
+        # the publish flow, and dependabot-automerge all shell out to it),
+        # and cargo-semver-checks (the `abi` job's crates.io ABI gate).
+        # Override any of those or add release tooling via the helper's
+        # arguments; see mkCiShell in foundation for the full contract.
+        ci = foundation.lib.mkCiShell {
+          inherit pkgs system;
+          toolchain = rust;
+        };
       };
     });
   in {
     devShells =
-      nixpkgs.lib.mapAttrs (_: p: {default = p.devShell;}) perSystem;
+      nixpkgs.lib.mapAttrs (_: p: p.devShells) perSystem;
     packages = nixpkgs.lib.mapAttrs (_: p: p.packages) perSystem;
     apps = nixpkgs.lib.mapAttrs (_: p: p.apps) perSystem;
     checks = nixpkgs.lib.mapAttrs (_: p: p.checks) perSystem;

@@ -3,6 +3,15 @@
 
 * Upcoming
 ** Added
+1. A dedicated =ci= devShell, built from a new =mkCiShell= helper in foundation,
+   carries just the Rust toolchain and the release CLIs the CI jobs invoke
+   (=changelog-roller=, =cargo-semver-checks=).  The reusable workflows now
+   enter it with =nix develop .#ci= instead of the full default dev shell, so CI
+   realizes a smaller closure — the Elm toolchain and formatter stack the
+   interactive shell carries stay out of it.  Each baseline package is an
+   overridable argument so a spawn can extend or replace it, and both shells
+   export a =RUST_TEMPLATE_SHELL= marker that a new =dev-shell-env= compliance
+   check evaluates and reads back to confirm each shell resolves and carries it.
 ** Fixes
 ** Breaking
 * v0.24.0

@@ -143,7 +143,7 @@ jobs:
           # Run tar and sha256sum from the devShell so the archive is built with
           # the project's pinned coreutils rather than whatever the runner image
           # happens to ship.
-          nix develop --command bash -c "
+          nix develop .#ci --command bash -c "
             tar --create --gzip --file '$asset' --directory '$out/bin' '$binary'
             sha256sum '$asset' > '$asset.sha256'
           "

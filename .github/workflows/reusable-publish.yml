@@ -1,9 +1,9 @@
 name: Publish (reusable)
 
-# Runs entirely inside `nix develop --command` so the toolchain,
+# Runs entirely inside `nix develop .#ci --command` so the toolchain,
 # changelog-roller, and any other auxiliary tooling come from the
-# consumer's devShell rather than ad-hoc per-step installs.  See
-# `reusable-ci.yml` for the rationale.
+# consumer's dedicated `ci` devShell rather than ad-hoc per-step
+# installs.  See `reusable-ci.yml` for the rationale.
 
 on:
   workflow_call:
@@ -77,12 +77,12 @@ jobs:
           # publish`, both of which assume the two files are consistent.
           # `cargo update --workspace` touches only workspace members and
           # avoids the registry round-trip that `cargo fetch` would do.
-          nix develop --command cargo update --workspace
+          nix develop .#ci --command cargo update --workspace
           echo "version=${NEW}" >> "$GITHUB_OUTPUT"
 
       - name: Roll changelog
         run: >
-          nix develop --command
+          nix develop .#ci --command
           changelog-roller roll
           --input-file ${{ inputs.changelog-file }}
           --version "v${{ steps.bump.outputs.version }}"
@@ -111,7 +111,7 @@ jobs:
       - name: Determine whether any workspace crate is publishable
         id: publishable
         run: |
-          publishable=$(nix develop --command cargo metadata \
+          publishable=$(nix develop .#ci --command cargo metadata \
             --format-version 1 --no-deps \
             | jq '[.packages[] | select(.publish != [])] | length > 0')
           echo "publishable=${publishable}" >> "$GITHUB_OUTPUT"
@@ -136,7 +136,10 @@ jobs:
       # additional plumbing here.
       - name: Publish workspace to crates.io
         if: steps.publishable.outputs.publishable == 'true'
-        run: nix develop --command cargo publish --workspace
+        run: |
+          nix develop .#ci --command \
+            cargo publish \
+            --workspace
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
 

@@ -11,6 +11,7 @@ use crate::pins;
 use crate::provenance::Provenance;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 /// A check's verdict: the result of running one check against one spawn.
 #[derive(Debug, Clone, Serialize)]
@@ -218,6 +219,9 @@ pub fn run_check(check: &Check, ctx: &SpawnContext) -> Verdict {
       function,
       methods,
     } => rust_method_chain(ctx.dir, target, function, methods),
+    CheckKind::DevShellEnv { shell, var, value } => {
+      dev_shell_env(ctx.dir, shell.as_deref(), var, value)
+    }
   }
 }
 
@@ -1092,6 +1096,72 @@ impl<'ast> syn::visit::Visit<'ast> for MethodVisitor {
     self.methods.insert(call.method.to_string());
     syn::visit::visit_expr_method_call(self, call);
   }
+}
+
+// ── Nix devShell probe ───────────────────────────────────────────────
+
+/// `nix eval` the string at `devShells.<system>.<shell>.<var>` (the default
+/// devShell when `shell` is `None`) and compare it to `expected`.  mkShell
+/// turns a plain attribute into the environment variable the shell exports,
+/// so the evaluated value is exactly what the shell would print at runtime —
+/// read here without realizing the shell's (possibly heavy) closure the way
+/// `nix develop` would.  Pass on a match; Fail when it differs or the
+/// attribute does not evaluate (marker absent or flake broken); Error when
+/// nix cannot be run.
+fn dev_shell_env(
+  dir: &Path,
+  shell: Option<&str>,
+  var: &str,
+  expected: &str,
+) -> Verdict {
+  let attr =
+    format!("devShells.{}.{}.{var}", nix_system(), shell.unwrap_or("default"));
+  // `nix eval --raw` prints the attribute's string with no quoting; every
+  // argument is long-form.
+  let output = match Command::new("nix")
+    .args([
+      "eval",
+      "--raw",
+      "--extra-experimental-features",
+      "nix-command flakes",
+      &format!("{}#{attr}", dir.display()),
+    ])
+    .output()
+  {
+    Ok(output) => output,
+    Err(error) => {
+      return Verdict::Error {
+        detail: format!("could not run nix eval for {attr}: {error}"),
+      }
+    }
+  };
+  if !output.status.success() {
+    return Verdict::Fail {
+      detail: format!(
+        "{attr} did not evaluate (marker absent or flake broken): {}",
+        String::from_utf8_lossy(&output.stderr).trim()
+      ),
+    };
+  }
+  let printed = String::from_utf8_lossy(&output.stdout);
+  let found = printed.trim();
+  if found == expected {
+    Verdict::Pass
+  } else {
+    Verdict::Fail {
+      detail: format!("{attr} is \"{found}\", expected \"{expected}\""),
+    }
+  }
+}
+
+/// The current host's Nix system double (e.g. `aarch64-darwin`), assembled from
+/// the compile target so no subprocess is needed.  Nix spells macOS `darwin`.
+fn nix_system() -> String {
+  let os = match std::env::consts::OS {
+    "macos" => "darwin",
+    other => other,
+  };
+  format!("{}-{os}", std::env::consts::ARCH)
 }
 
 // ── Shared helpers ───────────────────────────────────────────────────

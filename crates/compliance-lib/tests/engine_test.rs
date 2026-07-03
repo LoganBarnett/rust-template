@@ -97,12 +97,19 @@ Codify conventions in the repo, not in local memory.
 Record plans as TODO entries in tasks.org.
 "#,
   );
-  // Valid provenance that opts out of the stale-literal check.
+  // Valid provenance that opts out of the stale-literal check and the two
+  // devShell-marker checks: this fixture's flake.nix is a non-evaluable stub
+  // (no outputs), so `nix eval` of its devShells would fail — those checks are
+  // exercised against real emissions by test-crate-add.sh instead.
   write(
     &dir.join("rust-template.json"),
     r#"{
   "template_sync_hashes": ["abc"],
-  "compliance-ignores": ["no-stale-rust-template-literals"]
+  "compliance-ignores": [
+    "no-stale-rust-template-literals",
+    "flake-default-devshell-marker",
+    "flake-ci-devshell-marker"
+  ]
 }"#,
   );
 }
