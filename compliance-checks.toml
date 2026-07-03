@@ -1100,6 +1100,28 @@ kind = "file-contains"
 target = "flake.nix"
 contains = "devShells"
 
+# Both devShells export a RUST_TEMPLATE_SHELL marker naming which shell they
+# are.  These checks evaluate the flake (rather than matching text) to confirm
+# each shell resolves and carries its marker: the `default` shell, and the `ci`
+# shell that foundation's mkCiShell builds and the reusable CI workflow enters
+# via `nix develop .#ci`.  They require the spawn's foundation input to resolve,
+# so the emission tests run them against a spawn localized to the template under
+# test.
+[[check]]
+id = "flake-default-devshell-marker"
+description = "The default devShell evaluates and exports RUST_TEMPLATE_SHELL=default."
+kind = "dev-shell-env"
+var = "RUST_TEMPLATE_SHELL"
+value = "default"
+
+[[check]]
+id = "flake-ci-devshell-marker"
+description = "The `ci` devShell (foundation's mkCiShell) evaluates and exports RUST_TEMPLATE_SHELL=ci, so the reusable CI workflow's `nix develop .#ci` resolves."
+kind = "dev-shell-env"
+shell = "ci"
+var = "RUST_TEMPLATE_SHELL"
+value = "ci"
+
 # ── Code-review gate (.claude) ───────────────────────────────────────
 # Every spawned project ships a deterministic review gate: a Stop hook
 # that blocks a turn from ending while un-reviewed code/config changes

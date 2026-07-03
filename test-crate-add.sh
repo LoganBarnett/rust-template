@@ -211,6 +211,11 @@ test_new_project_default() {
     assert_file_contains "$dir/crates/server/Cargo.toml" 'name = "test-app-server"'
     assert_file_contains "$dir/crates/lib/Cargo.toml" 'name = "test-app-lib"'
 
+    # Point foundation at the on-disk template and relock so every check runs
+    # against the template that emitted this spawn, not the stale revision the
+    # emitted flake ships pinned.
+    localize_foundation "$dir" || return 1
+
     # Compliance: a fresh emission must pass every check.
     assert_compliant "$dir" "cli,server" || return 1
 
@@ -251,6 +256,7 @@ test_new_project_cli_only() {
     # Private spawns keep an empty publish list — nothing reaches crates.io.
     assert_file_not_contains "$dir/crates/lib/Cargo.toml" 'crates-io'
 
+    localize_foundation "$dir" || return 1
     assert_compliant "$dir" "cli" || return 1
 
     assert_flake_eval "$dir" || return 1
@@ -276,6 +282,7 @@ test_new_project_server_only() {
     assert_file_contains "$dir/flake.nix" '# CRATE:server:begin'
     assert_file_not_contains "$dir/flake.nix" '# CRATE:cli:begin'
 
+    localize_foundation "$dir" || return 1
     assert_compliant "$dir" "server" || return 1
 }
 

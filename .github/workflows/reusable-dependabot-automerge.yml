@@ -154,7 +154,7 @@ jobs:
             HEADING=Maintenance
           fi
           BODY="${TITLE} (${URL})"
-          nix develop --command changelog-roller insert-item \
+          nix develop .#ci --command changelog-roller insert-item \
             --input-file "$CHANGELOG_FILE" \
             --heading "$HEADING" \
             --body "$BODY" \

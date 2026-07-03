@@ -1,12 +1,19 @@
 name: CI (reusable)
 
-# Every job runs inside `nix develop --command`, so the toolchain and
-# auxiliary binaries (rustfmt, clippy, changelog-roller, treefmt, ...)
-# come from the consumer's `flake.nix` devShell rather than being
-# reinstalled per-job via `dtolnay/rust-toolchain` or `cargo install`.
-# That collapses "works locally" and "works in CI" into a single
-# environment, which is the divergence that historically broke
-# spawned projects.
+# Every job runs inside `nix develop .#ci --command`, so the toolchain
+# and release binaries (rustfmt, clippy, changelog-roller,
+# cargo-semver-checks) come from the consumer's dedicated `ci` devShell
+# rather than being reinstalled per-job via `dtolnay/rust-toolchain` or
+# `cargo install`.  That collapses "works locally" and "works in CI" into
+# a single environment, which is the divergence that historically broke
+# spawned projects.  The `ci` shell is foundation's mkCiShell baseline —
+# the Rust toolchain plus the release CLIs these jobs invoke
+# (changelog-roller, cargo-semver-checks) — and omits the interactive
+# `default` shell's extras (the Elm toolchain, the treefmt formatter
+# stack, `just`), so it is cheaper to realize.  (The Elm frontend, when a
+# project ships one, is a package-build input under `nix build`, not
+# something any devShell provides.)  A spawn overrides its own `.#ci` in
+# its `flake.nix`.
 
 on:
   workflow_call:
@@ -37,7 +44,11 @@ jobs:
       # the feature-gated code paths are never exercised — a false-
       # green that is worse than the broken-test alternative.
       - name: Run tests
-        run: nix develop --command cargo test --workspace --all-features
+        run: |
+          nix develop .#ci --command \
+            cargo test \
+            --workspace \
+            --all-features
 
   format:
     name: Formatting
@@ -50,7 +61,7 @@ jobs:
       - uses: LoganBarnett/rust-template/.github/actions/setup-nix@main
 
       - name: Check formatting
-        run: nix develop --command cargo fmt --all -- --check
+        run: nix develop .#ci --command cargo fmt --all -- --check
 
   clippy:
     name: Clippy (warnings denied)
@@ -72,7 +83,14 @@ jobs:
       # reads as "tests are fine, lint nitpicks remain" rather than
       # being conflated with broken tests.
       - name: Run clippy with warnings as errors
-        run: nix develop --command cargo clippy --workspace --all-targets --all-features -- --deny warnings
+        run: |
+          nix develop .#ci --command \
+            cargo clippy \
+            --workspace \
+            --all-targets \
+            --all-features \
+            -- \
+            --deny warnings
 
   changelog:
     name: Changelog entry required
@@ -115,7 +133,7 @@ jobs:
           else
             base="origin/main"
           fi
-          nix develop --command \
+          nix develop .#ci --command \
             changelog-roller check-additions \
             --input-file "${{ inputs.changelog-file }}" \
             --base "$base"
@@ -165,7 +183,7 @@ jobs:
         run: |
           LOG=$(mktemp)
           set +o pipefail
-          nix develop --command cargo semver-checks --workspace 2>&1 \
+          nix develop .#ci --command cargo semver-checks --workspace 2>&1 \
             | tee "$LOG"
           EXIT=${PIPESTATUS[0]}
           set -o pipefail
@@ -200,7 +218,7 @@ jobs:
           else
             base="origin/main"
           fi
-          nix develop --command \
+          nix develop .#ci --command \
             changelog-roller check-additions \
             --input-file "${{ inputs.changelog-file }}" \
             --base "$base" \

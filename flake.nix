@@ -43,6 +43,10 @@
         };
       };
     mkRustPackages = import ./nix/lib/mkRustPackages.nix;
+    # The baseline CI/release shell, with foundation's changelog-roller
+    # input pre-bound.  Consumed both by this repo's own `.#ci` devShell
+    # below and, via `foundation.lib.mkCiShell`, by every spawned project.
+    mkCiShell = import ./nix/lib/mkCiShell.nix {inherit changelog-roller;};
     # Binary crates this repo ships as release artifacts.  Mirrors the
     # release-binary = true entries in rust-template.json: compliance-cli is the
     # only binary; the foundation crates and compliance-lib are libraries.
@@ -130,6 +134,19 @@
     devShells = forAllSystems (system: {
       default = (pkgsFor system).mkShell {
         buildInputs = devPackages system;
+        # A runtime marker identifying this as rust-template's default dev
+        # shell, matching what the emitted template ships; a compliance
+        # check reads it back with `nix eval` to confirm the shell
+        # evaluates and carries the marker.  The `ci` shell carries "ci".
+        RUST_TEMPLATE_SHELL = "default";
+      };
+      # This repo dogfoods the CI shell it ships to spawns: the reusable
+      # CI workflow runs against rust-template itself via `nix develop
+      # .#ci`, so the shell must exist here too.  The baseline toolchain
+      # default matches the dev shell's `rust`, so nothing is passed.
+      ci = mkCiShell {
+        pkgs = pkgsFor system;
+        inherit system;
       };
     });
 
@@ -183,6 +200,7 @@
       mkMuslPackages = import ./nix/lib/mkMuslPackages.nix;
       mkDarwinCrossPackages = import ./nix/lib/mkDarwinCrossPackages.nix;
       cargoHuskyHookSnippet = import ./nix/lib/cargoHuskyHookSnippet.nix;
+      inherit mkCiShell;
     };
   };
 }

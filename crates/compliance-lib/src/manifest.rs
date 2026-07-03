@@ -176,6 +176,18 @@ pub enum CheckKind {
     function: String,
     methods: Vec<String>,
   },
+  /// `nix eval` of `devShells.<system>.<shell>.<var>` (the flake's default
+  /// devShell when `shell` is `None`) equals `value`.  Unlike the file-reading
+  /// kinds this evaluates the flake, so it proves the shell resolves and
+  /// declares the variable — mkShell turns the attribute into the environment
+  /// variable the shell exports, so the evaluated value is what the shell would
+  /// print at runtime.  Requires the spawn's foundation input to resolve, so
+  /// tests run it against a spawn localized to the template under test.
+  DevShellEnv {
+    shell: Option<String>,
+    var: String,
+    value: String,
+  },
 }
 
 /// The TOML shape: every kind-specific field is optional and validated later.
@@ -226,6 +238,10 @@ struct RawCheck {
   self_ty: Option<String>,
   #[serde(default)]
   methods: Option<String>,
+  #[serde(default)]
+  shell: Option<String>,
+  #[serde(default)]
+  var: Option<String>,
 }
 
 /// Require a kind-specific parameter, naming the check and kind on absence.
@@ -310,6 +326,8 @@ impl RawCheck {
       trait_name,
       self_ty,
       methods,
+      shell,
+      var,
     } = self;
 
     let resolved = match kind.as_str() {
@@ -438,6 +456,11 @@ impl RawCheck {
           .filter(|method| !method.is_empty())
           .collect(),
       },
+      "dev-shell-env" => CheckKind::DevShellEnv {
+        shell,
+        var: require(&id, &kind, "var", var)?,
+        value: require(&id, &kind, "value", value)?,
+      },
       other => {
         return Err(ComplianceError::ManifestInvalid {
           id: id.clone(),
@@ -494,6 +517,48 @@ mod tests {
         assert_eq!(target, "CHANGELOG.org");
         assert_eq!(section, vec!["Upcoming", "Added"]);
       }
+      other => panic!("wrong kind: {other:?}"),
+    }
+  }
+
+  #[test]
+  fn validates_a_dev_shell_env_check() {
+    let toml = r#"
+            [[check]]
+            id = "x"
+            description = "d"
+            kind = "dev-shell-env"
+            shell = "ci"
+            var = "RUST_TEMPLATE_SHELL"
+            value = "ci"
+        "#;
+    let raw: RawManifest = toml::from_str(toml).unwrap();
+    let check = raw.check.into_iter().next().unwrap().validate().unwrap();
+    match check.kind {
+      CheckKind::DevShellEnv { shell, var, value } => {
+        assert_eq!(shell.as_deref(), Some("ci"));
+        assert_eq!(var, "RUST_TEMPLATE_SHELL");
+        assert_eq!(value, "ci");
+      }
+      other => panic!("wrong kind: {other:?}"),
+    }
+  }
+
+  #[test]
+  fn dev_shell_env_shell_defaults_to_none() {
+    // An omitted `shell` targets the flake's default devShell.
+    let toml = r#"
+            [[check]]
+            id = "x"
+            description = "d"
+            kind = "dev-shell-env"
+            var = "RUST_TEMPLATE_SHELL"
+            value = "default"
+        "#;
+    let raw: RawManifest = toml::from_str(toml).unwrap();
+    let check = raw.check.into_iter().next().unwrap().validate().unwrap();
+    match check.kind {
+      CheckKind::DevShellEnv { shell, .. } => assert!(shell.is_none()),
       other => panic!("wrong kind: {other:?}"),
     }
   }
