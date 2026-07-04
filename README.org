@@ -176,10 +176,18 @@ dance, no forgotten publishes.  (Requires =--public= at generation time.)
 
 After a release is tagged, the crates that opt in are built and attached to the
 GitHub release across the mainstream Unix-like targets — Linux and macOS, on
-both =x86_64= and =aarch64=, with a statically linked musl variant alongside
-glibc on Linux.  Windows is not built.  Each archive carries a =.sha256= for
-integrity, and which crates produce a binary is declared per crate in
-=rust-template.json= rather than hard-coded into the workflow.
+both =x86_64= and =aarch64=.  Windows is not built.  Each archive carries a
+=.sha256= for integrity, and which crates produce a binary is declared per crate
+in =rust-template.json= rather than hard-coded into the workflow.
+
+Each Linux target ships two variants, both runnable off the Nix store: a
+statically linked =-musl= binary (self-contained, no runtime library
+dependencies) and a portable =-gnu= binary (dynamically linked, built via
+=cargo-zigbuild= against a glibc 2.17 floor so it links the host's shared
+libraries while still starting on any mainstream distro).  The store-locked
+native build is deliberately not published — Nix consumers build it from the
+flake or a binary cache.  See [[file:docs/customizing.org][=docs/customizing.org=]] for how to choose between
+the variants.
 
 *** Build provenance attestation
 

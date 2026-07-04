@@ -4,6 +4,18 @@
 * Upcoming
 ** Added
 ** Fixes
+1. Published release binaries now run on non-Nix hosts.  Every archive
+   previously held only a dangling symlink into a build-host store path rather
+   than the executable, and the Linux glibc binary — even once unpacked — could
+   not start off the Nix store, because its ELF interpreter and library search
+   path were store paths absent on any other machine.  Archiving now follows the
+   symlink to embed the real binary, and the Linux =-gnu= artifact is built
+   through zig against a fixed, low glibc floor so it carries the conventional
+   filesystem loader path and runs on any mainstream distribution while still
+   linking the host's shared libraries at runtime.  The store-locked native
+   build stays available from the flake and the binary cache but is no longer
+   published, and the static =-musl= variant is unchanged.  Spawned projects
+   gain the portable variant automatically.
 ** Breaking
 * v0.25.0
 ** Added

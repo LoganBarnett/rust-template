@@ -68,6 +68,15 @@
       muslPackages = foundation.lib.mkMuslPackages {
         inherit self pkgs system crates crane commonArgs;
       };
+      # On Linux each binary also gets a portable `<name>-gnu` variant: a
+      # dynamic glibc build that runs off the Nix store (FHS interpreter, glibc
+      # 2.17 floor) and links the host's shared libraries.  It threads the same
+      # commonArgs, so a project's native dependencies (such as alsa) reach it
+      # the same way — pick this over musl for a tool that must use a host
+      # library with a runtime plugin/dlopen ecosystem.  Empty on other systems.
+      gnuPortablePackages = foundation.lib.mkGnuPortablePackages {
+        inherit self pkgs system crates crane commonArgs;
+      };
       # The x86_64-linux build cross-compiles macOS `<key>-<arch>-darwin`
       # variants via zig so a release needs no macOS runner; empty on other
       # systems.  Add `appleSdk = pkgs.apple-sdk.src;` here (and set
@@ -79,6 +88,7 @@
       packages =
         rustPackages.packages
         // muslPackages
+        // gnuPortablePackages
         // darwinCrossPackages
         // {
           default =
