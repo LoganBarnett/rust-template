@@ -75,6 +75,7 @@ jobs:
             --json author,title,labels,url,headRefName,mergeStateStatus \
             > pr.json
           AUTHOR=$(jq --raw-output '.author.login' pr.json)
+          IS_BOT=$(jq --raw-output '.author.is_bot' pr.json)
           TITLE=$(jq --raw-output '.title' pr.json)
           URL=$(jq --raw-output '.url' pr.json)
           HEAD_REF=$(jq --raw-output '.headRefName' pr.json)
@@ -83,6 +84,7 @@ jobs:
             '[.labels[].name] | any(. == "security")' pr.json)
           {
             echo "author=$AUTHOR"
+            echo "is_bot=$IS_BOT"
             echo "title=$TITLE"
             echo "url=$URL"
             echo "head_ref=$HEAD_REF"
@@ -98,8 +100,16 @@ jobs:
         id: gate
         if: steps.pr.outputs.skip == 'false'
         run: |
-          if [ "$AUTHOR" != "dependabot[bot]" ]; then
-            echo "PR author is $AUTHOR, not dependabot[bot]; skipping."
+          # `gh` spells the Dependabot GitHub App author `app/dependabot`,
+          # whereas the raw API and older `gh` releases use
+          # `dependabot[bot]`.  Accept either spelling, and require the
+          # bot flag so a human login that happens to collide cannot slip
+          # through — rather than pinning a single, drift-prone string.
+          if [ "$IS_BOT" != "true" ] || \
+             { [ "$AUTHOR" != "dependabot[bot]" ] && \
+               [ "$AUTHOR" != "app/dependabot" ]; }; then
+            echo "PR author is $AUTHOR (is_bot=$IS_BOT), not Dependabot;" \
+              "skipping."
             echo "proceed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -129,6 +139,7 @@ jobs:
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           AUTHOR: ${{ steps.meta.outputs.author }}
+          IS_BOT: ${{ steps.meta.outputs.is_bot }}
           CHANGELOG_FILE: ${{ inputs.changelog-file }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

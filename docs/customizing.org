@@ -496,6 +496,34 @@ compliance check reads this marker back with ~nix eval~ to confirm each shell
 evaluates and exposes it; keep it in place when customizing, or the check will
 flag the shell as missing its marker.
 
+* Dependabot auto-merge: why =allow_auto_merge= stays off
+
+The Dependabot auto-merge workflow lands green dependency PRs on its own, but it
+does /not/ use GitHub's native merge queue — so the repo-level "Allow
+auto-merge" setting (=allow_auto_merge=, Settings → General) is irrelevant.
+Leave it at its default; enabling it changes nothing.  A common misconception,
+since most Dependabot tutorials tell you to turn it on, is that the flow depends
+on it.  It does not.
+
+The workflow triggers on ~workflow_run~ once CI completes, then merges
+synchronously in that run with a direct ~gh pr merge --squash~.  Two properties
+fall out of that choice, and both are the reason not to use =--auto=:
+
+- The ~workflow_run~ event runs in the default-branch context, where
+  ~GITHUB_TOKEN~ has its normal write permissions — a plain =--auto= request
+  from the read-only token a Dependabot ~pull_request~ event hands out cannot
+  merge at all.
+- A merge the ~GITHUB_TOKEN~ performs does not cascade into downstream workflows
+  (the "no-cascade" rule), so an =--auto= merge would silently fail to kick off
+  publishing.  Merging directly and then dispatching publish via
+  ~workflow_dispatch~ — the one event exempt from that rule — keeps the merge
+  and its follow-on publish in a single controlled place.
+
+If you ever rework the flow to rely on =gh pr merge --auto=, that is the point
+at which =allow_auto_merge= must be enabled — and, to stay true to the
+template's settings-as-code philosophy, enabled by code rather than a manual
+Settings click.  Until then there is nothing to turn on.
+
 * Next Steps
 
 - Review [[file:getting-started.org][getting-started.org]] for development workflow

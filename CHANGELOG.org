@@ -4,6 +4,17 @@
 * Upcoming
 ** Added
 ** Fixes
+1. Dependabot auto-merge recognizes the bot again.  =gh= began reporting the
+   Dependabot author login as =app/dependabot= rather than =dependabot[bot]=,
+   and the auto-merge gate's exact-string match skipped every Dependabot PR.
+   The run still exited zero and reported success, so nothing merged on spawned
+   projects while the workflow looked healthy.  The gate now keys on the bot
+   flag plus either login spelling, tolerating both the old and the current =gh=
+   output; it lives in the reusable workflow spawns reference at =main=, so it
+   reaches the whole fleet without a sync.  The stale post-generation step
+   telling users to enable GitHub's Allow auto-merge setting is dropped — the
+   workflow merges directly and never used the =--auto= queue that setting gates
+   — and the rationale is now documented.
 ** Breaking
 * v0.26.0
 ** Fixes
