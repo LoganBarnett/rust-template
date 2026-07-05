@@ -274,6 +274,83 @@ nix run .#cli -- --help
 nix run .#server -- --host 0.0.0.0 --port 8080
 #+end_src
 
+* Linux release binaries: static vs. portable dynamic
+
+The release workflow builds two Linux variants of every published binary, and
+which one a downstream user wants depends on whether the tool needs the host's
+shared libraries.  Both are produced automatically — this section is background
+for choosing, and for the one case where a project must adjust its build.
+
+** Why the plain Nix build is not shipped
+
+A binary that Nix links the ordinary way is dynamically linked against nixpkgs'
+own glibc, so its ELF interpreter (the loader named in ~PT_INTERP~) is a
+~/nix/store/…-glibc/ld-linux-*.so.2~ path and its ~RUNPATH~ points into the
+store.  On a host without that exact store path — every non-Nix machine — the
+kernel cannot find the loader at ~execve~ time and the binary fails to start
+before ~LD_LIBRARY_PATH~ is ever consulted.  That build is correct /on/ Nix, so
+it stays in the flake (~nix build .#cli~, the binary cache, NixOS/nix-darwin
+services all use it); it is simply not uploaded as a release asset, because no
+downstream audience can use it — Nix users build from the flake, and everyone
+else needs one of the two variants below.
+
+** =-musl=: fully static, self-contained
+
+Built by ~mkMuslPackages~ with ~-C target-feature=+crt-static~, this variant
+links the C runtime statically.  It has no ELF interpreter at all and no runtime
+libc dependency, so it runs on any Linux kernel — glibc distros, musl distros
+(Alpine), and old releases alike.  Reach for this whenever the tool is
+self-contained: a pure-Rust CLI, or one whose C dependencies vendor and link
+statically.  It is the right default for most published binaries.
+
+** =-gnu=: portable, dynamically linked against host libraries
+
+Some tools /must/ use the host's shared libraries rather than vendoring them —
+most often because the library has a runtime plugin or ~dlopen~ ecosystem that
+static linking cannot absorb.  ALSA's ~libasound~, for example, ~dlopen~s the
+host's PCM plugins by name from the host's configuration; a fully static musl
+process cannot load those glibc-built plugins, and mixing a musl-static libc
+with a dynamically loaded glibc library would drag two C runtimes into one
+process.  Graphics, GPU/compute (GL, CUDA), and desktop-integration stacks have
+the same shape.
+
+For these, ~mkGnuPortablePackages~ builds a dynamic glibc binary that links the
+host's copies at runtime.  It links through ~zig~ (via ~cargo-zigbuild~) rather
+than nixpkgs' wrapped linker, which gives it two properties the plain Nix build
+lacks:
+
+- the standard FHS interpreter ~/lib64/ld-linux-*.so.2~ instead of a
+  ~/nix/store~ path, so it starts on any FHS distro; and
+- a glibc symbol-version floor of 2.17 (the manylinux2014 / RHEL 7 baseline), so
+  it runs on every currently-supported distro regardless of how new the glibc
+  nixpkgs happens to ship is.  Pinning the floor with zig decouples it from
+  nixpkgs' glibc, so a nixpkgs bump never raises the minimum host glibc.
+
+The trade is the platform's own: a dynamically linked binary needs its libraries
+(~libc.so.6~, ~libasound.so.2~, …) present and ABI-compatible on the host, or it
+will not start.  That is the accepted cost of using the host's shared-library
+ecosystem, and it is exactly why the =-musl= variant exists alongside for tools
+that do not need it.
+
+** Making the =-gnu= build link a host library
+
+Because ~mkGnuPortablePackages~ threads the flake's ~commonArgs~ through to the
+build (the same as the native and musl variants), a library added to a crate's
+~buildInputs~ for the native build is linked by the portable build too — no
+extra wiring.  Add the dependency once, in the flake's ~commonArgs~ (or the
+crate's package override), and all three variants pick it up.
+
+Two caveats specific to the portable build:
+
+- zig floors /glibc/ specifically.  Other host libraries are not
+  symbol-version-pinned, so they rely on soname/ABI stability; link a project
+  against a not-bleeding-edge copy of such a library to keep the effective floor
+  low.
+- a dependency's C code (compiled through the ~cc~ crate) is routed through zig
+  at the same 2.17 target, so its glibc floor matches the Rust link.  Nothing to
+  configure — it is handled in the helper — but it is why ~zig~ and
+  ~cargo-zigbuild~ appear in the build's ~nativeBuildInputs~.
+
 * Creating NixOS Modules
 
 The server uses separate ~--host~ and ~--port~ arguments (rather than a combined

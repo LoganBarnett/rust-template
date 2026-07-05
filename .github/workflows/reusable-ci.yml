@@ -239,16 +239,18 @@ jobs:
           save-store: "false"
 
       # Build every release artifact an x86_64-linux runner can produce — the
-      # native glibc binary, the static musl variant, and the two zig-cross
+      # portable glibc binary, the static musl variant, and the two zig-cross
       # macOS variants — for each crate that ships a binary, so an artifact that
       # will not build fails the PR rather than only surfacing when a release
-      # runs the binaries matrix.  The macOS builds cross-compile on Linux (no
-      # macOS runner, no Apple SDK for a libSystem crate), so the cost is a
-      # normal compile plus a cached toolchain, not a darwin-runner queue.  The
-      # aarch64-linux gnu/musl targets are omitted: they run the same
-      # mk*Packages code path as the x86_64 variants with only a different
-      # target triple, so the x86_64 set transitively covers them without an ARM
-      # runner.
+      # runs the binaries matrix.  These suffixes must track the release
+      # matrix: the store-locked native build (empty suffix) is not released
+      # and so is not built here; the portable "-gnu" variant is.  The macOS
+      # builds cross-compile on Linux (no macOS runner, no Apple SDK for a
+      # libSystem crate), so the cost is a normal compile plus a cached
+      # toolchain, not a darwin-runner queue.  The aarch64-linux gnu/musl
+      # targets are omitted: they run the same mk*Packages code path as the
+      # x86_64 variants with only a different target triple, so the x86_64 set
+      # transitively covers them without an ARM runner.
       # The crate set comes from rust-template.json's release-binary flags — the
       # same source the release-binaries workflow uses — so a project that ships
       # no binaries builds nothing.
@@ -264,7 +266,7 @@ jobs:
           fi
           attrs=()
           for crate in $(echo "$crates" | jq --raw-output '.[]'); do
-            for suffix in "" -musl -aarch64-darwin -x86_64-darwin; do
+            for suffix in -gnu -musl -aarch64-darwin -x86_64-darwin; do
               attrs+=(".#packages.x86_64-linux.${crate}${suffix}")
             done
           done

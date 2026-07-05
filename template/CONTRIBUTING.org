@@ -259,6 +259,18 @@ zig) rather than on a macOS runner, so a release never waits on scarce macOS CI
 capacity.  This is automatic — ~mkDarwinCrossPackages~ is already wired into
 ~flake.nix~ and needs no configuration.
 
+Each Linux target ships two variants, both automatic and both runnable off the
+Nix store.  The =-musl= variant is fully static with no runtime library
+dependency — the right choice for a self-contained tool.  The =-gnu= variant is
+a portable dynamic build (~mkGnuPortablePackages~, via zig against a glibc 2.17
+floor) that links the host's shared libraries at runtime; choose it for a tool
+that must use a host library with a runtime plugin or ~dlopen~ ecosystem (audio,
+graphics, GPU/compute stacks), which static linking cannot absorb.  A library
+added to a crate's ~buildInputs~ is picked up by both variants automatically.
+The plain Nix build is not published: its ELF interpreter is a ~/nix/store~
+path, so only Nix hosts can run it, and they build it from the flake or a binary
+cache instead.
+
 The one exception is a crate that links Apple frameworks — anything that
 (transitively) pulls ~cpal~, ~objc2-*~, ~core-foundation~, ~security-framework~,
 ~coreaudio-sys~, and similar.  This is not CLI-specific; the ~server~ crate can

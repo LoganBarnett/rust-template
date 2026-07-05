@@ -72,9 +72,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # One job per (target, crate).  Every target builds on a Linux runner: the
-  # Linux artifacts natively (glibc and static musl, x86_64 plus GitHub's ARM
-  # runner) and the macOS artifacts cross-compiled via zig
+  # Linux artifacts natively (portable glibc and static musl, x86_64 plus
+  # GitHub's ARM runner) and the macOS artifacts cross-compiled via zig
   # (mkDarwinCrossPackages), so a release never waits on a scarce macOS runner.
+  # Neither Linux variant carries a `/nix/store` interpreter: musl is fully
+  # static (no interpreter at all), and gnu links through zig to get the
+  # standard FHS interpreter instead of the store one.
   # The target's `suffix` selects the package variant under the same
   # `.#packages.<system>` set.  fail-fast is off so one target's failure does
   # not cancel the rest, and each crate × target surfaces as its own job.
@@ -87,9 +90,9 @@ jobs:
       matrix:
         crate: ${{ fromJSON(needs.crates.outputs.list) }}
         target:
-          - { system: x86_64-linux, runner: ubuntu-latest, suffix: "", label: x86_64-linux-gnu }
+          - { system: x86_64-linux, runner: ubuntu-latest, suffix: -gnu, label: x86_64-linux-gnu }
           - { system: x86_64-linux, runner: ubuntu-latest, suffix: -musl, label: x86_64-linux-musl }
-          - { system: aarch64-linux, runner: ubuntu-24.04-arm, suffix: "", label: aarch64-linux-gnu }
+          - { system: aarch64-linux, runner: ubuntu-24.04-arm, suffix: -gnu, label: aarch64-linux-gnu }
           - { system: aarch64-linux, runner: ubuntu-24.04-arm, suffix: -musl, label: aarch64-linux-musl }
           - { system: x86_64-linux, runner: ubuntu-latest, suffix: -x86_64-darwin, label: x86_64-darwin }
           - { system: x86_64-linux, runner: ubuntu-latest, suffix: -aarch64-darwin, label: aarch64-darwin }
@@ -127,10 +130,17 @@ jobs:
       # commit, silently bumping deps past breaking API changes so the build
       # then fails against source pinned to the older, locked revision.
       #
-      # The target's `suffix` selects the package variant: "" for the native
-      # glibc build, "-musl" for the static build, "-<arch>-darwin" for the
-      # zig-cross macOS build.  `--print-out-paths` yields the store path; the
-      # single binary under bin/ is whatever name the crate declares.
+      # The target's `suffix` selects the package variant: "-gnu" for the
+      # portable glibc build, "-musl" for the static build, "-<arch>-darwin" for
+      # the zig-cross macOS build.  The store-locked native build (empty suffix)
+      # is deliberately not released: its ELF interpreter is a `/nix/store`
+      # path, so it runs only on Nix hosts, who build it from the flake or a
+      # binary cache rather than downloading it.  The "-gnu" variant instead
+      # links through zig (mkGnuPortablePackages) to carry the standard FHS
+      # interpreter and a glibc 2.17 floor, so it runs on any mainstream distro
+      # while still linking the host's shared libraries dynamically.
+      # `--print-out-paths` yields the store path; the single binary under bin/
+      # is whatever name the crate declares.
       - name: Build and package
         id: package
         run: |
@@ -143,8 +153,14 @@ jobs:
           # Run tar and sha256sum from the devShell so the archive is built with
           # the project's pinned coreutils rather than whatever the runner image
           # happens to ship.
+          #
+          # --dereference is essential: the foundation packages expose
+          # bin/<binary> as a symlink into a separate wrapper-derivation store
+          # path.  tar archives symlinks as-is by default, so without it every
+          # asset is a ~170-byte dangling link instead of the real binary.
+          # --dereference makes tar follow the link and embed the executable.
           nix develop .#ci --command bash -c "
-            tar --create --gzip --file '$asset' --directory '$out/bin' '$binary'
+            tar --create --gzip --dereference --file '$asset' --directory '$out/bin' '$binary'
             sha256sum '$asset' > '$asset.sha256'
           "
           echo "asset=$asset" >> "$GITHUB_OUTPUT"

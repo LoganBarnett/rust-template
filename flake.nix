@@ -85,6 +85,7 @@
     in
       mkRustPackages {inherit self pkgs craneLib crates commonArgs;};
     mkMuslPackages = import ./nix/lib/mkMuslPackages.nix;
+    mkGnuPortablePackages = import ./nix/lib/mkGnuPortablePackages.nix;
     mkDarwinCrossPackages = import ./nix/lib/mkDarwinCrossPackages.nix;
     devPackages = system: let
       pkgs = pkgsFor system;
@@ -164,6 +165,13 @@
           inherit self crane crates system;
           pkgs = pkgsFor system;
         };
+        # Portable glibc-dynamic variant: runs off the Nix store (FHS
+        # interpreter, glibc 2.17 floor) and links host shared libraries.
+        # Empty except on Linux, like the musl and cross outputs.
+        gnuPortablePackages = mkGnuPortablePackages {
+          inherit self crane crates system;
+          pkgs = pkgsFor system;
+        };
         darwinCrossPackages = mkDarwinCrossPackages {
           inherit self crane crates system;
           pkgs = pkgsFor system;
@@ -180,6 +188,7 @@
       in
         cratePackages
         // muslPackages
+        // gnuPortablePackages
         // darwinCrossPackages
         // fixtureDarwinPackages
         // {default = cratePackages.compliance-cli;}
@@ -198,6 +207,7 @@
       mkDarwinService = import ./nix/lib/mkDarwinService.nix;
       mkRustPackages = import ./nix/lib/mkRustPackages.nix;
       mkMuslPackages = import ./nix/lib/mkMuslPackages.nix;
+      mkGnuPortablePackages = import ./nix/lib/mkGnuPortablePackages.nix;
       mkDarwinCrossPackages = import ./nix/lib/mkDarwinCrossPackages.nix;
       cargoHuskyHookSnippet = import ./nix/lib/cargoHuskyHookSnippet.nix;
       inherit mkCiShell;
