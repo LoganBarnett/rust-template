@@ -85,3 +85,30 @@ jobs:
           nix build --no-link --print-out-paths \
             '.#packages.x86_64-linux.cross-fixture-aarch64-darwin' \
             '.#packages.x86_64-linux.cross-fixture-x86_64-darwin'
+
+  # Guards mkGnuPortablePackages against linking a modern-glibc host shared
+  # library (libasound), the case that forced its --allow-shlib-undefined link
+  # flag and that the release crates (libc-only) never exercise.  The
+  # cross-fixture crate emits the libasound link from its build.rs when the
+  # gnu-portable build hands it CROSS_FIXTURE_ASOUND_LIBDIR; building its `-gnu`
+  # attr here fails the PR if that link path regresses.  Repo-specific, like the
+  # darwin fixture above — spawned projects have no such crate.  Only
+  # x86_64-linux produces the portable output, hence ubuntu.
+  gnu-portable-fixture:
+    name: Gnu portable fixture build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Install Nix; restore-only portable-build job.  Local `./` ref for PR
+      # self-testing (see `template-tests` above); `save-store: "false"` so its
+      # zig closure does not evict the shared toolchain cache.  See
+      # `.github/actions/setup-nix`.
+      - uses: ./.github/actions/setup-nix
+        with:
+          save-store: "false"
+
+      - name: Build the cross-fixture gnu-portable variant
+        run: |
+          nix build --no-link --print-out-paths \
+            '.#packages.x86_64-linux.cross-fixture-gnu'

@@ -4,6 +4,15 @@
 * Upcoming
 ** Added
 ** Fixes
+1. Portable =-gnu= release binaries can now link a host shared library whose
+   glibc is newer than the build's 2.17 floor — ALSA's =libasound=, PulseAudio,
+   GL, CUDA, and the like.  Previously the link failed (=undefined reference …
+   (disallowed by --no-allow-shlib-undefined)=) because the linker tried to
+   resolve the library's own modern-glibc symbols against the 2.17 stubs; those
+   symbols are the host's to satisfy at runtime, not the binary's, so the
+   portable link now tolerates a shared library's undefined symbols while still
+   catching undefined symbols in the crate's own code.  Projects whose =-gnu=
+   build links such a library gain this automatically.
 ** Breaking
 ** Maintenance
 * v0.29.0
