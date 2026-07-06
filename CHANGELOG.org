@@ -4,6 +4,9 @@
 * Upcoming
 ** Added
 ** Fixes
+** Breaking
+* v0.28.0
+** Fixes
 1. Dependabot auto-merge lands in a single pass, fixing a deadlock that stalled
    every eligible bump.  The flow used to inject the changelog entry as a
    separate commit and wait for CI to re-run before merging, but that commit is
@@ -17,7 +20,6 @@
    a non-breaking one merges, and a breaking one fails the gate, never becomes
    mergeable, and waits for a human.  Spawns pick this up through their =@main=
    reference to the reusable workflows.
-** Breaking
 * v0.27.0
 ** Fixes
 1. Dependabot auto-merge recognizes the bot again.  =gh= began reporting the
