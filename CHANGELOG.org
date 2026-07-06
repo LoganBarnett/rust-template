@@ -6,6 +6,8 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+* v0.29.0
+** Maintenance
 1. Bump syn from 2.0.117 to 2.0.118 (https://github.com/LoganBarnett/rust-template/pull/21)
 * v0.28.0
 ** Fixes
