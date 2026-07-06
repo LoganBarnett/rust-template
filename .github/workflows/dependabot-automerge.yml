@@ -1,0 +1,47 @@
+name: Dependabot auto-merge
+
+# Dogfoods the reusable auto-merge flow on rust-template's own
+# Dependabot PRs — the same flow spawns run via their emitted wrapper.
+# Listens for CI to finish rather than firing on the pull_request event
+# directly, for two reasons:
+#
+#   1. The `pull_request` event for Dependabot PRs gives the workflow a
+#      read-only `GITHUB_TOKEN`, which cannot merge.  `workflow_run`
+#      runs in the default-branch context, where the token has its
+#      normal write permissions.
+#   2. Listening on CI completion lets us merge only after every
+#      required check has passed, in a single synchronous step, rather
+#      than relying on the `--auto` queue and the cascade that
+#      `GITHUB_TOKEN`-initiated merges do not trigger.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  # Push the changelog commit to the PR branch on the first pass.
+  contents: write
+  # Perform the merge itself.
+  pull-requests: write
+  # Dispatch publish.yml once the merge lands.
+  actions: write
+
+jobs:
+  automerge:
+    # The upstream CI run needs to have been triggered by a pull_request
+    # and to have succeeded; pushes to main, failed runs, and unrelated
+    # branches are ignored.
+    if: >
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success'
+    # Local ref, as in ci.yml's use of ./reusable-ci.yml.  A
+    # `workflow_run` trigger always resolves reusable workflows against
+    # the default branch, so this is main's copy — the same commit a
+    # `@main` ref would select, kept self-referential.
+    uses: ./.github/workflows/reusable-dependabot-automerge.yml
+    with:
+      # publish.yml's `workflow_dispatch` trigger exists for exactly
+      # this: a merged bump cuts a foundation release, keeping the
+      # published crate current with its own dependencies.  Set to ""
+      # to land bumps without releasing.
+      publish-workflow: "publish.yml"
