@@ -100,13 +100,13 @@ jobs:
     # into main, not only the PR-merge path.
     #
     # The dependabot exclusion below is mechanical, not a free pass.
-    # The reusable-dependabot-automerge.yml wrapper gates on
-    # `workflow_run.conclusion == 'success'`, so first-pass CI has
-    # to be green for the automerge flow to fire and inject the
-    # changelog entry.  Automerge pushes that injection via
-    # GITHUB_TOKEN with github-actions[bot] as the actor, so the
-    # exclusion does not apply on the second pass — the entry is
-    # now in the diff and the check enforces it for real.
+    # Dependabot cannot author a changelog entry, so this job is
+    # skipped for its bump here.  reusable-dependabot-automerge.yml
+    # then gates on this CI run being green, composes the entry from
+    # the PR, and runs this same `changelog-roller check-additions`
+    # inline before merging — so the gate still runs, just in the
+    # automerge rather than a second CI pass (a GITHUB_TOKEN push
+    # would trigger no second pass anyway).
     if: github.actor != 'dependabot[bot]'
     steps:
       - uses: actions/checkout@v4
@@ -144,14 +144,6 @@ jobs:
     # Runs on PRs and on pushes so the asymmetric "ABI break ⇒
     # Breaking entry" rule holds on every path into main, including
     # direct pushes that bypass the PR flow.
-    #
-    # Same first-pass dependabot exclusion as the `changelog` job
-    # documents above, and for the same mechanical reason.
-    # Enforcement happens on the second pass: an ABI-breaking dep
-    # bump whose automerge-injected entry lands under Maintenance
-    # rather than Breaking fails here, mergeStateStatus stops being
-    # CLEAN, and auto-merge stalls until a human moves the entry.
-    if: github.actor != 'dependabot[bot]'
     steps:
       - uses: actions/checkout@v4
         with:

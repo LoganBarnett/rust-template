@@ -19,7 +19,7 @@ on:
     types: [completed]
 
 permissions:
-  # Push the changelog commit to the PR branch on the first pass.
+  # Push the changelog commit to the PR branch.
   contents: write
   # Perform the merge itself.
   pull-requests: write
