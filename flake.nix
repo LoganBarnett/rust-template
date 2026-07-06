@@ -56,12 +56,14 @@
         binary = "rust-template-compliance-cli";
       };
     };
-    # A build-only regression fixture, cross-compiled with the Apple SDK to
-    # guard the two darwin paths the release crates never hit: a C-compiling
-    # dependency (compiled via zig in crane's deps-only phase) and Apple
-    # framework linking.  Kept out of `crates` above so it is never built
-    # native/musl or shipped as a release artifact — only the darwin-cross
-    # fixture attrs below reference it.
+    # A build-only regression fixture guarding the zig-linked build paths the
+    # release crates never hit: cross-compiled with the Apple SDK for the two
+    # darwin paths (a C-compiling dependency compiled via zig in crane's
+    # deps-only phase, and Apple framework linking), and gnu-portable-built to
+    # link a modern-glibc host shared library (libasound), the case that forced
+    # mkGnuPortablePackages' --allow-shlib-undefined flag.  Kept out of `crates`
+    # above so it is never built native/musl or shipped as a release artifact —
+    # only the darwin-cross and gnu-portable fixture attrs below reference it.
     fixtureCrates = {
       cross-fixture = {
         name = "rust-template-cross-fixture";
@@ -185,12 +187,31 @@
           crates = fixtureCrates;
           appleSdk = (pkgsUnfreeFor system).apple-sdk.src;
         };
+        # The gnu-portable analogue: builds the fixture's `<name>-gnu` variant
+        # linking libasound, so a regression in the helper's
+        # --allow-shlib-undefined handling — the only path that links a
+        # modern-glibc host shared library — fails the build.  libasound is in
+        # buildInputs so it is realized in the sandbox, and its lib directory is
+        # handed to cross-fixture's build.rs via CROSS_FIXTURE_ASOUND_LIBDIR;
+        # the build script emits the `-lasound` link (and the `link_asound`
+        # cfg) only when that var is set, so no other build pulls the library.
+        # Empty except on Linux, like the other portable outputs.
+        gnuPortableFixturePackages = mkGnuPortablePackages {
+          inherit self crane system;
+          pkgs = pkgsFor system;
+          crates = fixtureCrates;
+          commonArgs = {
+            buildInputs = [(pkgsFor system).alsa-lib];
+            CROSS_FIXTURE_ASOUND_LIBDIR = "${(pkgsFor system).alsa-lib}/lib";
+          };
+        };
       in
         cratePackages
         // muslPackages
         // gnuPortablePackages
         // darwinCrossPackages
         // fixtureDarwinPackages
+        // gnuPortableFixturePackages
         // {default = cratePackages.compliance-cli;}
     );
 

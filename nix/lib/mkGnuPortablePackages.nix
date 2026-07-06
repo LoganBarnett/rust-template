@@ -147,6 +147,24 @@ in
         # through zig at the floored target, not just the final zigbuild.
         "CC_${ccEnvTarget}" = "${zigCc}";
         "CXX_${ccEnvTarget}" = "${zigCxx}";
+        # A nixpkgs shared library handed in via buildInputs — libasound,
+        # libpulse, libGL, … — is itself built against whatever glibc nixpkgs
+        # currently ships, so it carries undefined references to symbols newer
+        # than our 2.17 floor (lstat64@GLIBC_2.33, dlsym@GLIBC_2.34,
+        # pow@GLIBC_2.29, __isoc23_strtoul@GLIBC_2.38, …).  Those are *not* this
+        # binary's own glibc dependencies: they are resolved at runtime by the
+        # host's glibc and the host's copy of that library, which is the entire
+        # point of a portable-dynamic build linking host shared objects by
+        # soname.  But zig's lld links executables with
+        # --no-allow-shlib-undefined and so tries to satisfy a shared library's
+        # own undefined symbols against our 2.17 stubs, cannot, and fails the
+        # link.  --allow-shlib-undefined restores lld's tolerance for undefined
+        # symbols that live in shared libraries (not in this crate's own
+        # objects — those still error), which is exactly the
+        # portable-against-host-library case this helper exists to serve.  Set
+        # target-specifically so host build-script links keep the strict
+        # default.  Matches mkDarwinCrossPackages' per-target RUSTFLAGS env var.
+        "CARGO_TARGET_${lib.toUpper ccEnvTarget}_RUSTFLAGS" = "-Clink-arg=-Wl,--allow-shlib-undefined";
         # zig is the linker; cargo-zigbuild drives it (see buildCommand above).
         cargoBuildCommand = buildCommand;
         # The same sources are gated by the native build and the workspace test

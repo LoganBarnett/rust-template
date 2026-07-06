@@ -5,8 +5,10 @@ members = [
     "crates/foundation",
     "crates/compliance-lib",
     "crates/compliance-cli",
-    # A build-only regression fixture for mkDarwinCrossPackages (C-compiling and
-    # framework-linking cross paths); never published or released.
+    # A build-only regression fixture for the zig-linked build helpers:
+    # mkDarwinCrossPackages (C-compiling and framework-linking cross paths) and
+    # mkGnuPortablePackages (linking a modern-glibc host shared library); never
+    # published or released.
     "crates/cross-fixture",
 ]
 

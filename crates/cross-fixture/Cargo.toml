@@ -27,5 +27,13 @@ tap = { workspace = true }
 [target.'cfg(target_os = "macos")'.dependencies]
 ring = "0.17"
 
+# The mkGnuPortablePackages guard (linking libasound) deliberately uses NO Cargo
+# dependency: an `alsa-sys` crate would be active on the Linux CI host for every
+# workspace build (`cargo test`, `cargo clippy`, crane's shared deps-only
+# build), all of which run without alsa and would fail its pkg-config probe.
+# The libasound link is instead emitted by `build.rs` behind the
+# CROSS_FIXTURE_ASOUND_LIBDIR env var, set only by the gnu-portable fixture
+# build in flake.nix.  See build.rs and src/main.rs.
+
 [lints]
 workspace = true

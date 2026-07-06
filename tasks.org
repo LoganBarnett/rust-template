@@ -1436,3 +1436,118 @@ Dependabot PRs are exempted), while leaving the rest of CI intact.
 the release; the changelog check would treat the marker as an exemption.  Ties
 into a broader question worth settling alongside it: whether internal-only
 changes belong in the consumer-facing =CHANGELOG.org= at all.
+
+* TODO Branch protection never applies on spawns — move it to a local step
+
+The branch-protection-as-code mechanism has never actually applied.
+=reusable-branch-protection.yml= PUTs =branch-protection.json= to the API using
+=secrets.GITHUB_TOKEN=, but the Actions token is categorically denied the
+branch-protection API — it fails with =Resource not accessible by integration=
+(HTTP 403).  Confirmed on =sonify-health=: its =branch-protection.yml= ran once
+(2026-06-19), 403'd, and — since it only triggers when those files change —
+never retried, so =main= is unprotected.  This holds for every spawn.
+rust-template does not even run the workflow on itself, so its own =main= is
+unprotected too (which is how the whole branch-protection thread started).
+
+Adding =administration: write= to the job does not help; =GITHUB_TOKEN= cannot
+manage branch protection regardless.  The fix needs an admin-capable credential.
+
+Direction (settled in discussion): apply protection from an /operator-run local
+step/ using the operator's own =gh=, not from CI.  The local token already has
+what it needs — scopes =gist, read:org, repo= plus =admin= on owned repos —
+which the Actions token never will.  This mirrors the existing
+=trusted-publish-setup.sh=, another operator-run local script for a thing CI
+cannot self-serve (the crates.io trusted publisher).  Shape:
+- Keep =branch-protection.json= as the declarative source of truth.
+- Apply it via a re-runnable =branch-protection-setup.sh= (or fold into
+  =new-project.sh=), operator-run, using their =gh=.
+- Retire =reusable-branch-protection.yml= and the emitted wrapper — they can
+  only ever 403, so they are dead weight and CI noise.
+- Apply once to rust-template's own =main= with the same script.
+- Add a compliance check that flags existing spawns whose =main= is unprotected
+  and prints the exact one-paste fix command.
+
+Compliance check (for existing spawns, since a setup script only helps at
+creation):
+- Gate on a GitHub repo being present: scan =git remote -v= for a =github.com=
+  URL, and /skip/ the check entirely when none is found.  GitHub may be a
+  non-origin remote — this repo itself has =gitea= as =origin= and GitHub second
+  — so scan all remotes, not just =origin=; a gitea-only spawn is not subject to
+  the check.
+- When a GitHub repo is present, verify its =main= is protected (query the
+  branch-protection API through =gh=).  Start with "protected at all," and
+  optionally grow toward comparing the live ruleset against
+  =branch-protection.json= the way the =toml-path-equals= checks compare values.
+- On failure, print the exact command — =gh api
+  repos/<owner>/<repo>/branches/main/protection --method PUT --input
+  .github/branch-protection.json=, with =<owner>/<repo>= interpolated from the
+  detected remote — so the operator resolves it in a single copy-paste rather
+  than being told only that something is wrong.
+- The check needs =gh= plus network; when the API is unreachable or =gh= is
+  unauthenticated, skip with a note rather than hard-fail, so offline or
+  CI-context compliance runs do not break on it.
+
+Sequencing constraint: protection needs the branch to exist on GitHub first, and
+=new-project.sh= currently does not create or push the repo (no =gh repo
+create=).  So this is a /post-push/ setup step, alongside the crates.io
+trusted-publisher step in =README.org='s post-generation section — or =gh repo
+create= + push moves into =new-project.sh= so the setup can run end-to-end.
+
+Loss vs. the workflow approach: no auto-reapply on drift.  Acceptable — branch
+protection rarely drifts, and a re-runnable script covers re-application on
+demand.
+
+* DONE mkGnuPortablePackages cannot link a modern-glibc host shared library
+
+The =-gnu= portable build failed to link against any nixpkgs shared library
+whose glibc floor exceeds our 2.17 pin — exactly the case the helper's own doc
+comment advertises (ALSA's =libasound=, PulseAudio, GL, CUDA).  A spawn's
+=Release artifacts build= job failed only on the =-gnu= target with:
+
+: ld.lld: error: undefined reference: lstat64@GLIBC_2.33
+:   >>> referenced by …/libasound.so (disallowed by --no-allow-shlib-undefined)
+: … dlsym@GLIBC_2.34 … pow@GLIBC_2.29 … __isoc23_strtoul@GLIBC_2.38 …
+
+Cause: =mkGnuPortablePackages= floors the zig link at glibc 2.17, but a
+=libasound.so= handed in via =buildInputs= is nixpkgs' copy, built against a
+modern glibc, so it carries undefined references to post-2.17 symbols.  Those
+are /not/ the portable binary's own dependencies — they are resolved at runtime
+by the host's glibc and the host's =libasound.so.2=, which is the whole point of
+a portable-dynamic build linking host shared objects by soname.  But zig's lld
+links executables with =--no-allow-shlib-undefined= and tries to satisfy a
+shared library's own undefined symbols against the 2.17 stubs, cannot, and fails
+the link.
+
+Fixed by setting a target-scoped =CARGO_TARGET_<TRIPLE>_RUSTFLAGS= to
+=-Clink-arg=-Wl,--allow-shlib-undefined= in =gnuArgs=, which restores lld's
+tolerance for undefined symbols that live in shared libraries (symbols undefined
+in the crate's own objects still error).  =--allow-shlib-undefined= is the exact
+inverse of the =--no-allow-shlib-undefined= check that failed, so it is the
+surgical toggle rather than the broader
+=--unresolved-symbols=ignore-in-shared-libs=.  It is target-scoped — not global
+=RUSTFLAGS= — so host build-script links keep the strict default, mirroring how
+=mkDarwinCrossPackages= already sets its per-target RUSTFLAGS env var.
+
+Regression fixture: the bug escaped because no workspace crate linked such a
+library.  =crates/cross-fixture= (the existing darwin-cross guard) now links
+=libasound= in its =<name>-gnu= build, and =.github/workflows/ci.yml= builds
+=cross-fixture-gnu= so a regression in the =--allow-shlib-undefined= handling
+fails the PR on the Linux runner.
+
+The first cut wired this as a Linux-gated =alsa-sys= dependency; CI rejected it,
+and correctly.  A =cfg(target_os = "linux")= Cargo dependency is active on the
+Linux CI host for /every/ workspace build — =cargo test=, =cargo clippy=, and
+crane's shared deps-only build — none of which carry alsa, so =alsa-sys='s
+pkg-config probe panicked and broke Test, Clippy, and the compliance-cli release
+build alike.  (The darwin guard =ring= dodges this only because it is
+macos-gated and thus inert on the Linux host.)  The fix keeps libasound out of
+the workspace graph entirely: =cross-fixture='s =build.rs= emits the =-lasound=
+link and a =link_asound= cfg only when the gnu-portable build hands it
+=CROSS_FIXTURE_ASOUND_LIBDIR= (=flake.nix=, pointing at =${alsa-lib}/lib=), so
+the host library is confined to the one build that supplies it.  A local extern
+declaration replaces the =alsa-sys= bindings, and =build.rs= registers the cfg
+with =rustc-check-cfg= so its use is not an unexpected-cfg warning under =-D
+warnings=.
+
+The single =nix/lib/mkGnuPortablePackages.nix= serves both this repo and every
+spawn (via =foundation.lib=), so the one fix covers all consumers.
