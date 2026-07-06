@@ -314,7 +314,7 @@ After running =new-project.sh=, a few things still need manual attention.
 
 ** Configure GitHub for public projects
 
-If you passed =--public=, two things need to be done on GitHub before the
+If you passed =--public=, one thing needs to be done on GitHub before the
 workflows are fully operational:
 
 1. *Register a crates.io trusted publisher.* The publish workflow mints a
@@ -331,10 +331,6 @@ workflows are fully operational:
    =CARGO_REGISTRY_TOKEN= (with =publish-new= and =trusted-publishing= scopes)
    and run =trusted-publish-setup.sh --project-dir <path>=.  Pass =--dry-run=
    first to see what it will do.
-
-2. *Enable auto-merge* (Settings → General → Allow auto-merge).  The dependabot
-   automerge workflow calls =gh pr merge --auto=, which only takes effect if
-   this setting is on.
 
 Branch protection is applied automatically by the =branch-protection= workflow
 on the first push that touches =.github/branch-protection.json= (which the

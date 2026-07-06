@@ -1295,6 +1295,7 @@ change, which is our self-contained equivalent.
   linear-history branch.
 
 * TODO Refine the rustfmt.toml byte-match into value checks
+
 =rustfmt.toml= is currently guarded by =file-matches-template= (byte-for-byte
 equality with the template).  That is the blunt stopgap the "Choosing a check
 kind" guidance in =docs/compliance.org= warns against: it forbids a spawn from
@@ -1306,3 +1307,65 @@ spawn can extend the file without tripping compliance.  Same shape as the
 an exact file.  Audit the other =file-matches-template= uses (if any) the same
 way; the goal is that nothing relies on byte-equality unless an exact match is
 genuinely required, which may be nowhere.
+
+* DONE Fix dependabot auto-merge author gate: =gh= now returns =app/dependabot=
+
+Dependabot PRs never auto-merged on spawns (observed on =sonify-health=, which
+had ten open dependabot PRs, several fully green, none merged).
+
+Root cause: the author gate in =reusable-dependabot-automerge.yml= compared the
+PR author login against the literal =dependabot[bot]=, but current =gh= returns
+=app/dependabot= for GitHub-App bot authors:
+
+#+begin_example
+$ gh pr view 8 --repo LoganBarnett/sonify-health --json author
+{"author":{"is_bot":true,"login":"app/dependabot"}}
+#+end_example
+
+So the gate hit its =PR author is app/dependabot, not dependabot[bot]; skipping=
+branch and set =proceed=false= on /every/ dependabot PR — the run still reported
+=success= (it exits 0 by design), so it looked healthy while never advancing to
+the changelog or merge phases.  Every automerge run inspected bailed here; the
+CLEAN-vs-UNSTABLE split among the PRs was a red herring, since none reached the
+=mergeStateStatus= gate.
+
+Fixed in the reusable workflow, which spawns call via their
+=dependabot-automerge.yml= wrapper pinned to =@main=, so the change repairs the
+whole fleet with no per-spawn edits and no compliance sync.  Chose the identity
+gate rather than a single login string: the metadata step now also extracts
+=.author.is_bot=, and the gate requires =is_bot= true /and/ a login of either
+=dependabot[bot]= or =app/dependabot=.  That accepts both =gh= spellings, is
+resilient to further login-format churn, and refuses a human login that merely
+collides with the string.
+
+Remaining follow-ups (not blocking the gate fix):
+- The existing already-green PRs will not self-heal, because the two-pass design
+  keys the merge phase on =CHANGELOG.org= already being in the PR's file list —
+  and pass one (which adds it) never ran.  They need a CI re-trigger (e.g. an
+  empty rebase / =gh pr comment= recheck) to feed them back through
+  =workflow_run= once this lands.  Operational, per-spawn; not a template task.
+- See the README drift TODO below.
+
+Regression coverage: this is exactly the class of template-infra bug that
+escapes because the template's own crates never exercise the consumer shape (a
+live dependabot PR).  A pure-CI author-gate bug can't be caught by a fixture
+crate, but the gate logic could be lifted into a small tested script, or a smoke
+test could assert the gate accepts a mocked =app/dependabot= author.
+
+* DONE Reconcile README auto-merge docs with the workflow's real behavior
+
+=README.org= told the user to enable "Allow auto-merge" and claimed the
+dependabot automerge workflow calls =gh pr merge --auto=.  The reusable workflow
+actually does a direct =gh pr merge --squash --delete-branch=, so
+=allow_auto_merge= being =false= on a repo (as it was on =sonify-health=) is
+/not/ a blocker for merges.  Surfaced while diagnosing the author-gate bug
+above.
+
+Resolved by keeping the direct-merge design (the =--auto= queue was rejected: it
+reintroduces the =GITHUB_TOKEN= no-cascade problem the =workflow_run= +
+=workflow_dispatch= flow exists to sidestep).  Dropped the stale "Enable
+auto-merge" post-generation step from =README.org= — leaving a single remaining
+step, so the intro is now "one thing" — and documented /why/ =allow_auto_merge=
+stays off in =docs/customizing.org= (settings tuning is that doc's remit),
+including the note that a future switch to =--auto= is the one thing that would
+require enabling it, as code rather than a manual click.
