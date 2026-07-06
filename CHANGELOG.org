@@ -4,6 +4,10 @@
 * Upcoming
 ** Added
 ** Fixes
+** Breaking
+** Maintenance
+* v0.30.0
+** Fixes
 1. Portable =-gnu= release binaries can now link a host shared library whose
    glibc is newer than the build's 2.17 floor — ALSA's =libasound=, PulseAudio,
    GL, CUDA, and the like.  Previously the link failed (=undefined reference …
@@ -13,8 +17,6 @@
    portable link now tolerates a shared library's undefined symbols while still
    catching undefined symbols in the crate's own code.  Projects whose =-gnu=
    build links such a library gain this automatically.
-** Breaking
-** Maintenance
 * v0.29.0
 ** Maintenance
 1. Bump syn from 2.0.117 to 2.0.118 (https://github.com/LoganBarnett/rust-template/pull/21)
