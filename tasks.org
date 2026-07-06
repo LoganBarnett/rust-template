@@ -1369,3 +1369,70 @@ step, so the intro is now "one thing" — and documented /why/ =allow_auto_merge
 stays off in =docs/customizing.org= (settings tuning is that doc's remit),
 including the note that a future switch to =--auto= is the one thing that would
 require enabling it, as code rather than a manual click.
+
+* DONE rust-template dogfoods the Dependabot auto-merge flow
+
+rust-template shipped =reusable-dependabot-automerge.yml= as a library but never
+consumed it on itself: no root =.github/dependabot.yml= and no consumer wrapper,
+so its own dependency PRs never auto-merged.  The author-gate bug that started
+this whole thread would have been caught here first had rust-template exercised
+the flow, so closing the gap is itself a regression guard.
+
+Added =.github/dependabot.yml= (cargo + github-actions, directory =/=, mirroring
+the emitted =template/.github/dependabot.yml=) and a consumer wrapper,
+=.github/workflows/dependabot-automerge.yml=, that fires on =workflow_run= of
+=CI= and calls the reusable workflow by local =./= ref — the same pattern
+=ci.yml= uses for =reusable-ci.yml=.  The publish side needed nothing:
+=publish.yml= already carried a =workflow_dispatch= trigger with a comment
+anticipating exactly this, so a merged bump cuts a foundation release.
+=publish-workflow= is passed explicitly so that decision is visible and can be
+flipped to "" to land bumps without releasing.
+
+Note: rust-template's own dependency PRs touch root =Cargo.toml= / =Cargo.lock=
+and =.github/workflows/*.yml=, which match the gate's root-anchored allow-list —
+unlike a hypothetical =/template=-directory Dependabot, whose =template/…= paths
+would not match and whose virtual-workspace manifest (the =# CRATE_MEMBERS=
+placeholder) cargo cannot resolve in place.  That is why dogfooding lands on the
+real root workspace, not the scaffold.
+
+* TODO Reusable-CI @main can break unsynced spawns that gained new flake outputs
+
+Discovered while replaying a =sonify-health= Dependabot PR: re-running its CI
+failed on =Release artifacts build= with =flake … does not provide attribute
+'packages.x86_64-linux.cli-gnu'=.  Spawns pin =reusable-ci.yml@main=, and =main=
+now builds a =-gnu= portable artifact (the =mkGnuPortablePackages= work in
+v0.26.0), but =sonify-health='s flake predates that sync and exposes no =-gnu=
+output — so /every/ PR there fails CI until it runs a compliance sync to
+v0.26.0, independent of the change under test.
+
+This is the cost of the =@main= pin: a =reusable-ci= change that assumes a newer
+flake-output contract silently breaks every spawn that has not yet synced.  The
+auto-merge fix works (the gate correctly skipped the failed CI), but the failure
+mode is real and worth a decision: either gate new-output builds so a missing
+attribute is skipped rather than fatal (a spawn simply does not build what it
+does not yet expose), or give =reusable-ci= a compatibility window / version
+signal so it does not demand outputs a lagging spawn cannot provide.  Capture
+the right shape before the next output-adding change repeats it.
+
+* TODO Add a =[skip release]= marker to decouple internal merges from releases
+
+Every merge to =main= cuts a foundation release (=publish.yml= fires on push,
+bumps the version, stamps the changelog, publishes, and tags).  That is right
+for changes spawns consume, but an internal-only change — the dogfooding wrapper
+above, a CI tweak, a docs fix — warrants neither a release nor a changelog
+entry, yet the =Changelog entry required= check flags it and merging publishes
+anyway.
+
+Stopgap in use (the dogfooding PR merged this way): put =[skip ci]= in the
+squash-merge commit, which makes GitHub skip =publish.yml= for that push, so no
+release is cut and no changelog entry is needed.  It works because =main= is
+unprotected and nothing else runs on push, but it is blunt — =[skip ci]= skips
+/every/ workflow, so it cannot keep any post-merge validation.
+
+Desired: a =[skip release]= marker that skips only the publish/version/tag steps
+and exempts the change from the =Changelog entry required= check (the same way
+Dependabot PRs are exempted), while leaving the rest of CI intact.
+=publish.yml= / =reusable-publish= would read the head commit message and no-op
+the release; the changelog check would treat the marker as an exemption.  Ties
+into a broader question worth settling alongside it: whether internal-only
+changes belong in the consumer-facing =CHANGELOG.org= at all.

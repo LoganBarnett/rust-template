@@ -1,0 +1,18 @@
+# rust-template dogfoods the Dependabot + auto-merge flow it ships to
+# spawns: this config opens dependency PRs against rust-template's own
+# workspace, and dependabot-automerge.yml lands the green ones the same
+# way a spawn's does.  Mirrors template/.github/dependabot.yml so the
+# behavior we exercise here is the behavior spawns get.
+version: 2
+updates:
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
