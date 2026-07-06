@@ -5,6 +5,8 @@
 ** Added
 ** Fixes
 ** Breaking
+** Maintenance
+1. Bump syn from 2.0.117 to 2.0.118 (https://github.com/LoganBarnett/rust-template/pull/21)
 * v0.28.0
 ** Fixes
 1. Dependabot auto-merge lands in a single pass, fixing a deadlock that stalled
