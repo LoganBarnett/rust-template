@@ -4,15 +4,27 @@ name: Dependabot auto-merge (reusable)
 # completing for the CI workflow.  All gating decisions happen here
 # so the wrapper stays a one-liner.
 #
-# The flow takes two passes over the same PR.  On the first pass
-# (PR has not yet been touched by this workflow), we add a changelog
-# entry as a regular commit on the Dependabot branch and exit.  That
-# push retriggers CI; when CI passes again, `workflow_run` fires a
-# second time and we land in the merge branch.  Squash-merging then
-# combines the bump and the changelog into a single commit on main,
-# which is the only commit that needs to exist there.  Publish is
-# dispatched via `workflow_dispatch` (the only event exempt from the
-# `GITHUB_TOKEN` no-cascade rule) once the merge lands.
+# The flow runs in a single pass.  When CI passes on a Dependabot
+# bump this fires, and — if the PR is CLEAN (every other check green,
+# up to date, no conflicts) — it injects a changelog entry on the
+# bump's branch and squash-merges immediately, combining the bump and
+# the changelog into one commit on main.
+#
+# Dependabot cannot author a changelog entry, so it is exempt from the
+# "Changelog entry required" CI job.  This flow supplies what that job
+# would demand rather than skipping it: it composes the entry from the
+# PR and runs the same `changelog-roller` — both the insert and the
+# `check-additions` gate the CI job runs — inline.  Nothing is skipped;
+# the build and test checks already passed on the bump and the code
+# does not change.
+#
+# It deliberately does NOT push the changelog and wait for a second CI
+# run.  A commit pushed with `GITHUB_TOKEN` does not trigger workflows
+# (the no-cascade rule), so that second run would never fire and the
+# PR would deadlock — which is exactly what an earlier two-pass version
+# did once its author gate was fixed.  Publish is dispatched via
+# `workflow_dispatch` (itself exempt from the no-cascade rule) once the
+# merge lands.
 
 on:
   workflow_call:
@@ -28,11 +40,10 @@ on:
         type: string
         default: "publish.yml"
 
-# Serialize per PR so the two passes can't race against each other
-# (a second CI run completing while the first pass is still pushing
-# its changelog commit would otherwise try to merge an incomplete
-# PR).  `cancel-in-progress: false` so we never abort a pass that's
-# already past the gating checks.
+# Serialize per PR so two CI completions for the same branch cannot
+# drive overlapping runs (e.g. a rebase landing while a merge is in
+# flight).  `cancel-in-progress: false` so we never abort a run that
+# is already past the gating checks and mid-merge.
 concurrency:
   group: dependabot-automerge-${{ github.event.workflow_run.head_branch }}
   cancel-in-progress: false
@@ -79,7 +90,6 @@ jobs:
           TITLE=$(jq --raw-output '.title' pr.json)
           URL=$(jq --raw-output '.url' pr.json)
           HEAD_REF=$(jq --raw-output '.headRefName' pr.json)
-          MERGE_STATE=$(jq --raw-output '.mergeStateStatus' pr.json)
           IS_SECURITY=$(jq --raw-output \
             '[.labels[].name] | any(. == "security")' pr.json)
           {
@@ -88,7 +98,6 @@ jobs:
             echo "title=$TITLE"
             echo "url=$URL"
             echo "head_ref=$HEAD_REF"
-            echo "merge_state=$MERGE_STATE"
             echo "is_security=$IS_SECURITY"
           } >> "$GITHUB_OUTPUT"
         env:
@@ -115,9 +124,9 @@ jobs:
           fi
           FILES=$(gh pr diff "$PR_NUMBER" --repo "$REPO" --name-only)
           echo "$FILES"
-          # CHANGELOG.org is allowed because we add it ourselves on
-          # the first pass.  Anything outside this set means a human
-          # touched the PR and we should stay out of it.
+          # CHANGELOG.org is allowed because this workflow adds it
+          # itself.  Anything outside this set means a human touched the
+          # PR and we should stay out of it.
           UNEXPECTED=$(echo "$FILES" | grep --invert-match \
             --regexp='^Cargo\.\(toml\|lock\)$' \
             --regexp='^\.github/workflows/.*\.yml$' \
@@ -129,10 +138,32 @@ jobs:
             echo "proceed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if echo "$FILES" | grep --quiet --line-regexp "$CHANGELOG_FILE"; then
-            echo "phase=merge" >> "$GITHUB_OUTPUT"
+          # The workflow_run trigger already guarantees the bump's CI
+          # passed; CLEAN additionally confirms up-to-date-with-base and
+          # no conflicts.  Read it here, on the bump commit, before the
+          # changelog commit lands — that commit gets no CI of its own
+          # and would drop mergeStateStatus below CLEAN.  The status is
+          # computed asynchronously, so wait for it to settle out of
+          # UNKNOWN before judging.
+          for _ in 1 2 3 4 5 6; do
+            STATE=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
+              --json mergeStateStatus --jq '.mergeStateStatus')
+            [ "$STATE" != "UNKNOWN" ] && break
+            sleep 5
+          done
+          if [ "$STATE" != "CLEAN" ]; then
+            echo "mergeStateStatus is $STATE, not CLEAN; skipping" \
+              "(Dependabot re-triggers this on its next rebase)."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Idempotency: a re-fire after a partial run may already carry
+          # the changelog entry, so record whether it still needs adding.
+          CHANGELOG_RE=${CHANGELOG_FILE//./\\.}
+          if echo "$FILES" | grep --quiet --line-regexp "$CHANGELOG_RE"; then
+            echo "has_changelog=true" >> "$GITHUB_OUTPUT"
           else
-            echo "phase=changelog" >> "$GITHUB_OUTPUT"
+            echo "has_changelog=false" >> "$GITHUB_OUTPUT"
           fi
           echo "proceed=true" >> "$GITHUB_OUTPUT"
         env:
@@ -143,21 +174,26 @@ jobs:
           CHANGELOG_FILE: ${{ inputs.changelog-file }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # --- First pass: insert the changelog entry on the PR branch ---
+      # --- Inject the changelog entry on the PR branch ---
 
       - uses: actions/checkout@v4
-        if: steps.gate.outputs.phase == 'changelog'
+        if: steps.gate.outputs.proceed == 'true'
         with:
           ref: ${{ steps.meta.outputs.head_ref }}
           token: ${{ secrets.GITHUB_TOKEN }}
+          # Full history so the `check-additions` gate below can diff the
+          # entry against `origin/main`, exactly as the CI job does.
+          fetch-depth: 0
 
       # Install Nix + restore/save the `/nix` store cache.  See
       # `.github/actions/setup-nix` for the rationale.
       - uses: LoganBarnett/rust-template/.github/actions/setup-nix@main
-        if: steps.gate.outputs.phase == 'changelog'
+        if: steps.gate.outputs.proceed == 'true'
 
       - name: Append changelog entry and push to PR branch
-        if: steps.gate.outputs.phase == 'changelog'
+        if: >
+          steps.gate.outputs.proceed == 'true' &&
+          steps.gate.outputs.has_changelog == 'false'
         run: |
           if [ "$IS_SECURITY" = "true" ]; then
             HEADING=Security
@@ -165,11 +201,21 @@ jobs:
             HEADING=Maintenance
           fi
           BODY="${TITLE} (${URL})"
+          # Compose the entry from the PR and insert it with the same
+          # changelog-roller the CI check uses.  Dependabot is exempt
+          # from the "Changelog entry required" job, so this supplies
+          # what that job would demand — it does not bypass it.
           nix develop .#ci --command changelog-roller insert-item \
             --input-file "$CHANGELOG_FILE" \
             --heading "$HEADING" \
             --body "$BODY" \
             --in-place
+          # Run the CI job's own gate against the result, so the
+          # changelog check is genuinely enforced here rather than
+          # merely satisfied by construction.
+          nix develop .#ci --command changelog-roller check-additions \
+            --input-file "$CHANGELOG_FILE" \
+            --base origin/main
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add "$CHANGELOG_FILE"
@@ -183,27 +229,32 @@ jobs:
           IS_SECURITY: ${{ steps.meta.outputs.is_security }}
           HEAD_REF: ${{ steps.meta.outputs.head_ref }}
 
-      # --- Second pass: merge and dispatch publish ---
+      # --- Squash-merge and dispatch publish ---
 
-      # `mergeStateStatus == CLEAN` rolls all required checks plus
-      # up-to-date-with-base and approvals into a single signal.  It
-      # is the right gate whether or not the repo has explicit
-      # branch protection — for unprotected repos, CLEAN still
-      # requires checks to have passed.
+      # The bump was already CLEAN when the gate read it, and the only
+      # change since is the changelog commit — whose one relevant check,
+      # `changelog-roller check-additions`, ran inline above.  So merge
+      # on `proceed` rather than re-reading mergeStateStatus, which would
+      # now be non-CLEAN because that commit gets no CI of its own (a
+      # GITHUB_TOKEN push triggers none).  The push above and this merge
+      # race against GitHub registering the new head, so retry briefly
+      # before giving up.
       - name: Squash-merge the PR
         id: merge
-        if: >
-          steps.gate.outputs.phase == 'merge' &&
-          steps.meta.outputs.merge_state == 'CLEAN'
+        if: steps.gate.outputs.proceed == 'true'
         run: |
-          if gh pr merge "$PR_NUMBER" \
-              --repo "$REPO" \
-              --squash \
-              --delete-branch; then
-            echo "merged=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "merged=false" >> "$GITHUB_OUTPUT"
-          fi
+          merged=false
+          for _ in 1 2 3 4 5; do
+            if gh pr merge "$PR_NUMBER" \
+                --repo "$REPO" \
+                --squash \
+                --delete-branch; then
+              merged=true
+              break
+            fi
+            sleep 5
+          done
+          echo "merged=$merged" >> "$GITHUB_OUTPUT"
         env:
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
