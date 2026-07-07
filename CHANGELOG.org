@@ -4,6 +4,10 @@
 * Upcoming
 ** Added
 ** Fixes
+** Breaking
+** Maintenance
+* v0.33.0
+** Fixes
 1. The cross-compiled arm64 macOS release binary now carries a valid ad-hoc
    Mach-O signature, so it runs on Apple Silicon.  Previously the release
    profile's =strip = true= ran after zig's cross-linker stamped the binary's
@@ -12,8 +16,6 @@
    build now re-signs each arm64 binary with =rcodesign= as its final step, and
    a new =darwinSignatures= flake check guards the signature against regression.
    Projects that ship an =aarch64-darwin= binary gain this automatically.
-** Breaking
-** Maintenance
 * v0.32.0
 ** Maintenance
 1. Bump clap from 4.6.0 to 4.6.1
