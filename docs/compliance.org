@@ -111,6 +111,7 @@ These apply to every crate regardless of role.
 | =tokio-listener= binding | Required | The listener is created via =tokio_listener::Listener::bind= and served via =tokio_listener::axum07::serve=.  This enables Unix domain socket and systemd socket-activation support. |
 | Systemd notifications | Required | =systemd::notify_ready()= and =systemd::spawn_watchdog()= are called after the listener binds, before the server starts serving. |
 | Single combined =listen= address | Required | The bind address is a single =--listen= argument parsed into a =tokio_listener::ListenerAddress= (default =127.0.0.1:3000=), accepting =host:port= for TCP, a filesystem path for a Unix socket, or =sd-listen= for systemd socket activation — not separate host and port arguments. |
+| Embedded frontend | Required | The compiled frontend is embedded into the server binary rather than served from a directory alongside it.  A =rust_embed= =Frontend= type lives in =frontend.rs= (deriving =RustEmbed=) and is installed with =Server::spa::<Frontend>()=; a =build.rs= resolves the asset directory into =RUST_TEMPLATE_FRONTEND_DIR=, and the workspace =rust-embed= dependency enables =interpolate-folder-path= so the =#[folder]= attribute can expand it.  A genuinely headless server with no frontend opts out via =compliance-ignores=. |
 
 ** =cli= crate compliance items
 
