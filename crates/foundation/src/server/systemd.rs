@@ -7,7 +7,7 @@ use tracing::{info, warn};
 /// call when NOTIFY_SOCKET is unset; sd_notify returns Ok(()) silently in
 /// that case.
 pub fn notify_ready() {
-  if let Err(e) = sd_notify::notify(false, &[sd_notify::NotifyState::Ready]) {
+  if let Err(e) = sd_notify::notify(&[sd_notify::NotifyState::Ready]) {
     warn!("sd-notify ready signal failed: {}", e);
   }
 }
@@ -24,9 +24,7 @@ pub fn spawn_watchdog() {
     let mut ticker = tokio::time::interval(interval);
     loop {
       ticker.tick().await;
-      if let Err(e) =
-        sd_notify::notify(false, &[sd_notify::NotifyState::Watchdog])
-      {
+      if let Err(e) = sd_notify::notify(&[sd_notify::NotifyState::Watchdog]) {
         warn!("sd-notify watchdog heartbeat failed: {}", e);
       }
     }
@@ -39,7 +37,5 @@ pub fn spawn_watchdog() {
 /// Pinging at half the interval provides a safety margin before systemd
 /// declares the service dead.
 fn watchdog_interval() -> Option<Duration> {
-  let mut usec = 0u64;
-  sd_notify::watchdog_enabled(false, &mut usec)
-    .then(|| Duration::from_micros(usec / 2))
+  sd_notify::watchdog_enabled().map(|timeout| timeout / 2)
 }
