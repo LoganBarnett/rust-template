@@ -6,6 +6,8 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+* v0.35.0
+** Maintenance
 1. Compliance gains checks for the embedded server frontend: a server-crate
    spawn must keep =crates/server/build.rs= and =crates/server/src/frontend.rs=,
    its =Frontend= struct must derive =RustEmbed=, =main= must install the SPA
