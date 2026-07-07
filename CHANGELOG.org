@@ -4,6 +4,13 @@
 * Upcoming
 ** Added
 ** Fixes
+1. The foundation crate now builds against =sd-notify= 0.5.  Its =notify= drops
+   the leading =unset_environment= flag, and =watchdog_enabled= returns the
+   timeout as an =Option<Duration>= rather than writing microseconds through an
+   out-parameter.  The systemd readiness, watchdog-heartbeat, and
+   watchdog-interval call sites are updated to match, with behavior unchanged.
+   This clears the =sd-notify 0.5.0= Dependabot bump, which the old two-argument
+   =notify= API could not compile against.
 ** Breaking
 ** Maintenance
 * v0.35.0
