@@ -8,6 +8,7 @@
 use rust_template_foundation::main as foundation_main;
 use rust_template_foundation::Server;
 use rust_template_server::config::Config;
+use rust_template_server::frontend::Frontend;
 use rust_template_server::web_base::AppState;
 use std::process::ExitCode;
 
@@ -16,7 +17,11 @@ pub async fn main(
   _config: Config,
   server: Server,
 ) -> Result<ExitCode, rust_template_foundation::ServerError> {
-  let server = server.with_state(|base| AppState { base });
+  let server = server
+    .with_state(|base| AppState { base })
+    // Serve the embedded Elm frontend as an SPA, falling back to
+    // `index.html` for client-side routes.
+    .spa::<Frontend>();
   server.listen().await?;
   Ok(ExitCode::SUCCESS)
 }

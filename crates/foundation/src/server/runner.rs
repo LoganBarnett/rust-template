@@ -18,7 +18,7 @@ use axum::{
 };
 use openidconnect::core::CoreClient;
 use prometheus::{IntCounterVec, Opts, Registry};
-use std::{path::PathBuf, sync::Arc};
+use std::sync::Arc;
 use thiserror::Error;
 use tokio_listener::ListenerAddress;
 use tower_http::trace::TraceLayer;
@@ -49,7 +49,6 @@ pub trait ServerApp: CliApp {
 pub struct ServerRunConfig {
   pub app_name: String,
   pub listen_address: ListenerAddress,
-  pub frontend_path: Option<PathBuf>,
   pub base_url: String,
   pub oidc: Option<OidcConfig>,
 }
@@ -85,13 +84,12 @@ pub struct BaseServerState {
   pub metrics_registry: Arc<Registry>,
   pub request_counter: IntCounterVec,
   pub oidc_client: Option<Arc<CoreClient>>,
-  pub frontend_path: Option<PathBuf>,
 }
 
 impl BaseServerState {
   /// Initialise shared state: prometheus registry, OIDC discovery (if
-  /// configured).  Uses the first server config's OIDC and frontend
-  /// settings as the canonical source.
+  /// configured).  Uses the first server config's OIDC settings as the
+  /// canonical source.
   pub async fn init(config: &ServerRunConfig) -> Result<Self, ServerError> {
     let registry = Registry::new();
     let request_counter = IntCounterVec::new(
@@ -115,7 +113,6 @@ impl BaseServerState {
       metrics_registry: Arc::new(registry),
       request_counter,
       oidc_client,
-      frontend_path: config.frontend_path.clone(),
     })
   }
 }
@@ -207,6 +204,9 @@ where
   base: BaseServerState,
   router: ApiRouter<S>,
   config: ServerRunConfig,
+  /// Optional single-page-application fallback serving embedded frontend
+  /// assets; installed via [`Server::spa`].
+  spa: Option<Router>,
 }
 
 impl Server<BaseServerState> {
@@ -217,6 +217,7 @@ impl Server<BaseServerState> {
       base,
       router: ApiRouter::new(),
       config,
+      spa: None,
     }
   }
 
@@ -245,6 +246,7 @@ impl Server<BaseServerState> {
       base: self.base,
       router: ApiRouter::new(),
       config: self.config,
+      spa: self.spa,
     }
   }
 }
@@ -269,6 +271,16 @@ where
   /// Merge an `ApiRouter` of user routes.
   pub fn merge(mut self, router: ApiRouter<S>) -> Self {
     self.router = self.router.merge(router);
+    self
+  }
+
+  /// Install a single-page-application fallback that serves the embedded
+  /// frontend assets `E` (a `rust_embed::RustEmbed` type), with an
+  /// `index.html` fallback for client-side routes.  The assets are baked
+  /// into the binary in release builds, so a downloaded release binary is
+  /// self-contained.
+  pub fn spa<E: rust_embed::RustEmbed + 'static>(mut self) -> Self {
+    self.spa = Some(spa::spa_service::<E>());
     self
   }
 
@@ -377,9 +389,10 @@ where
       .merge(me_router)
       .merge(openapi::openapi_routes(api, &app_name));
 
-    // SPA fallback when a frontend path is configured.
-    if let Some(ref frontend_path) = base.frontend_path {
-      full = full.fallback_service(spa::spa_service(frontend_path));
+    // SPA fallback serving embedded frontend assets, when installed via
+    // `Server::spa`.
+    if let Some(spa) = self.spa {
+      full = full.fallback_service(spa);
     }
 
     // Session layer.

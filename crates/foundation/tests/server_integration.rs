@@ -43,7 +43,6 @@ fn base_state_no_auth() -> BaseServerState {
     metrics_registry: Arc::new(registry),
     request_counter,
     oidc_client: None,
-    frontend_path: None,
   }
 }
 
@@ -57,7 +56,6 @@ fn test_config(app_name: &str) -> ServerRunConfig {
   ServerRunConfig {
     app_name: app_name.to_string(),
     listen_address: "127.0.0.1:0".parse().unwrap(),
-    frontend_path: None,
     base_url: "https://example.com".to_string(),
     oidc: None,
   }
@@ -257,22 +255,16 @@ async fn auth_login_redirects_with_oidc() {
 
 // ── SPA fallback ────────────────────────────────────────────────────────────
 
+// Embedded frontend assets for the SPA tests, mirroring how a spawned
+// project embeds its compiled Elm bundle.  The folder is committed under
+// the crate so `rust_embed` resolves it at compile time.
+#[derive(rust_embed::RustEmbed)]
+#[folder = "tests/fixtures/frontend"]
+struct TestFrontend;
+
 #[tokio::test]
 async fn spa_fallback_serves_index_html() {
-  let frontend_dir = tempfile::tempdir().unwrap();
-  std::fs::write(
-    frontend_dir.path().join("index.html"),
-    b"<!doctype html><title>test</title>",
-  )
-  .unwrap();
-
-  let mut base = base_state_no_auth();
-  base.frontend_path = Some(frontend_dir.path().to_path_buf());
-
-  let mut config = test_config("test-spa");
-  config.frontend_path = Some(frontend_dir.path().to_path_buf());
-
-  let app = Server::new(base, config).into_test_router();
+  let app = server_no_auth().spa::<TestFrontend>().into_test_router();
 
   for path in ["/some-page", "/nested/route", "/unknown"] {
     let resp = app
@@ -285,11 +277,45 @@ async fn spa_fallback_serves_index_html() {
       StatusCode::OK,
       "expected 200 for SPA path {path}"
     );
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+      .await
+      .unwrap();
+    assert!(
+      String::from_utf8_lossy(&body).contains("spa test"),
+      "expected index.html fallback body for SPA path {path}"
+    );
   }
 }
 
 #[tokio::test]
-async fn no_spa_when_frontend_path_none() {
+async fn spa_serves_named_asset_with_content_type() {
+  let app = server_no_auth().spa::<TestFrontend>().into_test_router();
+
+  let resp = app
+    .oneshot(
+      Request::builder()
+        .uri("/app.js")
+        .body(Body::empty())
+        .unwrap(),
+    )
+    .await
+    .unwrap();
+
+  assert_eq!(resp.status(), StatusCode::OK);
+  let content_type = resp
+    .headers()
+    .get(axum::http::header::CONTENT_TYPE)
+    .and_then(|v| v.to_str().ok())
+    .unwrap_or_default()
+    .to_string();
+  assert!(
+    content_type.contains("javascript"),
+    "expected a javascript Content-Type, got {content_type:?}"
+  );
+}
+
+#[tokio::test]
+async fn no_spa_by_default() {
   let app = server_no_auth().into_test_router();
   let resp = app
     .oneshot(

@@ -147,6 +147,25 @@ Add an OpenAPI-documented route using aide's ~get_with~, ~post_with~, etc.
 
 Merge an ~ApiRouter~ of user routes.
 
+** ~.spa::<Frontend>()~
+
+Install a single-page-application fallback that serves the embedded frontend
+assets, with an ~index.html~ fallback for client-side routes.  ~Frontend~ is a
+~rust_embed::RustEmbed~ type declared in the application crate; its assets are
+baked into the binary in release builds and read from disk in debug builds, so a
+downloaded release binary is self-contained while local development still picks
+up ~elm make~ output without a rebuild.
+
+#+begin_src rustic :results none :exports code
+#[derive(rust_embed::RustEmbed)]
+#[folder = "$MY_APP_FRONTEND_DIR"]
+pub struct Frontend;
+
+let server = server
+    .with_state(|base| AppState { base })
+    .spa::<Frontend>();
+#+end_src
+
 ** ~.listen()~
 
 Start listening.  Blocks until graceful shutdown completes.  Internally:
@@ -180,7 +199,6 @@ pub struct BaseServerState {
     pub metrics_registry: Arc<prometheus::Registry>,
     pub request_counter: prometheus::IntCounter,
     pub oidc_client: Option<Arc<CoreClient>>,
-    pub frontend_path: Option<PathBuf>,
 }
 #+end_src
 
@@ -341,8 +359,8 @@ Wire it into the ~CliApp~ trait via ~from_cli~.
 ** Subcommands
 
 Mark a field with ~#[merge_config(subcommand)]~ to expose a clap subcommand on
-the generated ~CliRaw~.  The field's type is forwarded verbatim, so required
-vs. optional follows the type:
+the generated ~CliRaw~.  The field's type is forwarded verbatim, so required vs.
+optional follows the type:
 
 - ~pub command: Commands~ — clap requires a subcommand.
 - ~pub command: Option<Commands>~ — running the binary with no subcommand yields
@@ -563,8 +581,8 @@ The ~MergeConfig~ derive accepts two forms of the ~env~ attribute on merged
 fields:
 
 - *Bare ~env~* — derive the name as ~<app>_<flag>~, where ~flag~ is the ~name =
-  "..."~ override if present, otherwise the field
-  identifier. Use this whenever the derivation gives the right answer.
+  "..."~ override if present, otherwise the field identifier. Use this whenever
+  the derivation gives the right answer.
 
 #+begin_src rustic :results none :exports code #[merge_config(env, required)]
 pub base_url: String, // → reads `<app>_base_url` #+end_src
@@ -646,9 +664,10 @@ let extra = Server::new(server.base_state().clone(), extra_config);
 | Stage                      | Hook                              | Example use                                   |
 |----------------------------+-----------------------------------+-----------------------------------------------|
 | CLI parsing                | ~CliApp::from_cli()~              | Custom validation, env var fallbacks           |
-| Config → ServerRunConfig   | ~ServerApp::server_run_configs()~ | Control listen addr, OIDC, frontend path       |
+| Config → ServerRunConfig   | ~ServerApp::server_run_configs()~ | Control listen addr, OIDC                       |
 | State construction         | ~Server::with_state(\vert{}base\vert{} ...)~ | Add app-specific fields, custom metrics        |
 | Route registration         | ~Server::api_route()~ / ~merge()~ | All app-specific routes                        |
+| SPA frontend               | ~Server::spa::<Frontend>()~       | Serve the embedded frontend assets             |
 | Additional servers         | ~Server::new(base.clone(), cfg)~  | Admin API on separate port                     |
 | Post-listen cleanup        | Code after ~server.listen().await~ | Drain queues, close connections                |
 
@@ -663,11 +682,11 @@ overriding existing module values from a second module imported alongside.  No
 ~extraOptions~ parameter exists or is needed: the Nix module system's own
 merging is the extension point.
 
-The thin wrapper at ~nix/modules/nixos-server.nix~ (and its Darwin
-counterpart) is the natural place to add project-specific extensions.  By
-             default it forwards to the helper; turning it into a module
-             function that imports the helper /and/ contributes its own options
-             and config gives full composition with no additional plumbing.
+The thin wrapper at ~nix/modules/nixos-server.nix~ (and its Darwin counterpart)
+is the natural place to add project-specific extensions.  By default it forwards
+to the helper; turning it into a module function that imports the helper /and/
+contributes its own options and config gives full composition with no additional
+plumbing.
 
 Every value the helpers set on ~serviceConfig~ / ~socketConfig~ /
 ~launchd.servers.<name>.serviceConfig~ is wrapped in ~lib.mkDefault~, so plain
@@ -718,7 +737,6 @@ in {
         then " --listen sd-listen"
         else " --listen ${cfg.host}:${toString cfg.port}"
       )
-      + " --frontend-path ${cfg.frontendPath}"
       + " --config ${rulesFile}";
   };
 }

@@ -27,7 +27,6 @@ impl ServerApp for Config {
         IpAddr::V4(Ipv4Addr::LOCALHOST),
         3000,
       )),
-      frontend_path: None,
       base_url: self.base_url.clone(),
       oidc: None,
     }]

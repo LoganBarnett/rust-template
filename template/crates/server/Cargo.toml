@@ -37,6 +37,10 @@ prometheus = { workspace = true }
 aide = { workspace = true }
 schemars = { workspace = true }
 openidconnect = { workspace = true }
+# Embeds the compiled Elm bundle into the binary.  The `build.rs` resolves
+# the asset directory (defaulting to the in-tree `frontend/public`) and
+# exports it as `RUST_TEMPLATE_FRONTEND_DIR` for the `Frontend` derive.
+rust-embed = { workspace = true }
 
 [dev-dependencies]
 openidconnect = { workspace = true }

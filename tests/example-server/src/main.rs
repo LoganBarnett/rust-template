@@ -65,13 +65,11 @@ mod tests {
       metrics_registry: Arc::new(registry),
       request_counter,
       oidc_client: None,
-      frontend_path: None,
     };
 
     let config = ServerRunConfig {
       app_name: "example-server".to_string(),
       listen_address: "127.0.0.1:0".parse().unwrap(),
-      frontend_path: None,
       base_url: "https://example.com".to_string(),
       oidc: None,
     };
