@@ -6,6 +6,12 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+1. Compliance gains checks for the embedded server frontend: a server-crate
+   spawn must keep =crates/server/build.rs= and =crates/server/src/frontend.rs=,
+   its =Frontend= struct must derive =RustEmbed=, =main= must install the SPA
+   fallback via =.spa()=, and the workspace =rust-embed= dependency must enable
+   =interpolate-folder-path=.  A headless server with no frontend opts out via
+   =compliance-ignores=.
 * v0.34.0
 ** Added
 1. The foundation server can embed its compiled frontend directly into the

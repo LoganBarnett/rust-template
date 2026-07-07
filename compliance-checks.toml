@@ -600,6 +600,51 @@ contains = "common"
 count = 2
 when_crates_contains = "server"
 
+# The server crate embeds its compiled frontend into the binary via
+# rust_embed, so a release binary is self-contained rather than depending on a
+# frontend directory shipped alongside it.  A genuinely headless server (no
+# frontend) opts out of these via compliance-ignores.
+[[check]]
+id = "server-build-script-present"
+description = "The server crate keeps a build script that resolves the embedded-frontend asset directory."
+kind = "file-present"
+path = "crates/server/build.rs"
+when_crates_contains = "server"
+
+[[check]]
+id = "server-frontend-module-present"
+description = "The server crate declares its embedded frontend in a dedicated frontend.rs module."
+kind = "file-present"
+path = "crates/server/src/frontend.rs"
+when_crates_contains = "server"
+
+[[check]]
+id = "server-frontend-derives-rust-embed"
+description = "The server Frontend struct derives RustEmbed so its assets are embedded into the binary."
+kind = "rust-struct-has-derive"
+target = "crates/server/src/frontend.rs"
+struct_name = "Frontend"
+derive = "RustEmbed"
+when_crates_contains = "server"
+
+[[check]]
+id = "server-main-installs-spa"
+description = "The server main fn installs the embedded frontend via the SPA fallback (.spa)."
+kind = "rust-method-chain"
+target = "crates/server/src/main.rs"
+function = "main"
+methods = "spa"
+when_crates_contains = "server"
+
+[[check]]
+id = "server-rust-embed-interpolate-feature"
+description = "The workspace rust-embed dependency enables interpolate-folder-path so the frontend #[folder] can expand $RUST_TEMPLATE_FRONTEND_DIR."
+kind = "toml-seq-contains"
+target = "Cargo.toml"
+pointer = "workspace.dependencies.rust-embed.features"
+value = "interpolate-folder-path"
+when_crates_contains = "server"
+
 # ======== rust-modules ========
 [[check]]
 id = "lib-no-main"
