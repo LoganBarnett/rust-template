@@ -70,15 +70,6 @@
     '';
   };
 
-  frontendPath = lib.mkOption {
-    type = lib.types.str;
-    default = "${cfg.package}/share/${name}/frontend";
-    defaultText =
-      lib.literalExpression
-      ''"''${cfg.package}/share/${name}/frontend"'';
-    description = "Path to compiled frontend static assets.";
-  };
-
   baseUrl = lib.mkOption {
     type = lib.types.str;
     example = "https://example.com";

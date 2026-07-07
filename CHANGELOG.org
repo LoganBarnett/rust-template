@@ -3,8 +3,25 @@
 
 * Upcoming
 ** Added
+1. The foundation server can embed its compiled frontend directly into the
+   binary with =Server::spa::<Frontend>()=, where =Frontend= is a =rust_embed=
+   type declared in the application crate.  Assets are read from disk in debug
+   builds and baked into the binary for release builds, so local development
+   still picks up =elm make= output without recompiling the server.
 ** Fixes
+1. Release binaries now include the frontend.  Previously the server served it
+   from a directory chosen at runtime (=--frontend-path=), so a downloaded
+   release binary shipped without the compiled Elm bundle and served no frontend
+   at all.  The bundle is now embedded into the binary, making a release
+   atomically self-contained.  Projects that ship a server binary gain this
+   automatically.
 ** Breaking
+1. The runtime frontend path is removed: =ServerRunConfig= and =BaseServerState=
+   no longer carry a =frontend_path= field, and the =--frontend-path= CLI flag
+   and =frontendPath= NixOS / Darwin service option are gone.  A project that
+   serves a frontend must declare a =rust_embed= =Frontend= type and install it
+   with =Server::spa::<Frontend>()=, as the server template now does; a project
+   that serves none needs no change.
 ** Maintenance
 * v0.33.0
 ** Fixes

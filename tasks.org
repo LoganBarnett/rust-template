@@ -1,6 +1,41 @@
 #+title:     rust-template Tasks
 #+language:  en
 
+* DONE Embed the Elm frontend into the server binary
+
+Release binaries shipped as a bare executable, but the server served its
+frontend from a directory on disk (~--frontend-path~, defaulting to
+~frontend/public~ and pointed by the NixOS/Darwin modules at a ~share/~ symlink
+in the Nix store).  A downloaded release binary therefore had no frontend at
+all: the compiled Elm bundle never travelled with the artifact.
+
+The fix embeds the bundle into the binary via ~rust_embed~ so a release is
+atomically self-contained — one file, nothing to ship alongside it.  The
+foundation's SPA service became generic over a ~RustEmbed~ type and is installed
+with a new ~Server::spa::<Frontend>()~ builder; the ~frontend_path~ field was
+removed from ~ServerRunConfig~ / ~BaseServerState~ and the ~--frontend-path~
+flag and ~frontendPath~ NixOS option were dropped.  The application crate
+declares the ~Frontend~ embed type; a ~build.rs~ resolves the asset directory
+(defaulting to the in-tree ~frontend/public~) and exports it as
+~RUST_TEMPLATE_FRONTEND_DIR~ for the ~#[folder]~ attribute.
+
+Key decisions:
+- ~rust_embed~ reads assets from disk in debug builds and embeds them in release
+  builds, so a downloaded release is self-contained while ~cargo run~ still
+  picks up ~elm make~ output without recompiling the server.  Addressed the
+  concern that embedding bloats memory: assets live in a demand-paged read-only
+  data section, so they are not resident until touched and do not affect
+  codegen.
+- The ~#[folder = "$RUST_TEMPLATE_FRONTEND_DIR"]~ interpolation requires
+  ~rust_embed~'s ~interpolate-folder-path~ feature; without it the ~$VAR~ is
+  taken literally.  ~mime-guess~ supplies the ~Content-Type~ the SPA service
+  returns.
+- ~template/nix/packages/server.nix~ passes the freshly compiled Elm derivation
+  through ~RUST_TEMPLATE_FRONTEND_DIR~ to the crane build.  Because every
+  release variant (native, musl, gnu-portable, darwin-cross) resolves the server
+  crate through the same ~nix/packages/server.nix~ per-crate override, the one
+  change embeds the bundle in all of them with no per-builder edits.
+
 * DONE Migrate CI off the deprecated Magic Nix Cache
 
 Determinate shut the free ~magic-nix-cache~ backend down in February 2025; the

@@ -180,7 +180,6 @@ in {
             then " --listen sd-listen"
             else " --listen ${cfg.host}:${toString cfg.port}"
           )
-          + " --frontend-path ${cfg.frontendPath}"
         );
 
         LoadCredential =

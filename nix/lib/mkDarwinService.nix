@@ -44,8 +44,7 @@
 
   execLine =
     "${cfg.package}/bin/${name}"
-    + " ${listenArg}"
-    + " --frontend-path ${cfg.frontendPath}";
+    + " ${listenArg}";
 
   logDir = "/var/log/${name}";
 

@@ -41,7 +41,15 @@ axum = "0.8"
 tokio = { version = "1.41", features = ["full"] }
 tokio-listener = { version = "0.5", features = ["axum08"] }
 tower = "0.5"
-tower-http = { version = "0.6", features = ["trace", "cors", "fs", "set-header"] }
+tower-http = { version = "0.6", features = ["trace", "cors"] }
+
+# Frontend embedding — bakes the compiled Elm bundle into the server binary
+# so a downloaded release is self-contained.  Reads assets from disk in debug
+# builds and embeds them in release builds.  `mime-guess` drives the
+# Content-Type the foundation's SPA service returns; `interpolate-folder-path`
+# lets the `#[folder]` attribute expand `$RUST_TEMPLATE_FRONTEND_DIR` (set by
+# the server crate's build.rs).
+rust-embed = { version = "8", features = ["mime-guess", "interpolate-folder-path"] }
 
 # Testing
 tempfile = "3"
