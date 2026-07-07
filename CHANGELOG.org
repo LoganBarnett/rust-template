@@ -3,6 +3,11 @@
 
 * Upcoming
 ** Added
+** Fixes
+** Breaking
+** Maintenance
+* v0.34.0
+** Added
 1. The foundation server can embed its compiled frontend directly into the
    binary with =Server::spa::<Frontend>()=, where =Frontend= is a =rust_embed=
    type declared in the application crate.  Assets are read from disk in debug
@@ -22,7 +27,6 @@
    serves a frontend must declare a =rust_embed= =Frontend= type and install it
    with =Server::spa::<Frontend>()=, as the server template now does; a project
    that serves none needs no change.
-** Maintenance
 * v0.33.0
 ** Fixes
 1. The cross-compiled arm64 macOS release binary now carries a valid ad-hoc
