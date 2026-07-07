@@ -162,6 +162,10 @@ in
             nativeBuildInputs =
               (commonArgs.nativeBuildInputs or [])
               ++ [pkgs.cargo-zigbuild pkgs.zig]
+              # rcodesign re-signs the arm64 binary after cargo's strip — see
+              # the postFixup below.  Only arm64 needs it, so it is left out of
+              # the x86_64 build.
+              ++ lib.optional (zigArch == "aarch64") pkgs.rcodesign
               ++ lib.optional (appleSdk != null) pkgs.libclang;
             # cargo-zigbuild caches under $HOME/.cache and zig under its own
             # cache dir; crane's HOME=/homeless-shelter is read-only, so point
@@ -171,6 +175,35 @@ in
               + ''
                 export HOME="$TMPDIR"
                 export ZIG_GLOBAL_CACHE_DIR="$TMPDIR/zig-cache"
+              '';
+            # Re-sign every installed arm64 binary ad-hoc as the final build
+            # step.  zig stamps an ad-hoc (linker-signed) Mach-O signature
+            # during the link — the thing that lets an arm64 Mach-O execute at
+            # all — but the release profile's `strip = true` runs after that
+            # link and rewrites the binary, leaving a signature that no longer
+            # matches its bytes.  (`dontStrip` above only disables nixpkgs' own
+            # strip hook, not cargo's.)  An arm64 Mach-O with an invalid
+            # signature is SIGKILLed by the kernel on load — silently, with no
+            # output — so the signature must be re-applied once nothing else
+            # will touch the binary.  rcodesign is the only Mach-O signer that
+            # runs on this Linux builder; `sign` with no signing key produces
+            # an ad-hoc signature and rewrites the binary in place.  Uses
+            # postFixup so it follows the fixup phase, the last thing that
+            # could mutate the binary.
+            #
+            # Only arm64 is re-signed.  x86_64 macOS does not enforce code
+            # signatures, so zig leaves that binary unsigned and reserves no
+            # Mach-O header room for a signature load command — rcodesign there
+            # fails with "insufficient room to write code signature load
+            # command", and an unsigned x86_64 binary runs fine regardless.
+            postFixup =
+              (commonArgs.postFixup or "")
+              + lib.optionalString (zigArch == "aarch64") ''
+                for macho in "$out"/bin/*; do
+                  test -f "$macho" || continue
+                  chmod +w "$macho"
+                  rcodesign sign "$macho"
+                done
               '';
           };
         darwinPackages =

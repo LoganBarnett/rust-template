@@ -89,6 +89,7 @@
     mkMuslPackages = import ./nix/lib/mkMuslPackages.nix;
     mkGnuPortablePackages = import ./nix/lib/mkGnuPortablePackages.nix;
     mkDarwinCrossPackages = import ./nix/lib/mkDarwinCrossPackages.nix;
+    mkDarwinSignatureCheck = import ./nix/lib/mkDarwinSignatureCheck.nix;
     devPackages = system: let
       pkgs = pkgsFor system;
       rust = pkgs.rust-bin.stable.latest.default.override {
@@ -218,8 +219,26 @@
     apps = forAllSystems (system: (rustPackagesFor system).apps);
 
     # `nix flake check` builds these, which runs the workspace's unit tests
-    # (every member's lib and bin tests, integration tests excluded).
-    checks = forAllSystems (system: (rustPackagesFor system).checks);
+    # (every member's lib and bin tests, integration tests excluded) and, on
+    # x86_64-linux, verifies the darwin cross binaries are validly signed.
+    checks = forAllSystems (
+      system: let
+        pkgs = pkgsFor system;
+        lib = nixpkgs.lib;
+        # The arm64 darwin cross outputs, keyed `<crate>-aarch64-darwin`; only
+        # arm64 is signed (x86_64 macOS does not enforce signatures), and this
+        # set is empty on every system but x86_64-linux, so the check below is
+        # absent there.
+        darwinPackages =
+          lib.filterAttrs
+          (name: _: lib.hasSuffix "-aarch64-darwin" name)
+          self.packages.${system};
+      in
+        (rustPackagesFor system).checks
+        // lib.optionalAttrs (darwinPackages != {}) {
+          darwinSignatures = mkDarwinSignatureCheck {inherit pkgs darwinPackages;};
+        }
+    );
 
     # Reusable helpers for spawned projects.  Imported via:
     #   inputs.foundation.lib.mkNixosService { name = "my-app-server"; self = self; }
@@ -230,6 +249,7 @@
       mkMuslPackages = import ./nix/lib/mkMuslPackages.nix;
       mkGnuPortablePackages = import ./nix/lib/mkGnuPortablePackages.nix;
       mkDarwinCrossPackages = import ./nix/lib/mkDarwinCrossPackages.nix;
+      mkDarwinSignatureCheck = import ./nix/lib/mkDarwinSignatureCheck.nix;
       cargoHuskyHookSnippet = import ./nix/lib/cargoHuskyHookSnippet.nix;
       inherit mkCiShell;
     };

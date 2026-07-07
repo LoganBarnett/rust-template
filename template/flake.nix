@@ -94,9 +94,33 @@
           default =
             craneLib.buildPackage (commonArgs // {pname = "rust-template";});
         };
+      # The arm64 subset of the darwin cross outputs — the only ones re-signed
+      # (and so the only ones the signature guard below verifies).  Empty
+      # except on x86_64-linux.
+      aarch64DarwinPackages =
+        nixpkgs.lib.filterAttrs
+        (name: _: nixpkgs.lib.hasSuffix "-aarch64-darwin" name)
+        darwinCrossPackages;
     in {
       inherit packages;
-      inherit (rustPackages) apps checks;
+      inherit (rustPackages) apps;
+      # Add the darwin ad-hoc signature guard to the workspace's checks on
+      # x86_64-linux, where the zig-cross darwin binaries are produced.
+      # mkDarwinCrossPackages re-signs each arm64 binary after the release
+      # profile's `strip = true` would otherwise invalidate zig's link-time
+      # signature; an arm64 Mach-O with an invalid signature is SIGKILLed by
+      # the kernel with no output, so this check proves the shipped signature
+      # is intact.  Only the arm64 outputs are checked — x86_64 macOS does not
+      # enforce signatures, so those binaries ship unsigned.  Empty (and so
+      # absent) on every other system.
+      checks =
+        rustPackages.checks
+        // nixpkgs.lib.optionalAttrs (aarch64DarwinPackages != {}) {
+          darwinSignatures = foundation.lib.mkDarwinSignatureCheck {
+            inherit pkgs;
+            darwinPackages = aarch64DarwinPackages;
+          };
+        };
       devShells = {
         default = pkgs.mkShell {
           buildInputs = [
