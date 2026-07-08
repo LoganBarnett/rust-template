@@ -6,6 +6,7 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+1. Bump serde_json from 1.0.149 to 1.0.150 (https://github.com/LoganBarnett/rust-template/pull/20)
 * v0.36.0
 ** Fixes
 1. The foundation crate now builds against =sd-notify= 0.5.  Its =notify= drops
