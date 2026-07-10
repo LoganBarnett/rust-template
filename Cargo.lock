@@ -2402,6 +2402,7 @@ name = "rust-template-cross-fixture"
 version = "0.37.0"
 dependencies = [
  "ring",
+ "rust-template-foundation",
  "tap",
 ]
 

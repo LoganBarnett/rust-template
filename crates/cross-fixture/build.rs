@@ -1,10 +1,16 @@
-// Wires the fixture's two host-link guards, each confined to the build that
-// needs it so no plain workspace build pays for either:
+// Wires the fixture's three host-link guards, each confined to the build that
+// needs it so no plain workspace build pays for any:
 //
 // - macos: emit the CoreFoundation framework link, so the darwin-cross build
 //   exercises the SDK's `.tbd` framework stubs and the linker's `-F` framework
 //   search path — the appleSdk half of mkDarwinCrossPackages that the
 //   template's own crates never touch.
+//
+// - windows: emit the winmm link, so the gnullvm cross build must resolve a
+//   non-default Win32 system DLL's import library from llvm-mingw's mingw-w64
+//   tree — the mkWindowsCrossPackages path that the template's own crates never
+//   touch.  winmm is chosen because the windows target does not link it by
+//   default, so the reference genuinely forces import-library resolution.
 //
 // - gnu-portable: when CROSS_FIXTURE_ASOUND_LIBDIR names a nixpkgs libasound
 //   directory (set only by flake.nix's gnuPortableFixturePackages), emit the
@@ -22,6 +28,10 @@ fn main() {
 
   if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
     println!("cargo:rustc-link-lib=framework=CoreFoundation");
+  }
+
+  if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+    println!("cargo:rustc-link-lib=dylib=winmm");
   }
 
   println!("cargo:rerun-if-env-changed=CROSS_FIXTURE_ASOUND_LIBDIR");

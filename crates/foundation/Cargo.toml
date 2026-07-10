@@ -57,7 +57,6 @@ prometheus = { version = "0.13", optional = true }
 aide = { version = "0.15", features = ["axum", "axum-json", "axum-query", "scalar", "macros"], optional = true }
 schemars = { version = "0.9", optional = true }
 serde_json = { version = "1.0", optional = true }
-sd-notify = { version = "0.5", optional = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"], optional = true }
 # Frontend assets are embedded into the server binary so a downloaded
 # release is self-contained.  rust-embed reads them from disk in debug
@@ -73,9 +72,14 @@ tower-sessions = { version = "0.15", features = ["memory-store"], optional = tru
 axum-jwt-auth = { version = "0.6", optional = true }
 jsonwebtoken = { version = "10", optional = true }
 
-# Unix-only: journald logging (server feature)
+# Unix-only server dependencies: systemd's journal logging
+# (tracing-journald) and its readiness/watchdog protocol (sd-notify).  Both are
+# Unix-only, so the server feature pulls them only on Unix; a Windows
+# cross-build compiles neither and uses the stderr log path and the systemd
+# no-op stubs (see src/server/systemd.rs) instead.
 [target.'cfg(unix)'.dependencies]
 tracing-journald = { version = "0.3", optional = true }
+sd-notify = { version = "0.5", optional = true }
 
 [dev-dependencies]
 tempfile = "3"
