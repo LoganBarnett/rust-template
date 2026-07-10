@@ -3,6 +3,11 @@
 
 * Upcoming
 ** Added
+** Fixes
+** Breaking
+** Maintenance
+* v0.39.0
+** Added
 1. Emitted projects cross-compile their own Windows binaries.  The spawned
    =flake.nix= now calls the foundation's =mkWindowsCrossPackages= to build
    native gnullvm =x86_64-= and =aarch64-pc-windows= release binaries, plus an
@@ -17,8 +22,6 @@
    emission test's stray-literal assertion flagged that legitimate reference.
    The assertion's foundation-owner check is now owner-agnostic, so a fork is
    not penalised for referencing its own foundation.
-** Breaking
-** Maintenance
 * v0.38.0
 ** Added
 1. The foundation library gains Windows cross-compilation.
