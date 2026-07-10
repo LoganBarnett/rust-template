@@ -41,7 +41,7 @@ real-looking inputs and outputs over abstract placeholders.
 
 Organize sub-sections around the features a user is most likely to reach for
 first. Avoid exhaustively listing every flag here — the ~--help~ output covers
-       that.
+that.
 
 * Gotchas and Tradeoffs
 

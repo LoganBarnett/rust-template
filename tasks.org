@@ -542,6 +542,83 @@ The bump/changelog/release-commit steps stay unguarded — that is the whole
 point; consumers want the release cadence even before they're ready to publish
 to crates.io.
 
+* TODO Published lib crates ship a README to crates.io, generated at publish time
+
+Published crates render "No README is published for this crate" on crates.io.
+Observed on =sonify-health-server=, but it is systemic: no crate the template
+emits — nor the foundation crates this repo publishes — carries a README.
+
+** Diagnosis: not the publish workflow
+
+=cargo publish= already bundles a README into the =.crate= tarball whenever one
+exists, either via a ~readme = "..."~ field or by auto-detecting a =README.md= /
+=README.txt= / =README= at the crate root; crates.io then renders it.  So
+=reusable-publish.yml= needs no change to /carry/ a README.  The gap is
+upstream: the crate archetypes (=template/crates/*=) ship neither a =readme=
+field nor a README file at the crate root, so there is nothing for cargo to
+bundle.  The only READMEs in the repo are =template/README.org= (project root)
+and the cargo-husky one — neither lives at a crate root.
+
+** Constraint: org convention vs. a Markdown renderer
+
+crates.io renders READMEs as CommonMark, and cargo's /auto-detection/ only picks
+up =README.md= / =.txt= / =README= — it will *not* auto-detect a =README.org=.
+Committing a Markdown README at each crate root would break the repo's org-first
+convention for that file.  This is the one spot where the convention genuinely
+collides with an external renderer.
+
+** Chosen approach: generate =README.md= at publish time, uncommitted
+
+Author =README.org= (committed, reviewable, single source of truth) at the crate
+root, and convert it to =README.md= /in the publish job/ just before =cargo
+publish=.  =cargo publish= packages from the working tree, not from git, so a
+file generated onto the runner's disk is bundled into the tarball and uploaded
+without ever being committed — on an ephemeral CI runner it vanishes with the
+runner.  The generated =.md= is a pure build artifact, like the changelog roll's
+output.
+
+Mechanics:
+- Rely on cargo's auto-detection — do *not* set a ~readme =~ field.  A committed
+  ~readme = "README.md"~ would make local =cargo package= / dry-runs error with
+  "README file not found" when the generated file is absent; auto-detection
+  silently skips when absent and picks it up when present.
+- The workflow ordering already cooperates: "Commit and push release" (version
+  bump + changelog) runs /before/ "Publish workspace to crates.io", so the tree
+  is clean at publish time.  Generating =README.md= after that commit makes the
+  tree dirty with /only/ those files — a contained blast radius for ~cargo
+  publish --workspace --allow-dirty~.
+- Add an org→Markdown converter to the =ci= devShell.  =mkCiShell=
+  (=nix/lib/mkCiShell.nix=) currently carries only the toolchain,
+  changelog-roller, and cargo-semver-checks — none can convert.  ~pandoc --from
+  org --to gfm~ is the light choice; emacs org-export has higher org fidelity
+  but is a much heavier dependency.  Lean pandoc.
+- New publish-job step, after the release commit and before publish: for each
+  publishable crate, ~pandoc --from org --to gfm --output <crate>/README.md
+  <crate>/README.org~.  The job already computes the publishable set via =cargo
+  metadata= for the OIDC gate — reuse it to know which crate dirs to convert.
+
+** Scope: =lib= archetype only
+
+Only libraries are worth publishing to crates.io; the =cli= and =server=
+archetypes emit executables that nobody consumes as a dependency (and both ship
+~publish = []~ by default).  So the =README.org= source and the generation step
+target the =lib= archetype only — =template/crates/lib= gets a templated
+=README.org= (name/description substituted at spawn time), and this repo's
+publishable lib crates (=rust-template-foundation=,
+=rust-template-foundation-derive=) get one so the repo dogfoods it.
+
+** Caveats to bake into comments
+
+- ~--allow-dirty~ widens what can ship: it disables cargo's "everything
+  published is committed" guard for the /whole/ tree, not just the READMEs.  In
+  a fresh CI checkout right after a scripted commit that is fine, but it is a
+  real loosening — comment it at the call site so the intent is unmistakable.
+- pandoc's org→gfm is good but not perfect for org-specific constructs; keep
+  archetype READMEs to constructs that round-trip cleanly.
+
+Cross-reference: extends [[*Publish crates for public projects][Publish crates for public projects]] and
+[[*Reusable publish workflow should skip cargo publish when publish = false][the publish-skip guard]] (the same publishable-set detection feeds both).
+
 * DONE Darwin services must log to /var/log/<service>/ with rotation
 Implemented in =nix/lib/mkDarwinService.nix=: log directory creation lives in
 ~system.activationScripts.postActivation~, ~StandardOutPath~ /

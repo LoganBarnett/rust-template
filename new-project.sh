@@ -109,6 +109,17 @@ grep -rl "${PROJECT_NAME_UNDERSCORE}_foundation" "$OUTPUT" 2>/dev/null | while I
     sed_inplace "s/${PROJECT_NAME_UNDERSCORE}_foundation/rust_template_foundation/g" "$f"
 done || true
 
+# Restore rust-template.json manifest references mangled by the global
+# substitution.  Unlike other rust-template names, the manifest keeps its
+# literal filename in every spawn (the reusable release workflow reads a fixed
+# rust-template.json, and the emitted flake.nix reads the same file for the
+# windows-msvc flag), so any <project>.json the substitution produced from it is
+# put back.  The template has no legitimate <project>.json of its own, so this
+# is unambiguous.
+grep -rl "${PROJECT_NAME}\.json" "$OUTPUT" 2>/dev/null | while IFS= read -r f; do
+    sed_inplace "s/${PROJECT_NAME}\.json/rust-template.json/g" "$f"
+done || true
+
 # Substitute the placeholder description if one was provided.
 if [[ -n "$DESCRIPTION" ]]; then
     grep -rl 'Rust Template - Best-in-class Rust project setup' "$OUTPUT" 2>/dev/null | while IFS= read -r f; do
@@ -134,7 +145,8 @@ done || true
 TEMPLATE_HASH="$(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")"
 cat > "$OUTPUT/rust-template.json" <<EOF
 {
-  "template_sync_hashes": ["$TEMPLATE_HASH"]
+  "template_sync_hashes": ["$TEMPLATE_HASH"],
+  "windows-msvc": false
 }
 EOF
 
