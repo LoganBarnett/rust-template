@@ -85,11 +85,43 @@
       darwinCrossPackages = foundation.lib.mkDarwinCrossPackages {
         inherit self pkgs system crates crane commonArgs;
       };
+      # Native Windows PE variants (`<key>-{x86_64,aarch64}-windows`),
+      # cross-compiled via llvm-mingw for the gnullvm targets — no Microsoft
+      # SDK, no Cygwin/MSYS2 runtime; a pure-Rust binary needs only the OS
+      # Universal CRT (Windows 10+).  Unlike the darwin cross build this is
+      # host-agnostic (llvm-mingw ships a per-host toolchain), so it builds on
+      # the Linux CI runners and on a contributor's Mac alike.  Requires a
+      # toolchain ≥ Rust 1.91 for the aarch64 gnullvm std — see
+      # CONTRIBUTING.org.
+      windowsCrossPackages = foundation.lib.mkWindowsCrossPackages {
+        inherit self pkgs system crates crane commonArgs;
+      };
+      # The opt-in MSVC-ABI Windows variant
+      # (`<key>-x86_64-windows-msvc`), for a dependency that requires the MSVC
+      # ABI rather than the default gnullvm path above.  Off unless
+      # `"windows-msvc": true` is set in rust-template.json — that flag hands
+      # the helper the xwin-splatted Microsoft SDK (foundation.lib.xwinSdk), and
+      # evaluating it accepts Microsoft's SDK licence in this project's own
+      # flake: the visible consent, exactly as `appleSdk` surfaces the Apple SDK
+      # licence.  The SDK is a fixed-output fetch, so there is no build-time
+      # download and no Docker.  The same flag gates the MSVC release row in CI.
+      windowsMsvcEnabled =
+        (builtins.fromJSON (builtins.readFile ./rust-template.json)).windows-msvc
+        or false;
+      windowsMsvcCrossPackages = foundation.lib.mkWindowsMsvcCrossPackages {
+        inherit self pkgs system crates crane commonArgs;
+        xwinSdk =
+          if windowsMsvcEnabled
+          then foundation.lib.xwinSdk {inherit pkgs;}
+          else null;
+      };
       packages =
         rustPackages.packages
         // muslPackages
         // gnuPortablePackages
         // darwinCrossPackages
+        // windowsCrossPackages
+        // windowsMsvcCrossPackages
         // {
           default =
             craneLib.buildPackage (commonArgs // {pname = "rust-template";});
@@ -101,6 +133,14 @@
         nixpkgs.lib.filterAttrs
         (name: _: nixpkgs.lib.hasSuffix "-aarch64-darwin" name)
         darwinCrossPackages;
+      # The x86_64 subset of the Windows cross outputs, smoke-tested under wine.
+      # These are non-empty on every host (the Windows helper is host-agnostic),
+      # so the wine check below is gated on `system == "x86_64-linux"` rather
+      # than on emptiness: wine runs a win64 PE reliably only there.
+      windowsX86Packages =
+        nixpkgs.lib.filterAttrs
+        (name: _: nixpkgs.lib.hasSuffix "-x86_64-windows" name)
+        windowsCrossPackages;
     in {
       inherit packages;
       inherit (rustPackages) apps;
@@ -119,6 +159,16 @@
           darwinSignatures = foundation.lib.mkDarwinSignatureCheck {
             inherit pkgs;
             darwinPackages = aarch64DarwinPackages;
+          };
+        }
+        # Run the x86_64 Windows cross binaries under wine to prove they
+        # execute, not merely link.  Gated to x86_64-linux: wine cannot exec an
+        # aarch64 PE and is unreliable on Apple Silicon, so aarch64 Windows is
+        # build-verified only.
+        // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
+          windowsSmoke = foundation.lib.mkWindowsSmokeCheck {
+            inherit pkgs;
+            windowsPackages = windowsX86Packages;
           };
         };
       devShells = {

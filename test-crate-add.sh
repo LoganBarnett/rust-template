@@ -203,8 +203,12 @@ test_new_project_default() {
     assert_file_contains "$dir/flake.nix" '# CRATE:server:begin'
     assert_file_contains "$dir/flake.nix" '# CRATE:server:end'
 
-    # No rust-template literals remain (except foundation refs and workflow refs).
-    assert_no_occurrence "$dir" "rust-template" "rust-template-foundation\|LoganBarnett/rust-template"
+    # No rust-template literals remain, except: the foundation crate
+    # (rust-template-foundation), any `<owner>/rust-template` git/flake/file
+    # reference (owner-agnostic so forks are not penalised, matching the
+    # no-stale-rust-template-literals compliance check), and the
+    # rust-template.json manifest, which keeps its literal filename in a spawn.
+    assert_no_occurrence "$dir" "rust-template" "rust-template-foundation\|/rust-template\|rust-template\.json"
 
     # Package names match test-app-{cli,server,lib}.
     assert_file_contains "$dir/crates/cli/Cargo.toml" 'name = "test-app-cli"'

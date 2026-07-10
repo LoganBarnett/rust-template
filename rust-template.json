@@ -1,4 +1,5 @@
 {
+  "windows-msvc": true,
   "workspaces": {
     "foundation": { "release-binary": false },
     "foundation-derive": { "release-binary": false },

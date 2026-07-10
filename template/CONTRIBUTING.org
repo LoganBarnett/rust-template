@@ -291,6 +291,67 @@ deliberate — the licence consent is visible in your project, not hidden in the
 foundation library.  A pure-libSystem executable does nothing: zig bundles the
 libSystem stubs, so it cross-compiles licence-free.
 
+** Windows binaries
+
+Windows binaries are built too, for both =x86_64= and =aarch64=, and are also
+*cross-compiled on Linux* — but via ~llvm-mingw~ rather than zig, since
+~cargo-zigbuild~ does not support Windows targets.  They target the
+~*-pc-windows-gnullvm~ triples, so each result is a native Windows PE that runs
+on a stock Windows install with *no Cygwin/MSYS2 layer*; a pure-Rust binary
+depends only on the operating system's Universal CRT (present on Windows 10 and
+later).  This is automatic — ~mkWindowsCrossPackages~ is already wired into
+~flake.nix~ and needs no configuration.  The toolchain (~llvm-mingw~) is a
+prebuilt fixed-output fetch, so nothing Microsoft-licensed is downloaded and no
+Docker image is involved.
+
+Unlike the darwin cross build (which only runs on ~x86_64-linux~), the Windows
+build is *host-agnostic*: ~nix build .#<crate>-x86_64-windows~ and its
+~-aarch64-windows~ sibling work on a contributor's Mac as readily as in CI.  Two
+constraints are worth knowing:
+
+1. the toolchain must be *Rust ≥ 1.91* — the floor at which the aarch64 gnullvm
+   standard library became available; the pinned ~rust-bin.stable.latest~ in the
+   emitted ~flake.nix~ satisfies this, so this only matters if you pin an older
+   toolchain; and
+2. the release verifies the *x86_64* binary by running it under ~wine~ (the
+   ~windowsSmoke~ flake check, gated to ~x86_64-linux~), while the *aarch64*
+   binary is build-verified only — no arm64-Windows runner exists, and ~wine~
+   cannot execute an arm64 PE.
+
+Windows release assets ship as =.zip= (with the =.exe= inside and the redundant
+suffix dropped from the archive name), the format Windows users expect, rather
+than the =.tar.gz= used for the Unix-like targets.
+
+*** MSVC-ABI Windows binaries (opt-in)
+
+The gnullvm build above covers pure Rust and any dependency whose C compiles
+with ~llvm-mingw~.  A dependency that specifically requires the *MSVC ABI* — a
+prebuilt MSVC-only library, MSVC intrinsics — needs the ~x86_64-pc-windows-msvc~
+target instead.  It is opt-in: set ~"windows-msvc": true~ at the top level of
+~rust-template.json~.  That single flag builds the ~<crate>-x86_64-windows-msvc~
+variant and adds its release-binary row in CI; leaving it ~false~ (the default)
+builds no MSVC variant and touches no Microsoft SDK.
+
+MSVC is *x86_64-only*: on ~aarch64-pc-windows-msvc~ the ~cc~ crate drives clang
+through its GNU rather than its ~clang-cl~ mode, so any dependency that compiles
+C fails to build.  arm64 Windows is fully covered by the always-on gnullvm build
+above, so this is a narrow escape hatch, not a second full target set.
+
+Enabling it cross-links with the LLVM MSVC toolchain (~clang-cl~ / ~lld-link~ /
+~llvm-lib~) against Microsoft's CRT and Windows SDK, which ~xwin~ fetches as a
+fixed-output derivation — so, as with gnullvm, there is no build-time download
+and no Docker.  Because that fetch accepts Microsoft's SDK licence
+(~--accept-license~), turning the flag on accepts that licence *in your own
+project*, the same visible consent ~appleSdk~ carries for the Apple SDK.  In
+practice this is not a licensing concern for a normal public binary: the default
+dynamic CRT redistributes nothing (the Universal CRT is an operating-system
+component on Windows 10 and later).
+
+Like the gnullvm build it is host-agnostic, so ~nix build
+.#<crate>-x86_64-windows-msvc~ works on a contributor's Mac.  Prefer the default
+gnullvm path and reach for this only when a dependency genuinely forces the MSVC
+ABI.
+
 * Changelog conventions
 
 ~CHANGELOG.org~'s ~* Upcoming~ section uses three subheadings:

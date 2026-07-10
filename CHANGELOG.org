@@ -3,7 +3,20 @@
 
 * Upcoming
 ** Added
+1. Emitted projects cross-compile their own Windows binaries.  The spawned
+   =flake.nix= now calls the foundation's =mkWindowsCrossPackages= to build
+   native gnullvm =x86_64-= and =aarch64-pc-windows= release binaries, plus an
+   opt-in MSVC variant gated behind a single =windows-msvc= flag in
+   =rust-template.json=.  The reusable release workflow grows the matching
+   Windows release rows, with the MSVC rows gated on that same flag.  Spawns
+   pick this up through the normal compliance-sync flow.
 ** Fixes
+1. Teaching the emitted flake to read =rust-template.json= surfaced two spawn
+   bugs, both fixed: the blanket =rust-template= rename mangled the manifest's
+   own filename reference, breaking every spawn's flake evaluation; and the
+   emission test's stray-literal assertion flagged that legitimate reference.
+   The assertion's foundation-owner check is now owner-agnostic, so a fork is
+   not penalised for referencing its own foundation.
 ** Breaking
 ** Maintenance
 * v0.38.0
