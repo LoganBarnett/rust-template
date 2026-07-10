@@ -3,6 +3,11 @@
 
 * Upcoming
 ** Added
+** Fixes
+** Breaking
+** Maintenance
+* v0.38.0
+** Added
 1. The foundation library gains Windows cross-compilation.
    =mkWindowsCrossPackages= builds native =x86_64-= and
    =aarch64-pc-windows-gnullvm= PE binaries with llvm-mingw — no Cygwin or MSYS2
@@ -13,9 +18,6 @@
    Windows-portable: its systemd integration is gated to Unix with a no-op stub
    on every other target, behind one unchanged public signature.  These helpers
    are exposed for the emitted template to consume once published.
-** Fixes
-** Breaking
-** Maintenance
 * v0.37.0
 ** Maintenance
 1. Bump serde_json from 1.0.149 to 1.0.150
