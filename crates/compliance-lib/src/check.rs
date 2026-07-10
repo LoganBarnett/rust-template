@@ -1276,6 +1276,11 @@ fn stale_literals(dir: &Path) -> Vec<String> {
         // on-disk rust-template both spell "/rust-template"; neither is a stale
         // substitution.  See tasks.org for full fork support.
         && !line.contains("/rust-template")
+        // The `rust-template.json` manifest keeps its literal filename in every
+        // spawn (the reusable release workflow and the emitted flake.nix both
+        // read it by name), so a reference to it — with or without a leading
+        // path — is not a stale substitution.
+        && !line.contains("rust-template.json")
     });
     if stale {
       offenders.push(relative_display(dir, &path));

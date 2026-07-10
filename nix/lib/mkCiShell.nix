@@ -62,6 +62,11 @@
     changelogRoller
     # The ABI baseline gate the `abi` job runs against crates.io.
     semverChecks
+    # Packs Windows release binaries into `.zip` archives (the release-binaries
+    # workflow ships Windows assets as `.zip`, the format Windows users expect,
+    # while Linux/macOS assets stay `.tar.gz`).  Linux/macOS packaging uses tar
+    # and sha256sum from stdenv, but zip is not in stdenv.
+    pkgs.zip
   ];
   # The baseline CI hook is intentionally empty — CI does not want the
   # git-hook install the dev shell performs.  Kept as an explicit

@@ -3,12 +3,23 @@
 
 * Upcoming
 ** Added
+1. The foundation library gains Windows cross-compilation.
+   =mkWindowsCrossPackages= builds native =x86_64-= and
+   =aarch64-pc-windows-gnullvm= PE binaries with llvm-mingw — no Cygwin or MSYS2
+   layer, and for pure Rust only the operating system's Universal CRT.  An
+   opt-in MSVC path (=mkWindowsMsvcCrossPackages= with =xwinSdk=, x86_64-only)
+   covers dependencies that require the MSVC ABI, and =mkWindowsSmokeCheck= runs
+   the x86_64 binary under wine.  The foundation crate itself is made
+   Windows-portable: its systemd integration is gated to Unix with a no-op stub
+   on every other target, behind one unchanged public signature.  These helpers
+   are exposed for the emitted template to consume once published.
 ** Fixes
 ** Breaking
 ** Maintenance
 * v0.37.0
 ** Maintenance
-1. Bump serde_json from 1.0.149 to 1.0.150 (https://github.com/LoganBarnett/rust-template/pull/20)
+1. Bump serde_json from 1.0.149 to 1.0.150
+   (https://github.com/LoganBarnett/rust-template/pull/20)
 * v0.36.0
 ** Fixes
 1. The foundation crate now builds against =sd-notify= 0.5.  Its =notify= drops

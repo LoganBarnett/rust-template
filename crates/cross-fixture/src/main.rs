@@ -17,6 +17,16 @@
 //!   environment and would fail on its pkg-config probe.  Routing the link
 //!   through `build.rs` keeps libasound confined to the one build that supplies
 //!   it.
+//! - `mkWindowsCrossPackages` / `mkWindowsMsvcCrossPackages` — a C-compiling
+//!   dependency (`ring`, again gated so it compiles in crane's deps-only phase)
+//!   to exercise the Windows C toolchain, a link against a *non-default* Win32
+//!   import library (`winmm`, emitted by `build.rs`), and the foundation crate
+//!   built with its `server` feature — the server archetype's cross-compile
+//!   shape (Unix-only systemd stubbed out, tokio-listener, axum, the embedded
+//!   frontend, …) — so a toolchain regression or a Unix-only dependency slipped
+//!   into the server feature fails here rather than only when a real server is
+//!   cross-compiled.  All gated to windows targets, so no other build pulls
+//!   them.
 //!
 //! The crate is never published or shipped; CI cross-builds it so a regression
 //! in any of these paths fails the build.  See the "mkDarwinCrossPackages fails
@@ -68,7 +78,37 @@ fn report() -> String {
   format!("gnu-portable: libasound {}", version.to_string_lossy())
 }
 
-#[cfg(all(not(target_os = "macos"), not(link_asound)))]
+// A winmm symbol.  winmm is not linked by the windows target by default, so
+// referencing it forces the linker to resolve winmm's import library from
+// llvm-mingw's mingw-w64 tree — the appleSdk-equivalent path under test for
+// Windows.  `build.rs` emits the `-lwinmm` link only for windows targets.
+#[cfg(target_os = "windows")]
+extern "system" {
+  fn timeGetTime() -> u32;
+}
+
+// Reference `ring` (the C-compiling dependency, compiled here via llvm-mingw's
+// clang), the winmm symbol (the import-library link), and foundation's server
+// crate so none is pruned from the build graph before linking.  `notify_ready`
+// is foundation's systemd readiness call; on Windows it is the no-op stub
+// (systemd is Unix-only), so invoking it is safe under the wine smoke test and
+// merely forces the linker to pull the foundation server code — the whole
+// server cross-compile shape this fixture guards.
+#[cfg(target_os = "windows")]
+fn report() -> String {
+  rust_template_foundation::server::systemd::notify_ready();
+  let digest = ring::digest::digest(&ring::digest::SHA256, b"cross-fixture");
+  // SAFETY: timeGetTime takes no arguments and returns a DWORD millisecond
+  // tick count; there is nothing to misuse.
+  let ticks = unsafe { timeGetTime() };
+  format!("windows: {} digest bytes at {ticks} ticks", digest.as_ref().len())
+}
+
+#[cfg(all(
+  not(target_os = "macos"),
+  not(target_os = "windows"),
+  not(link_asound)
+))]
 fn report() -> String {
   "other: nothing to cross-link".to_string()
 }

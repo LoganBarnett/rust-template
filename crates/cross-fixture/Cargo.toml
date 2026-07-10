@@ -18,14 +18,30 @@ path = "src/main.rs"
 # in main so the dependency is not dead weight.
 tap = { workspace = true }
 
-# The C-compiling dependency that guards mkDarwinCrossPackages.  ring's build
-# script compiles C and assembly for the target, which — for a darwin target —
-# runs in crane's deps-only `cargo check` phase, the exact place a host-gcc
-# fallback broke before the CC/CXX cross vars were set.  It is gated to macos
-# targets so it is compiled (via zig) only in the darwin-cross build; the
-# native and static-musl builds never pull it and pay nothing.
-[target.'cfg(target_os = "macos")'.dependencies]
+# The C-compiling dependency that guards the cross helpers' C toolchains.
+# ring's build script compiles C and assembly for the target, which — for a
+# cross target — runs in crane's deps-only `cargo check` phase, the exact place
+# a host-cc fallback broke before the CC/CXX cross vars were set.  It is gated
+# to the macos and windows targets so it is compiled only in the darwin-cross
+# build (via zig) and the gnullvm windows build (via llvm-mingw); the native and
+# static-musl builds never pull it and pay nothing.
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
 ring = "0.17"
+
+# The server archetype's cross-compile shape.  A spawned server pulls this
+# foundation crate with the `server` feature, which brings the systemd
+# integration (Unix-only, so a Windows build compiles the no-op stubs in
+# foundation's src/server/systemd.rs rather than sd-notify and
+# tracing-journald), tokio-listener, axum, and the embedded frontend.
+# Compiling that feature here for the Windows targets guards that the server
+# cross-compiles, so a future Unix-only dependency slipped into the server
+# feature — as sd-notify once was — fails this build rather than only a real
+# server's.  The `auth` feature is not added: its TLS/OIDC stack is pure-Rust
+# (rustls) and already cross-compiles, so it carries none of the Unix-only risk
+# the server feature does.  Windows only: the darwin/gnu fixture variants and
+# the Linux CI host's native build do not pull it.
+[target.'cfg(target_os = "windows")'.dependencies]
+rust-template-foundation = { workspace = true, features = ["server"] }
 
 # The mkGnuPortablePackages guard (linking libasound) deliberately uses NO Cargo
 # dependency: an `alsa-sys` crate would be active on the Linux CI host for every

@@ -175,10 +175,12 @@ dance, no forgotten publishes.  (Requires =--public= at generation time.)
 *** Automatic cross-platform binary publishing
 
 After a release is tagged, the crates that opt in are built and attached to the
-GitHub release across the mainstream Unix-like targets — Linux and macOS, on
-both =x86_64= and =aarch64=.  Windows is not built.  Each archive carries a
-=.sha256= for integrity, and which crates produce a binary is declared per crate
-in =rust-template.json= rather than hard-coded into the workflow.
+GitHub release across the mainstream targets — Linux, macOS, and Windows, on
+both =x86_64= and =aarch64=.  Each archive carries a =.sha256= for integrity,
+and which crates produce a binary is declared per crate in =rust-template.json=
+rather than hard-coded into the workflow.  Every target is cross-compiled on a
+Linux runner — macOS via zig, Windows via =llvm-mingw= — so a release never
+waits on scarce macOS or Windows CI capacity.
 
 Each Linux target ships two variants, both runnable off the Nix store: a
 statically linked =-musl= binary (self-contained, no runtime library
@@ -188,6 +190,16 @@ libraries while still starting on any mainstream distro).  The store-locked
 native build is deliberately not published — Nix consumers build it from the
 flake or a binary cache.  See [[file:docs/customizing.org][=docs/customizing.org=]] for how to choose between
 the variants.
+
+The Windows binaries target the =*-pc-windows-gnullvm= triples, so each is a
+native Windows PE that runs on a stock Windows install with no Cygwin/MSYS2
+layer — a pure-Rust binary needs only the OS Universal CRT (Windows 10+).  They
+ship as =.zip= (the format Windows users expect), and the =x86_64= build is
+smoke-tested under =wine= at release time; the =aarch64= build is build-verified
+only, since no arm64-Windows runner exists to run it.  A project that needs the
+MSVC ABI can opt into an =x86_64-pc-windows-msvc= variant (cross-linked with
+=clang-cl=/=lld-link= against an =xwin=-fetched SDK) by setting one flag in
+=rust-template.json=; the default gnullvm path fetches no Microsoft SDK.
 
 *** Build provenance attestation
 

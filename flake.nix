@@ -90,6 +90,10 @@
     mkGnuPortablePackages = import ./nix/lib/mkGnuPortablePackages.nix;
     mkDarwinCrossPackages = import ./nix/lib/mkDarwinCrossPackages.nix;
     mkDarwinSignatureCheck = import ./nix/lib/mkDarwinSignatureCheck.nix;
+    mkWindowsCrossPackages = import ./nix/lib/mkWindowsCrossPackages.nix;
+    mkWindowsSmokeCheck = import ./nix/lib/mkWindowsSmokeCheck.nix;
+    mkWindowsMsvcCrossPackages = import ./nix/lib/mkWindowsMsvcCrossPackages.nix;
+    xwinSdk = import ./nix/lib/xwin-sdk.nix;
     devPackages = system: let
       pkgs = pkgsFor system;
       rust = pkgs.rust-bin.stable.latest.default.override {
@@ -179,6 +183,28 @@
           inherit self crane crates system;
           pkgs = pkgsFor system;
         };
+        # Native Windows PE variants (`<crate>-{x86_64,aarch64}-windows`),
+        # cross-compiled via llvm-mingw for the gnullvm targets.  Host-agnostic
+        # (see mkWindowsCrossPackages), so this builds on the Linux CI runners
+        # and on a contributor's Mac alike — no `system` gate like the darwin
+        # cross outputs.  compliance-cli is pure Rust, so its Windows build
+        # needs nothing beyond the toolchain.
+        windowsCrossPackages = mkWindowsCrossPackages {
+          inherit self crane crates system;
+          pkgs = pkgsFor system;
+        };
+        # The opt-in MSVC-ABI Windows variant
+        # (`<crate>-x86_64-windows-msvc`).  This repo dogfoods the opt-in by
+        # passing `xwinSdk`, so its CI exercises the MSVC path exactly as
+        # fixtureDarwinPackages passes `appleSdk` — evaluating the xwin SDK here
+        # accepts Microsoft's SDK licence for this repo, the visible consent the
+        # opt-in is designed around.  A spawn that does not pass `xwinSdk`
+        # builds no MSVC variant and accepts no licence.
+        windowsMsvcCrossPackages = mkWindowsMsvcCrossPackages {
+          inherit self crane crates system;
+          pkgs = pkgsFor system;
+          xwinSdk = xwinSdk {pkgs = pkgsFor system;};
+        };
         # The fixture links Apple frameworks, so it needs the Apple SDK and the
         # unfree-accepting pkgs.  Empty except on x86_64-linux, like the other
         # cross outputs.
@@ -206,13 +232,38 @@
             CROSS_FIXTURE_ASOUND_LIBDIR = "${(pkgsFor system).alsa-lib}/lib";
           };
         };
+        # The Windows analogue: cross-builds the fixture's
+        # `<name>-{x86_64,aarch64}-windows` variants via llvm-mingw, so a
+        # regression in mkWindowsCrossPackages' C toolchain (the windows `ring`
+        # dependency) or import-library wiring (the winmm link) fails the build.
+        # Host-agnostic like the helper, so unlike the darwin fixture this also
+        # builds on a contributor's Mac.
+        windowsCrossFixturePackages = mkWindowsCrossPackages {
+          inherit self crane system;
+          pkgs = pkgsFor system;
+          crates = fixtureCrates;
+        };
+        # The MSVC analogue: cross-builds the fixture's
+        # `<name>-x86_64-windows-msvc` variant via clang-cl/lld-link against the
+        # xwin SDK, so a regression in the MSVC C toolchain (the windows `ring`
+        # dependency) or the SDK library wiring fails the build.
+        windowsMsvcCrossFixturePackages = mkWindowsMsvcCrossPackages {
+          inherit self crane system;
+          pkgs = pkgsFor system;
+          crates = fixtureCrates;
+          xwinSdk = xwinSdk {pkgs = pkgsFor system;};
+        };
       in
         cratePackages
         // muslPackages
         // gnuPortablePackages
         // darwinCrossPackages
+        // windowsCrossPackages
+        // windowsMsvcCrossPackages
         // fixtureDarwinPackages
         // gnuPortableFixturePackages
+        // windowsCrossFixturePackages
+        // windowsMsvcCrossFixturePackages
         // {default = cratePackages.compliance-cli;}
     );
 
@@ -220,7 +271,8 @@
 
     # `nix flake check` builds these, which runs the workspace's unit tests
     # (every member's lib and bin tests, integration tests excluded) and, on
-    # x86_64-linux, verifies the darwin cross binaries are validly signed.
+    # x86_64-linux, verifies the darwin cross binaries are validly signed and
+    # runs the x86_64 Windows cross binaries under wine.
     checks = forAllSystems (
       system: let
         pkgs = pkgsFor system;
@@ -233,10 +285,26 @@
           lib.filterAttrs
           (name: _: lib.hasSuffix "-aarch64-darwin" name)
           self.packages.${system};
+        # The x86_64 Windows cross outputs, keyed `<crate>-x86_64-windows`.
+        # Unlike the darwin outputs these are non-empty on every host (the
+        # Windows helper is host-agnostic), so the wine smoke-test is gated on
+        # the system directly: wine runs a win64 PE reliably only on
+        # x86_64-linux (it cannot exec an aarch64 PE, and is flaky on Apple
+        # Silicon), so aarch64 Windows stays build-verified only.
+        windowsX86Packages =
+          lib.filterAttrs
+          (name: _: lib.hasSuffix "-x86_64-windows" name)
+          self.packages.${system};
       in
         (rustPackagesFor system).checks
         // lib.optionalAttrs (darwinPackages != {}) {
           darwinSignatures = mkDarwinSignatureCheck {inherit pkgs darwinPackages;};
+        }
+        // lib.optionalAttrs (system == "x86_64-linux") {
+          windowsSmoke = mkWindowsSmokeCheck {
+            inherit pkgs;
+            windowsPackages = windowsX86Packages;
+          };
         }
     );
 
@@ -250,6 +318,10 @@
       mkGnuPortablePackages = import ./nix/lib/mkGnuPortablePackages.nix;
       mkDarwinCrossPackages = import ./nix/lib/mkDarwinCrossPackages.nix;
       mkDarwinSignatureCheck = import ./nix/lib/mkDarwinSignatureCheck.nix;
+      mkWindowsCrossPackages = import ./nix/lib/mkWindowsCrossPackages.nix;
+      mkWindowsSmokeCheck = import ./nix/lib/mkWindowsSmokeCheck.nix;
+      mkWindowsMsvcCrossPackages = import ./nix/lib/mkWindowsMsvcCrossPackages.nix;
+      xwinSdk = import ./nix/lib/xwin-sdk.nix;
       cargoHuskyHookSnippet = import ./nix/lib/cargoHuskyHookSnippet.nix;
       inherit mkCiShell;
     };
