@@ -4,11 +4,14 @@
 * Upcoming
 ** Added
 ** Fixes
+** Breaking
+** Maintenance
+* v0.41.0
+** Fixes
 1. Cross-compiled Windows binaries now build and run; previously the toolchain
    failed to build on Linux, and the binaries it produced would not start.
    Adopters get working Windows releases by bumping the foundation input — no
    project change needed.
-** Breaking
 ** Maintenance
 1. CI builds the Windows cross binaries and runs them under =wine= on every PR,
    so a Windows-cross regression now fails a PR instead of surfacing at release.
