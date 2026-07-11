@@ -113,6 +113,42 @@ kind = "file-contains"
 target = "flake.nix"
 contains = "mkDarwinCrossPackages"
 
+# The always-on Windows cross build, the mirror of the darwin check above.
+# Unlike darwin (which only runs on x86_64-linux), the Windows helper is
+# host-agnostic — it cross-compiles native Windows PEs via llvm-mingw for the
+# gnullvm targets on any host — so its `<crate>-{x86_64,aarch64}-windows`
+# outputs resolve on whatever system the checker runs on.  These evaluate the
+# flake rather than grepping it: a passing check proves the packages actually
+# resolve (which also forces the whole package set — including the opt-in MSVC
+# merge — to evaluate), not merely that a call producing them appears in the
+# text.  The crate prefix varies per spawn, so they match by name suffix.  See
+# the "Windows binaries" section of CONTRIBUTING.org.
+[[check]]
+id = "flake-windows-x86-package"
+description = "The flake exposes an x86_64 native-Windows (gnullvm) package output that resolves."
+kind = "flake-output-present"
+output = "packages"
+suffix = "-x86_64-windows"
+
+[[check]]
+id = "flake-windows-aarch64-package"
+description = "The flake exposes an aarch64 native-Windows (gnullvm) package output that resolves."
+kind = "flake-output-present"
+output = "packages"
+suffix = "-aarch64-windows"
+
+# The wine smoke check that proves the x86_64 Windows binary executes, not just
+# links.  The flake gates it to x86_64-linux (wine cannot exec an aarch64 PE),
+# so this evaluates the x86_64-linux checks set explicitly — its presence
+# resolves from any host even though the derivation only builds there.
+[[check]]
+id = "flake-windows-smoke-check"
+description = "The flake exposes the windowsSmoke check on x86_64-linux so the x86_64 Windows binary is run under wine, not merely linked."
+kind = "flake-output-present"
+output = "checks"
+system = "x86_64-linux"
+attr = "windowsSmoke"
+
 [[check]]
 id = "server-foundation-auth-feature"
 description = "A server-crate spawn enables the foundation \"auth\" feature."
@@ -1072,6 +1108,23 @@ description = "CONTRIBUTING.org documents logging levels."
 kind = "section-exists"
 target = "CONTRIBUTING.org"
 section = ["Logging levels"]
+
+# The cross-compiled release binaries.  The parent section holds the darwin
+# (zig) cross-compile docs; the nested "Windows binaries" check asserts the
+# Windows (llvm-mingw) cross-compile docs the template now emits below it.
+[[check]]
+id = "contributing-release-binaries-section"
+description = "CONTRIBUTING.org documents the cross-compiled release binaries."
+kind = "section-exists"
+target = "CONTRIBUTING.org"
+section = ["Release binaries"]
+
+[[check]]
+id = "contributing-windows-binaries-section"
+description = "CONTRIBUTING.org documents the Windows cross-compiled binaries under the release-binaries section."
+kind = "section-exists"
+target = "CONTRIBUTING.org"
+section = ["Release binaries", "Windows binaries"]
 
 [[check]]
 id = "contributing-changelog-conventions-section"

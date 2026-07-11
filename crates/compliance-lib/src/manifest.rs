@@ -188,6 +188,22 @@ pub enum CheckKind {
     var: String,
     value: String,
   },
+  /// `nix eval` the flake output attrset `<output>.<system>` (the host
+  /// double when `system` is `None`) and confirm it exposes a required
+  /// attribute: with `suffix` set, any attribute whose name ends with it (a
+  /// per-crate package such as `<crate>-x86_64-windows`, whose prefix varies
+  /// per spawn); with `name` set, that exact attribute.  Exactly one of the
+  /// two is set.  Unlike the file-reading kinds this evaluates the flake, so
+  /// it proves the output actually resolves rather than that a call producing
+  /// it appears in the text.  Requires the spawn's foundation input to
+  /// resolve, so tests run it against a spawn localized to the template under
+  /// test.
+  FlakeOutputPresent {
+    output: String,
+    system: Option<String>,
+    suffix: Option<String>,
+    name: Option<String>,
+  },
 }
 
 /// The TOML shape: every kind-specific field is optional and validated later.
@@ -242,6 +258,12 @@ struct RawCheck {
   shell: Option<String>,
   #[serde(default)]
   var: Option<String>,
+  #[serde(default)]
+  output: Option<String>,
+  #[serde(default)]
+  system: Option<String>,
+  #[serde(default)]
+  suffix: Option<String>,
 }
 
 /// Require a kind-specific parameter, naming the check and kind on absence.
@@ -283,6 +305,33 @@ fn require_path(
       id: id.to_string(),
       message: format!("kind '{kind}' requires a non-empty list '{name}'"),
     }),
+  }
+}
+
+/// Confirm a flake attribute name (or suffix) is a bare identifier —
+/// alphanumerics plus `.`, `_`, `-`.  It is interpolated verbatim into the
+/// `nix eval --apply` expression, so restricting it to these characters keeps
+/// that expression injection-free without any quoting gymnastics.
+fn require_flake_ident(
+  id: &str,
+  kind: &str,
+  name: &str,
+  value: &str,
+) -> Result<(), ComplianceError> {
+  let ok = !value.is_empty()
+    && value
+      .chars()
+      .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'));
+  if ok {
+    Ok(())
+  } else {
+    Err(ComplianceError::ManifestInvalid {
+      id: id.to_string(),
+      message: format!(
+        "kind '{kind}' parameter '{name}' must be a bare flake attribute name \
+         (letters, digits, '.', '_', '-')"
+      ),
+    })
   }
 }
 
@@ -328,6 +377,9 @@ impl RawCheck {
       methods,
       shell,
       var,
+      output,
+      system,
+      suffix,
     } = self;
 
     let resolved = match kind.as_str() {
@@ -461,6 +513,47 @@ impl RawCheck {
         var: require(&id, &kind, "var", var)?,
         value: require(&id, &kind, "value", value)?,
       },
+      // `attr` doubles as the exact-name selector here; `suffix` selects by
+      // name suffix.  Exactly one must be set — a suffix for the per-crate
+      // package outputs, an exact name for a fixed output like a flake check.
+      "flake-output-present" => {
+        let output = require(&id, &kind, "output", output)?;
+        // `output` and `system` are interpolated into the flake reference the
+        // same way the selectors are, so hold them to the same bare-identifier
+        // rule to keep the whole `nix eval` expression injection-free.
+        require_flake_ident(&id, &kind, "output", &output)?;
+        if let Some(system) = system.as_deref() {
+          require_flake_ident(&id, &kind, "system", system)?;
+        }
+        match (suffix, attr) {
+          (Some(suffix), None) => {
+            require_flake_ident(&id, &kind, "suffix", &suffix)?;
+            CheckKind::FlakeOutputPresent {
+              output,
+              system,
+              suffix: Some(suffix),
+              name: None,
+            }
+          }
+          (None, Some(name)) => {
+            require_flake_ident(&id, &kind, "attr", &name)?;
+            CheckKind::FlakeOutputPresent {
+              output,
+              system,
+              suffix: None,
+              name: Some(name),
+            }
+          }
+          _ => {
+            return Err(ComplianceError::ManifestInvalid {
+              id: id.clone(),
+              message: format!(
+                "kind '{kind}' requires exactly one of 'suffix' or 'attr'"
+              ),
+            })
+          }
+        }
+      }
       other => {
         return Err(ComplianceError::ManifestInvalid {
           id: id.clone(),
@@ -542,6 +635,78 @@ mod tests {
       }
       other => panic!("wrong kind: {other:?}"),
     }
+  }
+
+  #[test]
+  fn validates_a_flake_output_present_suffix_check() {
+    let toml = r#"
+            [[check]]
+            id = "x"
+            description = "d"
+            kind = "flake-output-present"
+            output = "packages"
+            suffix = "-x86_64-windows"
+        "#;
+    let raw: RawManifest = toml::from_str(toml).unwrap();
+    let check = raw.check.into_iter().next().unwrap().validate().unwrap();
+    match check.kind {
+      CheckKind::FlakeOutputPresent {
+        output,
+        system,
+        suffix,
+        name,
+      } => {
+        assert_eq!(output, "packages");
+        assert!(system.is_none());
+        assert_eq!(suffix.as_deref(), Some("-x86_64-windows"));
+        assert!(name.is_none());
+      }
+      other => panic!("wrong kind: {other:?}"),
+    }
+  }
+
+  #[test]
+  fn validates_a_flake_output_present_name_check() {
+    let toml = r#"
+            [[check]]
+            id = "x"
+            description = "d"
+            kind = "flake-output-present"
+            output = "checks"
+            system = "x86_64-linux"
+            attr = "windowsSmoke"
+        "#;
+    let raw: RawManifest = toml::from_str(toml).unwrap();
+    let check = raw.check.into_iter().next().unwrap().validate().unwrap();
+    match check.kind {
+      CheckKind::FlakeOutputPresent {
+        output,
+        system,
+        suffix,
+        name,
+      } => {
+        assert_eq!(output, "checks");
+        assert_eq!(system.as_deref(), Some("x86_64-linux"));
+        assert!(suffix.is_none());
+        assert_eq!(name.as_deref(), Some("windowsSmoke"));
+      }
+      other => panic!("wrong kind: {other:?}"),
+    }
+  }
+
+  #[test]
+  fn flake_output_present_needs_exactly_one_selector() {
+    // Neither suffix nor attr set: ambiguous, so validation must reject it.
+    let toml = r#"
+            [[check]]
+            id = "x"
+            description = "d"
+            kind = "flake-output-present"
+            output = "packages"
+        "#;
+    let raw: RawManifest = toml::from_str(toml).unwrap();
+    let result = raw.check.into_iter().next().unwrap().validate();
+    assert!(result.is_err());
   }
 
   #[test]
