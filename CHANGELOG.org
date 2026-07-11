@@ -4,8 +4,21 @@
 * Upcoming
 ** Added
 ** Fixes
+1. Cross-compiled Windows binaries now build and run; previously the toolchain
+   failed to build on Linux, and the binaries it produced would not start.
+   Adopters get working Windows releases by bumping the foundation input — no
+   project change needed.
 ** Breaking
 ** Maintenance
+1. CI builds the Windows cross binaries and runs them under =wine= on every PR,
+   so a Windows-cross regression now fails a PR instead of surfacing at release.
+   Adopters inherit these gates through the reusable workflow — no action
+   needed.
+2. A spawn's contribution docs gain two compliance-enforced improvements, so a
+   sync brings them in: =llms.org= now points the coding agent at
+   =CONTRIBUTING.org= before contributing, and =CONTRIBUTING.org='s changelog
+   guidance now says to lead with the adopter impact and keep entries terse.  No
+   action needed.
 * v0.40.0
 ** Added
 1. Compliance gains a =flake-output-present= check kind that =nix eval=-uates a

@@ -12,6 +12,11 @@ The whole point of rust-template is to /capture learnings as code and config/.
 Exempting this repo from its own conventions would defeat that — so when in
 doubt, the template's rule applies here too.
 
+Before landing a change, read [[file:CONTRIBUTING.org][=CONTRIBUTING.org=]] as well.  It holds the
+contribution conventions this repo enforces on every pull request — changelog
+entries, commit messages, dependency comments, and the compliance gates.  These
+are rules to follow up front, not to rediscover from a rejected check.
+
 * Repo-specific additions
 
 Guidance below applies specifically to work on the rust-template repo itself —

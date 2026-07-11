@@ -372,7 +372,13 @@ under both ~** Added~ and ~** Fixes~.
 
 Each entry should be a complete sentence-or-two written for an adopter reading
 the release notes, not a reviewer reading the diff.  Name what changed in terms
-of the surface the adopter sees, not the implementation.
+of the surface the adopter sees, not the implementation.  Lead with the impact
+on an adopter and state what they must do about it — call out the required
+action explicitly, or say that none is needed.  Keep the mechanism to a clause;
+the commit history and diff hold the full detail, so an entry that reads like a
+commit body is too long.  When several internal changes add up to one
+adopter-visible outcome, prefer a single entry describing that outcome over one
+entry per underlying change.
 
 Write each entry as a numbered list item (~1.~, ~2.~, …) under its subheading,
 not a dash bullet.
