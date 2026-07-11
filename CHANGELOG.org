@@ -3,9 +3,24 @@
 
 * Upcoming
 ** Added
+1. Compliance gains a =flake-output-present= check kind that =nix eval=-uates a
+   flake output attrset and confirms it exposes a required attribute — by name
+   suffix (for per-crate package outputs whose prefix varies per spawn) or exact
+   name.  Like the existing =dev-shell-env= checks it evaluates the flake rather
+   than grepping it, so a pass proves the output actually resolves.
 ** Fixes
 ** Breaking
 ** Maintenance
+1. Compliance gains checks for the Windows cross-compilation the template emits:
+   a spawn's =flake.nix= must expose the native-Windows (gnullvm) =x86_64-= and
+   =aarch64-windows= package outputs and the =windowsSmoke= wine check on
+   =x86_64-linux=, all verified by evaluating the flake; and =CONTRIBUTING.org=
+   must keep its =Release binaries= section along with the =Windows binaries=
+   subsection documenting the cross-compiled targets.  This closes the gap where
+   the Windows work shipped documentation and flake wiring with no compliance
+   coverage.  The opt-in MSVC variant needs no check of its own: it is absent
+   from a default spawn, and evaluating the package set already forces its
+   wiring to evaluate.
 * v0.39.0
 ** Added
 1. Emitted projects cross-compile their own Windows binaries.  The spawned

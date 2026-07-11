@@ -222,6 +222,18 @@ pub fn run_check(check: &Check, ctx: &SpawnContext) -> Verdict {
     CheckKind::DevShellEnv { shell, var, value } => {
       dev_shell_env(ctx.dir, shell.as_deref(), var, value)
     }
+    CheckKind::FlakeOutputPresent {
+      output,
+      system,
+      suffix,
+      name,
+    } => flake_output_present(
+      ctx.dir,
+      output,
+      system.as_deref(),
+      suffix.as_deref(),
+      name.as_deref(),
+    ),
   }
 }
 
@@ -1151,6 +1163,86 @@ fn dev_shell_env(
     Verdict::Fail {
       detail: format!("{attr} is \"{found}\", expected \"{expected}\""),
     }
+  }
+}
+
+/// `nix eval` the flake output attrset `<output>.<system>` (the host double when
+/// `system` is `None`) and confirm it exposes a required attribute: any name
+/// ending with `suffix` (for a per-crate package like `<crate>-x86_64-windows`,
+/// whose prefix varies per spawn), or the exact `name` (for a fixed output like
+/// a flake check).  Exactly one selector is set; the caller's manifest
+/// validation guarantees that.  The `--apply` function returns a Nix boolean,
+/// which `nix eval` prints as `true`/`false` — evaluating the attrset's names
+/// without realizing any derivation.  Pass on `true`; Fail when the attribute is
+/// absent or the output does not evaluate; Error when nix cannot be run.
+fn flake_output_present(
+  dir: &Path,
+  output: &str,
+  system: Option<&str>,
+  suffix: Option<&str>,
+  name: Option<&str>,
+) -> Verdict {
+  let system = system.map_or_else(nix_system, str::to_string);
+  let attr = format!("{output}.{system}");
+  // Both selectors interpolate a manifest-validated bare identifier (see
+  // require_flake_ident), so the expression stays injection-free.  Suffix
+  // matching uses substring comparison rather than a regex to sidestep any
+  // metacharacter ambiguity.
+  let apply = match (suffix, name) {
+    (Some(suffix), _) => format!(
+      "xs: builtins.any (n: let nl = builtins.stringLength n; \
+       sl = builtins.stringLength \"{suffix}\"; in \
+       nl >= sl && builtins.substring (nl - sl) sl n == \"{suffix}\") \
+       (builtins.attrNames xs)"
+    ),
+    (None, Some(name)) => format!("xs: xs ? \"{name}\""),
+    (None, None) => {
+      return Verdict::Error {
+        detail: "flake-output-present needs one of suffix/attr".to_string(),
+      }
+    }
+  };
+  // Every argument is long-form; the applied function prints a bare boolean.
+  let evaluated = match Command::new("nix")
+    .args([
+      "eval",
+      "--extra-experimental-features",
+      "nix-command flakes",
+      &format!("{}#{attr}", dir.display()),
+      "--apply",
+      &apply,
+    ])
+    .output()
+  {
+    Ok(evaluated) => evaluated,
+    Err(error) => {
+      return Verdict::Error {
+        detail: format!("could not run nix eval for {attr}: {error}"),
+      }
+    }
+  };
+  if !evaluated.status.success() {
+    return Verdict::Fail {
+      detail: format!(
+        "{attr} did not evaluate (output absent or flake broken): {}",
+        String::from_utf8_lossy(&evaluated.stderr).trim()
+      ),
+    };
+  }
+  let want = match (suffix, name) {
+    (Some(suffix), _) => format!("an attribute ending \"{suffix}\""),
+    (None, Some(name)) => format!("the attribute \"{name}\""),
+    (None, None) => "the required attribute".to_string(),
+  };
+  let printed = String::from_utf8_lossy(&evaluated.stdout);
+  match printed.trim() {
+    "true" => Verdict::Pass,
+    "false" => Verdict::Fail {
+      detail: format!("{attr} exposes no {want}"),
+    },
+    other => Verdict::Error {
+      detail: format!("{attr} check returned unexpected \"{other}\""),
+    },
   }
 }
 
