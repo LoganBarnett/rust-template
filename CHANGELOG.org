@@ -6,6 +6,11 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+1. An MSVC-toolchain regression now fails a PR instead of first surfacing in the
+   release job: CI builds the opt-in =x86_64-windows-msvc= variant on every PR
+   too, for projects with rust-template.json's =windows-msvc= flag set, matching
+   the release matrix.  Adopters inherit this through the reusable workflow — no
+   action needed.
 * v0.41.0
 ** Fixes
 1. Cross-compiled Windows binaries now build and run; previously the toolchain
