@@ -18,7 +18,7 @@ members = [
 # versioning across the workspace.  Fields that vary per crate
 # (`name`, `description`, `publish`) stay declared on each member.
 [workspace.package]
-version = "0.41.0"
+version = "0.42.0"
 edition = "2021"
 authors = ["Logan Barnett <logustus@gmail.com>"]
 license = "AGPL-3.0-or-later"
@@ -30,12 +30,12 @@ repository = "https://github.com/LoganBarnett/rust-template"
 # `path = ` reference.  Members consume these as `{ workspace = true }`.
 [workspace.dependencies]
 # The foundation-derive proc-macro crate (MergeConfig, foundation_main).
-rust-template-foundation-derive = { path = "crates/foundation-derive", version = "0.41.0" }
+rust-template-foundation-derive = { path = "crates/foundation-derive", version = "0.42.0" }
 # Shared infrastructure (config staging, logging, CLI entry point) consumed by
 # the compliance crates the same way a spawned project consumes it.
-rust-template-foundation = { path = "crates/foundation", version = "0.41.0" }
+rust-template-foundation = { path = "crates/foundation", version = "0.42.0" }
 # The compliance engine library, consumed by the compliance cli front-end.
-rust-template-compliance-lib = { path = "crates/compliance-lib", version = "0.41.0" }
+rust-template-compliance-lib = { path = "crates/compliance-lib", version = "0.42.0" }
 
 # External dependencies shared by the compliance crates.  Those crates were
 # dogfooded from the template archetypes, which consume shared deps as
