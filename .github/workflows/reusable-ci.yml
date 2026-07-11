@@ -231,18 +231,29 @@ jobs:
           save-store: "false"
 
       # Build every release artifact an x86_64-linux runner can produce — the
-      # portable glibc binary, the static musl variant, and the two zig-cross
-      # macOS variants — for each crate that ships a binary, so an artifact that
-      # will not build fails the PR rather than only surfacing when a release
-      # runs the binaries matrix.  These suffixes must track the release
-      # matrix: the store-locked native build (empty suffix) is not released
-      # and so is not built here; the portable "-gnu" variant is.  The macOS
-      # builds cross-compile on Linux (no macOS runner, no Apple SDK for a
-      # libSystem crate), so the cost is a normal compile plus a cached
-      # toolchain, not a darwin-runner queue.  The aarch64-linux gnu/musl
-      # targets are omitted: they run the same mk*Packages code path as the
-      # x86_64 variants with only a different target triple, so the x86_64 set
-      # transitively covers them without an ARM runner.
+      # portable glibc binary, the static musl variant, the two zig-cross macOS
+      # variants, and the two llvm-mingw-cross Windows (gnullvm) variants — for
+      # each crate that ships a binary, so an artifact that will not build fails
+      # the PR rather than only surfacing when a release runs the binaries
+      # matrix.  These suffixes must track the release matrix: the store-locked
+      # native build (empty suffix) is not released and so is not built here;
+      # the portable "-gnu" variant is.  The macOS builds cross-compile on Linux
+      # (no macOS runner, no Apple SDK for a libSystem crate), so the cost is a
+      # normal compile plus a cached toolchain, not a darwin-runner queue.  The
+      # Windows builds cross-compile on Linux too, and realizing them here
+      # forces the llvm-mingw toolchain derivation to actually *build* on Linux
+      # — where autoPatchelfHook runs and its buildInputs must be complete.  A
+      # contributor building on macOS never exercises that path (the Mach-O
+      # toolchain runs natively, no autoPatchelf), and the compliance checks
+      # only `nix eval` the Windows attrs (proving they resolve, not that they
+      # build), so without this leg a Linux-only toolchain breakage first
+      # surfaces in the release job.  `-x86_64-windows-msvc` is omitted: it is
+      # an opt-in variant (it needs an xwin SDK the spawn must pass), so it is
+      # absent for projects that do not opt in and cannot go in this
+      # unconditional list.  The aarch64-linux gnu/musl targets are omitted:
+      # they run the same mk*Packages code path as the x86_64 variants with
+      # only a different target triple, so the x86_64 set transitively covers
+      # them without an ARM runner.
       # The crate set comes from rust-template.json's release-binary flags — the
       # same source the release-binaries workflow uses — so a project that ships
       # no binaries builds nothing.
@@ -258,8 +269,39 @@ jobs:
           fi
           attrs=()
           for crate in $(echo "$crates" | jq --raw-output '.[]'); do
-            for suffix in -gnu -musl -aarch64-darwin -x86_64-darwin; do
+            for suffix in \
+              -gnu -musl \
+              -aarch64-darwin -x86_64-darwin \
+              -x86_64-windows -aarch64-windows; do
               attrs+=(".#packages.x86_64-linux.${crate}${suffix}")
             done
           done
           nix build --no-link --print-out-paths "${attrs[@]}"
+
+  windows-smoke:
+    name: Windows smoke (wine)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Install Nix; restore-only.  `save-store: "false"` keeps this job's
+      # llvm-mingw + Windows-cross + wine closure from evicting the shared
+      # toolchain cache — see `.github/actions/setup-nix` for the rationale.
+      - uses: LoganBarnett/rust-template/.github/actions/setup-nix@main
+        with:
+          save-store: "false"
+
+      # Run the x86_64 Windows cross binaries under wine to prove they run,
+      # not merely link.  The release-artifacts leg above builds the Windows
+      # variants, but a PE can link cleanly and still fail to start — e.g. by
+      # importing a non-system DLL like libunwind.dll, which aborts loading with
+      # STATUS_DLL_NOT_FOUND.  A build gate cannot see that; running the binary
+      # can.  The windowsSmoke check (foundation's mkWindowsSmokeCheck) invokes
+      # each `-x86_64-windows` binary with `--help` under wine on the
+      # x86_64-linux runner.  It exists only on x86_64-linux — wine cannot exec
+      # an aarch64 PE, so those stay build-verified only — and passes trivially
+      # for a spawn that ships no Windows binaries.
+      - name: Run the x86_64 Windows binaries under wine
+        run: |
+          nix build --no-link --print-out-paths \
+            '.#checks.x86_64-linux.windowsSmoke'

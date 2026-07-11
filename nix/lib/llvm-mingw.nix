@@ -69,12 +69,31 @@ in
     # RPATH; autoPatchelfHook repoints them at the Nix stdenv.  The macOS
     # universal Mach-O runs natively, so it needs neither the hook nor the libs.
     nativeBuildInputs = lib.optionals isLinux [pkgs.autoPatchelfHook];
+    # The shared libraries the release's ELF files link and nixpkgs provides.
+    # zlib and zstd back lld and libLLVM — the linker and clang's backend, i.e.
+    # the compile/link path this toolchain exists for; both are hard
+    # requirements (libLLVM.so and lld both DT_NEEDED libzstd.so.1, and dropping
+    # zstd is exactly the bug that broke the first real Linux cross build).
+    # ncurses backs the bundled lldb's console, and stdenv.cc.cc.lib supplies
+    # the libstdc++/libgcc every tool in the release links.
     buildInputs = lib.optionals isLinux [
       pkgs.stdenv.cc.cc.lib
       pkgs.zlib
-      pkgs.libxml2
+      pkgs.zstd
       pkgs.ncurses
     ];
+    # Two libraries the bundled lldb links that nixpkgs 25.11 will not resolve:
+    # liblzma.so.5, and libxml2.so.2 — whose soname upstream nixpkgs has retired
+    # (it now ships libxml2.so.16, which no binary in this release links, so
+    # pkgs.libxml2 would satisfy nothing).  lldb is a debugger, not part of
+    # compiling or linking, and this toolchain is only ever used to
+    # cross-compile and link Windows PEs (the smoke test and build-verification
+    # exercise clang/lld/llvm-ar, never lldb), so leaving those two unresolved
+    # ships an inert lldb while clang, lld, and llvm-ar have every library they
+    # need.  Without this, auto-patchelf treats the unmet lldb deps as a fatal
+    # error and fails the whole toolchain derivation.
+    autoPatchelfIgnoreMissingDeps =
+      lib.optionals isLinux ["libxml2.so.2" "liblzma.so.5"];
     # The wrappers locate their sibling tools and the CRT/headers by paths
     # relative to their own location, so the extracted tree is kept intact under
     # $out rather than picked apart.  unpackPhase cd's into the single top-level

@@ -1,6 +1,14 @@
 #+title:     LLMs
 #+language:  en
 
+* Read CONTRIBUTING.org before contributing
+
+This file covers how to write code.  ~CONTRIBUTING.org~ covers how to land a
+change: changelog entries, commit messages, dependency comments, and the other
+conventions every pull request must follow.  Read it before making a change, not
+after a compliance check rejects one — the conventions are enforced, and
+rediscovering them from a failed check wastes a round trip.
+
 * Server crate: role and scope
 
 The =crates/server= crate is the project's general-purpose long-running service.

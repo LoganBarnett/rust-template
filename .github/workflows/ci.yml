@@ -112,3 +112,36 @@ jobs:
         run: |
           nix build --no-link --print-out-paths \
             '.#packages.x86_64-linux.cross-fixture-gnu'
+
+  # Guards mkWindowsCrossPackages against the Windows-cross paths the pure-Rust
+  # release crate (compliance-cli) never exercises: a C-compiling dependency
+  # (`ring`, compiled by llvm-mingw's clang in crane's deps-only phase) and
+  # import-library wiring (the winmm link).  The cross-fixture crate carries
+  # both; building its Windows attrs here fails the PR if either path regresses.
+  # This is the Windows sibling of darwin-cross-fixture / gnu-portable-fixture
+  # above, and complements reusable-ci.yml's release-artifacts leg — which
+  # builds compliance-cli's Windows variants and so covers the llvm-mingw
+  # *toolchain* build (the autoPatchelf-on-Linux step) and gnullvm linking, but
+  # not the C compiler path this fixture drives.  Repo-specific, like the
+  # fixtures above — spawned projects have no such crate.  Only x86_64-linux
+  # produces the cross output, hence ubuntu; llvm-mingw is host-agnostic, so
+  # both Windows arches cross-build here off one toolchain.
+  windows-cross-fixture:
+    name: Windows cross fixture build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Install Nix; restore-only cross-compile job.  Local `./` ref for PR
+      # self-testing (see `template-tests` above); `save-store: "false"` so its
+      # llvm-mingw cross closure does not evict the shared toolchain cache.  See
+      # `.github/actions/setup-nix`.
+      - uses: ./.github/actions/setup-nix
+        with:
+          save-store: "false"
+
+      - name: Build the cross-fixture Windows variants
+        run: |
+          nix build --no-link --print-out-paths \
+            '.#packages.x86_64-linux.cross-fixture-x86_64-windows' \
+            '.#packages.x86_64-linux.cross-fixture-aarch64-windows'

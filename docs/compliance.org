@@ -283,6 +283,30 @@ This additive freedom is distinct from the opt-out below.  Presence checks make
 for the other case — deliberately /violating/ a required rule — which must be
 declared with a reason so the deviation stays honest.
 
+** A propagated change needs a check
+
+The checker is how a template change reaches repositories that already exist.  A
+file, section, convention, or wiring default you add to =template/= lands in
+/newly emitted/ projects for free, but an existing spawn only picks it up during
+compliance sync — and a sync is driven by what the checker flags.  So a template
+change that older spawns should adopt is not finished until a check covers it:
+without one, the change silently skips every existing spawn and reaches only
+projects emitted after it.
+
+When you change the template, ask whether existing spawns should gain the
+change.
+
+- *Yes* → add or extend a check in =compliance-checks.toml= that fails a spawn
+  lacking it — a =section-exists= or =mention-present= for documentation, a
+  value check for wiring (see [[*Choosing a check kind]]).  Confirm the new check
+  /passes/ against the template's own emitted content before relying on it;
+  nothing else dogfoods that.
+- *No* → it needs no check.  Either it is a pure new-emission default that older
+  spawns need not backfill, or it flows in automatically through the foundation
+  library or a reusable workflow the spawn references at =@main= — those reach
+  every spawn on the next input bump, which =foundation-pins-current= already
+  gates.
+
 ** Opting out of a check
 
 A project may deliberately deviate from what the template lays down.  To keep

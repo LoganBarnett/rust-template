@@ -6,9 +6,10 @@
 # caller's whole commonArgs, only with a Windows target and llvm-mingw swapped
 # in for the linker and C toolchain.  The produced binaries are ordinary
 # Windows PE executables — they use the Win32 API directly, so they run on a
-# stock Windows install with no Cygwin/MSYS2 POSIX layer, and for pure-Rust
-# code they depend only on OS-provided DLLs (the Universal CRT, present on
-# Windows 10+).
+# stock Windows install with no Cygwin/MSYS2 POSIX layer.  The compiler runtime
+# (the LLVM unwinder and the CRT) is linked statically — see the crt-static
+# rustflag below — so for pure-Rust code they import only always-present Win32
+# system DLLs and carry no dependency on a redistributable runtime.
 #
 # Why gnullvm and not the classic `*-windows-gnu` (mingw64): GCC-mingw has no
 # Windows-on-ARM, and cargo-zigbuild — the linker the darwin/gnu-portable
@@ -102,6 +103,22 @@ in
           "CC_${ccEnvTarget}" = "${toolPrefix}-clang";
           "CXX_${ccEnvTarget}" = "${toolPrefix}-clang++";
           "AR_${ccEnvTarget}" = "${llvmMingw}/bin/llvm-ar";
+          # Statically link the compiler runtime so the PE is self-contained.
+          # llvm-mingw links its LLVM unwinder as a shared library by default,
+          # so a bare gnullvm binary imports libunwind.dll — not a Windows
+          # system DLL — and fails to start with STATUS_DLL_NOT_FOUND on a stock
+          # install (and under the wine smoke check).  Rust's crt-static target
+          # feature links the unwinder and the CRT statically, so the PE imports
+          # only always-present Win32 system DLLs.  A plain
+          # `-C link-arg=-static` does not suffice for the Rust link — it
+          # leaves the libunwind.dll import in place, so crt-static is the knob
+          # that removes it.  This is a target-scoped rustflag
+          # (CARGO_TARGET_<triple>_RUSTFLAGS), so it governs only the Windows
+          # artifacts, never the host build scripts and proc-macros cargo
+          # compiles for the build platform, and it is set identically for
+          # crane's deps-only and final builds (both read windowsArgs) so the
+          # two stay cache-consistent.
+          "CARGO_TARGET_${lib.toUpper ccEnvTarget}_RUSTFLAGS" = "-C target-feature=+crt-static";
           # A PE cannot run on the build host, so the test phase is skipped —
           # the same sources are gated by the native build and the workspace
           # test check in the same release.  rustc's own `strip = true` still

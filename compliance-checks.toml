@@ -209,6 +209,21 @@ target = "llms.org"
 section = ["Capturing plans"]
 contains = "in the same change set that does the work"
 
+[[check]]
+id = "llms-read-contributing-section"
+description = "llms.org carries the \"Read CONTRIBUTING.org before contributing\" section directing the agent to the contribution conventions."
+kind = "section-exists"
+target = "llms.org"
+section = ["Read CONTRIBUTING.org before contributing"]
+
+[[check]]
+id = "llms-read-contributing-covers-landing"
+description = "The Read CONTRIBUTING.org section states that CONTRIBUTING.org covers how to land a change."
+kind = "mention-present"
+target = "llms.org"
+section = ["Read CONTRIBUTING.org before contributing"]
+contains = "covers how to land a change"
+
 # ── Foundation pin agreement ─────────────────────────────────────────
 
 [[check]]
@@ -1156,6 +1171,14 @@ kind = "mention-present"
 target = "CONTRIBUTING.org"
 section = ["Changelog conventions"]
 contains = "CI rejects a pull request that adds none"
+
+[[check]]
+id = "contributing-changelog-adopter-impact"
+description = "CONTRIBUTING.org's changelog conventions tell the author to lead with the adopter impact and required action."
+kind = "mention-present"
+target = "CONTRIBUTING.org"
+section = ["Changelog conventions"]
+contains = "Lead with the impact"
 
 # ── Pre-seeded CHANGELOG.org Upcoming scaffold ───────────────────────
 # A fresh emission seeds the Upcoming section with the documented
