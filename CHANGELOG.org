@@ -4,6 +4,11 @@
 * Upcoming
 ** Added
 ** Fixes
+1. Dependabot auto-merge no longer strands still-mergeable dependency bumps: a
+   green bump could be skipped and left unmerged before GitHub finished judging
+   its mergeability, and now the squash-merge itself is the gate, so a bump
+   lands as soon as GitHub confirms it can.  Adopters inherit this through their
+   =@main= reference to the reusable workflow — no action needed.
 ** Breaking
 ** Maintenance
 * v0.42.0

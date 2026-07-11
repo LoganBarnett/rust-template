@@ -4,11 +4,12 @@ name: Dependabot auto-merge (reusable)
 # completing for the CI workflow.  All gating decisions happen here
 # so the wrapper stays a one-liner.
 #
-# The flow runs in a single pass.  When CI passes on a Dependabot
-# bump this fires, and — if the PR is CLEAN (every other check green,
-# up to date, no conflicts) — it injects a changelog entry on the
-# bump's branch and squash-merges immediately, combining the bump and
-# the changelog into one commit on main.
+# The flow runs in a single pass.  When CI passes on a Dependabot bump
+# this fires: it injects a changelog entry on the bump's branch and
+# squash-merges immediately, combining the bump and the changelog into
+# one commit on main.  The squash-merge itself is the mergeability gate
+# — GitHub lands it or rejects it — rather than a pre-check on the
+# asynchronously-computed mergeStateStatus, which races.
 #
 # Dependabot cannot author a changelog entry, so it is exempt from the
 # "Changelog entry required" CI job.  This flow supplies what that job
@@ -83,7 +84,7 @@ jobs:
         if: steps.pr.outputs.skip == 'false'
         run: |
           gh pr view "$PR_NUMBER" --repo "$REPO" \
-            --json author,title,labels,url,headRefName,mergeStateStatus \
+            --json author,title,labels,url,headRefName \
             > pr.json
           AUTHOR=$(jq --raw-output '.author.login' pr.json)
           IS_BOT=$(jq --raw-output '.author.is_bot' pr.json)
@@ -138,25 +139,13 @@ jobs:
             echo "proceed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # The workflow_run trigger already guarantees the bump's CI
-          # passed; CLEAN additionally confirms up-to-date-with-base and
-          # no conflicts.  Read it here, on the bump commit, before the
-          # changelog commit lands — that commit gets no CI of its own
-          # and would drop mergeStateStatus below CLEAN.  The status is
-          # computed asynchronously, so wait for it to settle out of
-          # UNKNOWN before judging.
-          for _ in 1 2 3 4 5 6; do
-            STATE=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
-              --json mergeStateStatus --jq '.mergeStateStatus')
-            [ "$STATE" != "UNKNOWN" ] && break
-            sleep 5
-          done
-          if [ "$STATE" != "CLEAN" ]; then
-            echo "mergeStateStatus is $STATE, not CLEAN; skipping" \
-              "(Dependabot re-triggers this on its next rebase)."
-            echo "proceed=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+          # No mergeability pre-check here.  mergeStateStatus is computed
+          # asynchronously, so polling it and timing out is a race that
+          # drops still-mergeable PRs.  The squash-merge below is the gate
+          # instead: it succeeds or fails on GitHub's own verdict, and its
+          # retry absorbs the brief "mergeability still computing" window.
+          # CI success is already established by the workflow_run trigger
+          # that fired this run.
           # Idempotency: a re-fire after a partial run may already carry
           # the changelog entry, so record whether it still needs adding.
           CHANGELOG_RE=${CHANGELOG_FILE//./\\.}
@@ -231,20 +220,20 @@ jobs:
 
       # --- Squash-merge and dispatch publish ---
 
-      # The bump was already CLEAN when the gate read it, and the only
-      # change since is the changelog commit — whose one relevant check,
-      # `changelog-roller check-additions`, ran inline above.  So merge
-      # on `proceed` rather than re-reading mergeStateStatus, which would
-      # now be non-CLEAN because that commit gets no CI of its own (a
-      # GITHUB_TOKEN push triggers none).  The push above and this merge
-      # race against GitHub registering the new head, so retry briefly
-      # before giving up.
+      # The squash-merge is the gate.  We do not pre-check mergeability
+      # (see the gate step): GitHub decides here.  Success means the bump
+      # and its changelog land as one commit on main.  A failure is
+      # usually the brief window where GitHub is still computing
+      # mergeability after the changelog push, so retry patiently; a
+      # failure that persists is a genuine conflict, and we leave the PR
+      # for a human rather than force it.
       - name: Squash-merge the PR
         id: merge
         if: steps.gate.outputs.proceed == 'true'
         run: |
           merged=false
-          for _ in 1 2 3 4 5; do
+          n=0
+          while [ $n -lt 12 ]; do
             if gh pr merge "$PR_NUMBER" \
                 --repo "$REPO" \
                 --squash \
@@ -252,8 +241,20 @@ jobs:
               merged=true
               break
             fi
-            sleep 5
+            # The merge may have landed even if branch deletion errored;
+            # trust the PR state over the command's exit code.
+            if [ "$(gh pr view "$PR_NUMBER" --repo "$REPO" \
+                --json state --jq '.state')" = "MERGED" ]; then
+              merged=true
+              break
+            fi
+            n=$((n + 1))
+            sleep 15
           done
+          if [ "$merged" != "true" ]; then
+            echo "::warning::squash-merge did not succeed after retries;" \
+              "leaving the PR for a human (likely a genuine conflict)."
+          fi
           echo "merged=$merged" >> "$GITHUB_OUTPUT"
         env:
           REPO: ${{ github.repository }}
