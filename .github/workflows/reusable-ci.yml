@@ -232,11 +232,12 @@ jobs:
 
       # Build every release artifact an x86_64-linux runner can produce — the
       # portable glibc binary, the static musl variant, the two zig-cross macOS
-      # variants, and the two llvm-mingw-cross Windows (gnullvm) variants — for
-      # each crate that ships a binary, so an artifact that will not build fails
-      # the PR rather than only surfacing when a release runs the binaries
-      # matrix.  These suffixes must track the release matrix: the store-locked
-      # native build (empty suffix) is not released and so is not built here;
+      # variants, the two llvm-mingw-cross Windows (gnullvm) variants, and the
+      # opt-in MSVC Windows variant — for each crate that ships a binary, so an
+      # artifact that will not build fails the PR rather than only surfacing
+      # when a release runs the binaries matrix.  These suffixes must track the
+      # release matrix: the store-locked native build (empty suffix) is not
+      # released and so is not built here;
       # the portable "-gnu" variant is.  The macOS builds cross-compile on Linux
       # (no macOS runner, no Apple SDK for a libSystem crate), so the cost is a
       # normal compile plus a cached toolchain, not a darwin-runner queue.  The
@@ -247,10 +248,12 @@ jobs:
       # toolchain runs natively, no autoPatchelf), and the compliance checks
       # only `nix eval` the Windows attrs (proving they resolve, not that they
       # build), so without this leg a Linux-only toolchain breakage first
-      # surfaces in the release job.  `-x86_64-windows-msvc` is omitted: it is
-      # an opt-in variant (it needs an xwin SDK the spawn must pass), so it is
-      # absent for projects that do not opt in and cannot go in this
-      # unconditional list.  The aarch64-linux gnu/musl targets are omitted:
+      # surfaces in the release job.  The MSVC variant cross-compiles on this
+      # same x86_64 runner and is built too, but only when rust-template.json's
+      # `windows-msvc` flag is set — the same gate the release matrix uses — so
+      # a project that has not opted in neither fetches Microsoft's SDK nor
+      # accepts its licence here.  The aarch64-linux gnu/musl targets are
+      # omitted:
       # they run the same mk*Packages code path as the x86_64 variants with
       # only a different target triple, so the x86_64 set transitively covers
       # them without an ARM runner.
@@ -267,12 +270,16 @@ jobs:
             echo "No release-binary crates; nothing to build."
             exit 0
           fi
+          suffixes=(-gnu -musl -aarch64-darwin -x86_64-darwin \
+            -x86_64-windows -aarch64-windows)
+          # The MSVC variant is opt-in; append it only when the flag is set, the
+          # same gate the release matrix uses (see the note above the step).
+          if [ "$(jq --raw-output '."windows-msvc" // false' rust-template.json)" = "true" ]; then
+            suffixes+=(-x86_64-windows-msvc)
+          fi
           attrs=()
           for crate in $(echo "$crates" | jq --raw-output '.[]'); do
-            for suffix in \
-              -gnu -musl \
-              -aarch64-darwin -x86_64-darwin \
-              -x86_64-windows -aarch64-windows; do
+            for suffix in "${suffixes[@]}"; do
               attrs+=(".#packages.x86_64-linux.${crate}${suffix}")
             done
           done
