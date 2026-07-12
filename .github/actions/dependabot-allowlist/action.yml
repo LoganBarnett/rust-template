@@ -1,0 +1,74 @@
+name: Dependabot file allowlist
+description: >-
+  Reports which of a Dependabot pull request's changed files fall outside the
+  set the auto-merge flow expects to see — Cargo manifests at any depth,
+  workflow YAML, and the changelog — and whether the changelog is already
+  present.  An empty `unexpected` output means the PR is safe to auto-merge.
+  The allowlist itself lives in the sibling `allowlist.sh`, which is unit-tested
+  by `test-dependabot-allowlist.sh`, so the rule has exactly one definition.
+
+inputs:
+  repo:
+    description: The owner/name repository holding the pull request.
+    required: true
+  pr-number:
+    description: The number of the pull request to inspect.
+    required: true
+  changelog-file:
+    description: >-
+      Path to the changelog file, which the flow appends itself and so is
+      allowed to appear in the diff.
+    required: true
+  github-token:
+    description: A token with pull-request read scope, for `gh pr diff`.
+    required: true
+
+outputs:
+  unexpected:
+    description: >-
+      Newline-delimited changed files outside the allowlist; empty when every
+      changed path is allowed.
+    value: ${{ steps.check.outputs.unexpected }}
+  has-changelog:
+    description: '"true" if the PR already contains the changelog file.'
+    value: ${{ steps.check.outputs.has-changelog }}
+
+runs:
+  using: composite
+  steps:
+    - name: Diff the PR and apply the allowlist
+      id: check
+      shell: bash
+      run: |
+        # Abort on any failure rather than degrade to a false-clean
+        # verdict: a failed `gh pr diff` must fail the step (and, via the
+        # implicit success() on the gate step, skip the merge) instead of
+        # leaving `files` empty and reading the PR as touching nothing.
+        set -euo pipefail
+        files=$(gh pr diff "$PR_NUMBER" --repo "$REPO" --name-only)
+        echo "$files"
+        unexpected=$(printf '%s\n' "$files" \
+          | "$GITHUB_ACTION_PATH/allowlist.sh" "$CHANGELOG_FILE")
+        # Emit an empty scalar when nothing is flagged, rather than a
+        # heredoc carrying a stray newline that would read as non-empty.
+        if [ -n "$unexpected" ]; then
+          {
+            echo "unexpected<<EOF"
+            printf '%s\n' "$unexpected"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+        else
+          echo "unexpected=" >> "$GITHUB_OUTPUT"
+        fi
+        changelog_re=${CHANGELOG_FILE//./\\.}
+        if printf '%s\n' "$files" \
+            | grep --quiet --line-regexp --extended-regexp "$changelog_re"; then
+          echo "has-changelog=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "has-changelog=false" >> "$GITHUB_OUTPUT"
+        fi
+      env:
+        REPO: ${{ inputs.repo }}
+        PR_NUMBER: ${{ inputs.pr-number }}
+        CHANGELOG_FILE: ${{ inputs.changelog-file }}
+        GH_TOKEN: ${{ inputs.github-token }}

@@ -4,6 +4,12 @@
 * Upcoming
 ** Added
 ** Fixes
+1. Dependabot auto-merge now lands dependency bumps in workspace-member crates.
+   Its safety gate only recognised a root =Cargo.toml=/=Cargo.lock=, so any bump
+   to a =crates/<member>/Cargo.toml= read as a human-touched file and was
+   skipped — stranding most bumps in a workspace project.  The gate now accepts
+   =Cargo.toml=/=Cargo.lock= at any depth.  Adopters inherit this through their
+   =@main= reference to the reusable workflow — no action needed.
 ** Breaking
 ** Maintenance
 * v0.43.0
