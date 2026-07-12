@@ -106,8 +106,8 @@ jobs:
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Gate on author and file list
-        id: gate
+      - name: Gate on author
+        id: author
         if: steps.pr.outputs.skip == 'false'
         run: |
           # `gh` spells the Dependabot GitHub App author `app/dependabot`,
@@ -115,24 +115,45 @@ jobs:
           # `dependabot[bot]`.  Accept either spelling, and require the
           # bot flag so a human login that happens to collide cannot slip
           # through — rather than pinning a single, drift-prone string.
-          if [ "$IS_BOT" != "true" ] || \
-             { [ "$AUTHOR" != "dependabot[bot]" ] && \
-               [ "$AUTHOR" != "app/dependabot" ]; }; then
+          if [ "$IS_BOT" = "true" ] && \
+             { [ "$AUTHOR" = "dependabot[bot]" ] || \
+               [ "$AUTHOR" = "app/dependabot" ]; }; then
+            echo "is_dependabot=true" >> "$GITHUB_OUTPUT"
+          else
             echo "PR author is $AUTHOR (is_bot=$IS_BOT), not Dependabot;" \
               "skipping."
+            echo "is_dependabot=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          AUTHOR: ${{ steps.meta.outputs.author }}
+          IS_BOT: ${{ steps.meta.outputs.is_bot }}
+
+      # Which files a Dependabot bump may touch — and whether the
+      # changelog is already present — is decided by a shared, unit-tested
+      # predicate (allowlist.sh), pulled in as a composite action so the
+      # rule has exactly one definition for every spawn consuming this flow
+      # via @main.  Local `./` refs are unavailable here: on a spawn this
+      # workflow runs in the caller's checkout, which has no rust-template
+      # scripts, so the action is referenced by its full owner/repo path
+      # (the same reason setup-nix is).
+      - name: Check the PR's files against the allowlist
+        id: files
+        if: steps.author.outputs.is_dependabot == 'true'
+        uses: LoganBarnett/rust-template/.github/actions/dependabot-allowlist@main
+        with:
+          repo: ${{ github.repository }}
+          pr-number: ${{ steps.pr.outputs.number }}
+          changelog-file: ${{ inputs.changelog-file }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Decide whether to proceed
+        id: gate
+        if: steps.pr.outputs.skip == 'false'
+        run: |
+          if [ "$IS_DEPENDABOT" != "true" ]; then
             echo "proceed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          FILES=$(gh pr diff "$PR_NUMBER" --repo "$REPO" --name-only)
-          echo "$FILES"
-          # CHANGELOG.org is allowed because this workflow adds it
-          # itself.  Anything outside this set means a human touched the
-          # PR and we should stay out of it.
-          UNEXPECTED=$(echo "$FILES" | grep --invert-match \
-            --regexp='^Cargo\.\(toml\|lock\)$' \
-            --regexp='^\.github/workflows/.*\.yml$' \
-            --regexp="^${CHANGELOG_FILE//./\\.}\$" \
-            || true)
           if [ -n "$UNEXPECTED" ]; then
             echo "::warning::PR touches unexpected files — skipping"
             echo "$UNEXPECTED"
@@ -148,20 +169,12 @@ jobs:
           # that fired this run.
           # Idempotency: a re-fire after a partial run may already carry
           # the changelog entry, so record whether it still needs adding.
-          CHANGELOG_RE=${CHANGELOG_FILE//./\\.}
-          if echo "$FILES" | grep --quiet --line-regexp "$CHANGELOG_RE"; then
-            echo "has_changelog=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_changelog=false" >> "$GITHUB_OUTPUT"
-          fi
+          echo "has_changelog=$HAS_CHANGELOG" >> "$GITHUB_OUTPUT"
           echo "proceed=true" >> "$GITHUB_OUTPUT"
         env:
-          REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ steps.pr.outputs.number }}
-          AUTHOR: ${{ steps.meta.outputs.author }}
-          IS_BOT: ${{ steps.meta.outputs.is_bot }}
-          CHANGELOG_FILE: ${{ inputs.changelog-file }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IS_DEPENDABOT: ${{ steps.author.outputs.is_dependabot }}
+          UNEXPECTED: ${{ steps.files.outputs.unexpected }}
+          HAS_CHANGELOG: ${{ steps.files.outputs.has-changelog }}
 
       # --- Inject the changelog entry on the PR branch ---
 

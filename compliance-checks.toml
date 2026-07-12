@@ -395,6 +395,15 @@ value = "main"
 # ---------------------------------------------------------------------------
 # Dependabot auto-merge workflow (.github/workflows/dependabot-automerge.yml)
 # — always emitted.
+#
+# The compliance surface stops at this wrapper and its @main delegation to
+# rust-template's reusable-dependabot-automerge workflow (asserted just below).
+# Everything that reusable workflow pulls in — the setup-nix action, and the
+# dependabot-allowlist composite action with its allowlist.sh predicate — is
+# referenced by @main and lives only in rust-template; it is never emitted into
+# a spawn, so no per-spawn file-present check applies to it (the same reason
+# setup-nix has none).  The allowlist predicate's own correctness is instead
+# guarded by test-dependabot-allowlist.sh in this repo's CI.
 # ---------------------------------------------------------------------------
 
 [[check]]

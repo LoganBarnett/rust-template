@@ -43,6 +43,7 @@ jobs:
           - test-formatters.sh
           - ci-test.sh
           - test-review-stop.sh
+          - test-dependabot-allowlist.sh
     steps:
       - uses: actions/checkout@v4
 
