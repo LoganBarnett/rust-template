@@ -6,6 +6,8 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+* v0.46.0
+** Maintenance
 1. Bump toml from 0.8.23 to 1.1.2+spec-1.1.0 (https://github.com/LoganBarnett/rust-template/pull/27)
 * v0.45.0
 ** Maintenance
