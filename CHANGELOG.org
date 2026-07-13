@@ -6,6 +6,8 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+* v0.48.0
+** Maintenance
 1. Bump schemars from 0.9.0 to 1.2.1 (https://github.com/LoganBarnett/rust-template/pull/19)
 * v0.47.0
 ** Maintenance
