@@ -69,7 +69,7 @@ rust-embed = { version = "8", features = ["mime-guess"], optional = true }
 openidconnect = { version = "3", features = ["reqwest"], optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-native-roots"], optional = true }
 tower-sessions = { version = "0.15", features = ["memory-store"], optional = true }
-axum-jwt-auth = { version = "0.6", optional = true }
+axum-jwt-auth = { version = "0.7", optional = true }
 jsonwebtoken = { version = "10", optional = true }
 
 # Unix-only server dependencies: systemd's journal logging
