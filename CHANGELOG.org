@@ -6,6 +6,8 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+* v0.47.0
+** Maintenance
 1. The opt-in MSVC Windows build tolerates a flaky Microsoft SDK download: the
    =xwin= SDK fetch now retries five times instead of making a single attempt,
    so a transient CDN I/O failure no longer fails the release build.  Adopters
