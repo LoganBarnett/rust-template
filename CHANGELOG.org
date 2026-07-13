@@ -6,6 +6,7 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+1. Bump axum-jwt-auth from 0.6.3 to 0.7.0 (https://github.com/LoganBarnett/rust-template/pull/18)
 * v0.49.0
 * v0.48.0
 ** Maintenance
