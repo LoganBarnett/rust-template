@@ -60,8 +60,14 @@ pkgs.stdenvNoCC.mkDerivation {
   buildCommand = ''
     export HOME="$TMPDIR"
     mkdir --parents "$out"
+    # xwin defaults to zero HTTP retries (--http-retry / XWIN_HTTP_RETRY), so a
+    # single transient I/O failure fetching a CAB from Microsoft's CDN fails the
+    # whole derivation — and, since this is the only network step, an uncached
+    # release build re-fetches on every run.  Retry a few times to ride out a
+    # blip; retries do not change the fetched content, so outputHash is stable.
     xwin \
       --accept-license \
+      --http-retry 5 \
       --manifest-version 17 \
       --arch x86_64,aarch64 \
       --variant desktop \
