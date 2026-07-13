@@ -55,7 +55,7 @@ tower = { version = "0.5", optional = true }
 tower-http = { version = "0.6", features = ["trace", "cors"], optional = true }
 prometheus = { version = "0.13", optional = true }
 aide = { version = "0.15", features = ["axum", "axum-json", "axum-query", "scalar", "macros"], optional = true }
-schemars = { version = "0.9", optional = true }
+schemars = { version = "1.2", optional = true }
 serde_json = { version = "1.0", optional = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"], optional = true }
 # Frontend assets are embedded into the server binary so a downloaded
