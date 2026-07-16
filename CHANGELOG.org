@@ -6,6 +6,8 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+* v0.53.0
+** Maintenance
 1. Bump clap from 4.6.1 to 4.6.2 (https://github.com/LoganBarnett/rust-template/pull/47)
 * v0.52.0
 ** Maintenance
