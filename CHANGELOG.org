@@ -6,6 +6,8 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+* v0.54.0
+** Maintenance
 1. Bump proc-macro2 from 1.0.106 to 1.0.107 (https://github.com/LoganBarnett/rust-template/pull/48)
 * v0.53.0
 ** Maintenance
