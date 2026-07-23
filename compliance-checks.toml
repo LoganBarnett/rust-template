@@ -1106,6 +1106,21 @@ target = "CONTRIBUTING.org"
 section = ["Code style"]
 
 [[check]]
+id = "contributing-control-flow-section"
+description = "CONTRIBUTING.org documents the expression-over-early-return control-flow convention."
+kind = "section-exists"
+target = "CONTRIBUTING.org"
+section = ["Code style", "Control flow: prefer expressions over early returns"]
+
+[[check]]
+id = "contributing-control-flow-question-mark-carveout"
+description = "CONTRIBUTING.org's control-flow convention keeps ? (uniform propagation) as the carve-out."
+kind = "mention-present"
+target = "CONTRIBUTING.org"
+section = ["Code style", "Control flow: prefer expressions over early returns"]
+contains = "propagate this error unchanged"
+
+[[check]]
 id = "contributing-error-handling-section"
 description = "CONTRIBUTING.org documents error handling."
 kind = "section-exists"
