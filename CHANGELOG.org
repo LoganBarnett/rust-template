@@ -3,15 +3,17 @@
 
 * Upcoming
 ** Added
+** Fixes
+** Breaking
+** Maintenance
+* v0.57.0
+** Added
 1. New projects carry a control-flow convention that prefers expression forms
    over early returns, keeping ~?~ as the carve-out, and their code-review Stop
    hook now runs the workspace clippy gate on any Rust change so a lint failure
    surfaces before review rather than in CI.  A compliance check keeps the
    convention documented in each spawn.  No action is needed; both apply to new
    work automatically.
-** Fixes
-** Breaking
-** Maintenance
 * v0.56.0
 ** Maintenance
 1. Bump clap from 4.6.3 to 4.6.4 (https://github.com/LoganBarnett/rust-template/pull/53)
