@@ -2,12 +2,14 @@
 # Unit test for the code-review Stop hook
 # (template/.claude/hooks/review-stop.sh).
 #
-# The hook is pure shell that inspects the git working tree and the session
-# transcript, then either releases the turn or emits a block decision.  Both
-# inputs are injectable: the transcript path arrives in the stdin JSON, and
-# the working-tree file list is faked with REVIEW_STOP_GIT_FILES_FILE.  That
-# lets this test drive every branch deterministically without a real working
-# tree or a live Claude session.
+# The hook inspects the git working tree and the session transcript, runs a
+# clippy gate when Rust files changed, then either releases the turn or emits a
+# block decision.  All three inputs are injectable: the transcript path arrives
+# in the stdin JSON, the working-tree file list is faked with
+# REVIEW_STOP_GIT_FILES_FILE, and the clippy command is faked with
+# REVIEW_STOP_CLIPPY_CMD.  That lets this test drive every branch
+# deterministically without a real working tree, a real compile, or a live
+# Claude session.
 #
 # Each case feeds a crafted transcript and file list, then asserts whether the
 # hook releases (no stdout) or blocks (a {"decision":"block"} JSON document).
@@ -53,11 +55,17 @@ run_test() {
 HOOK_OUT=""
 run_hook() {
     local session="$1" transcript="$2" gitfiles="$3"
+    # The clippy gate command is injected so tests never run a real compile.
+    # It defaults to a no-op pass; cases that exercise the clippy gate override
+    # it with a failing command.  Without this, the existing .rs fixtures would
+    # shell out to real clippy on every run.
+    local clippy_cmd="${4:-true}"
     set +e
     HOOK_OUT="$(
         printf '{"session_id":"%s","transcript_path":"%s"}' \
             "$session" "$transcript" \
             | TMPDIR="$TMPBASE" REVIEW_STOP_GIT_FILES_FILE="$gitfiles" \
+                REVIEW_STOP_CLIPPY_CMD="$clippy_cmd" \
                 bash "$HOOK" 2>/dev/null
     )"
     set -e
@@ -93,6 +101,11 @@ printf '%s\n' "README.org" "docs/notes.txt" > "$files_prose"
 
 files_code="$TMPBASE/files-code"
 printf '%s\n' "src/main.rs" > "$files_code"
+
+# A code/config change that is not Rust: gated for review, but the clippy gate
+# must leave it alone.
+files_code_nonrust="$TMPBASE/files-code-nonrust"
+printf '%s\n' "flake.nix" > "$files_code_nonrust"
 
 files_none="$TMPBASE/files-none"
 : > "$files_none"
@@ -201,6 +214,36 @@ test_max_rounds_releases() {
     assert_releases
 }
 
+# A Rust change with a failing clippy gate blocks before the review is even
+# consulted — the transcript here carries a passing review, so a release would
+# prove clippy did not gate.
+test_clippy_failure_blocks() {
+    run_hook "clippy-fail" "$tx_agent_pass" "$files_code" 'echo clippy-boom; exit 1'
+    assert_blocks "clippy reported problems"
+}
+
+# The clippy gate only fires for Rust files.  A non-Rust code change with a
+# failing clippy command must skip clippy and fall through to the review gate,
+# blocking with the review reason rather than the clippy one.
+test_clippy_skipped_for_non_rust() {
+    run_hook "clippy-skip" "$tx_noreview" "$files_code_nonrust" \
+        'echo clippy-boom; exit 1'
+    assert_blocks "has not run"
+}
+
+# clippy safety valve: after MAX_ROUNDS consecutive failing clippy runs the
+# gate releases (then falls through to the review, which passes here), so an
+# unfixable warning cannot wedge the session.
+test_clippy_max_rounds_releases() {
+    local i
+    for i in 1 2 3 4; do
+        run_hook "clippy-rounds" "$tx_agent_pass" "$files_code" 'exit 1'
+        assert_blocks "clippy reported problems" || return 1
+    done
+    run_hook "clippy-rounds" "$tx_agent_pass" "$files_code" 'exit 1'
+    assert_releases
+}
+
 run_test "prose-only-releases" test_prose_only_releases
 run_test "no-changes-releases" test_no_changes_releases
 run_test "code-without-review-blocks" test_code_without_review_blocks
@@ -210,6 +253,9 @@ run_test "findings-blocks" test_findings_blocks
 run_test "stale-review-blocks" test_stale_review_blocks
 run_test "missing-transcript-releases" test_missing_transcript_releases
 run_test "max-rounds-releases" test_max_rounds_releases
+run_test "clippy-failure-blocks" test_clippy_failure_blocks
+run_test "clippy-skipped-for-non-rust" test_clippy_skipped_for_non_rust
+run_test "clippy-max-rounds-releases" test_clippy_max_rounds_releases
 
 echo ""
 echo "$PASS passed, $FAIL failed"

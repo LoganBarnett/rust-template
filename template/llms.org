@@ -475,6 +475,13 @@ that is a project convention, decision, or standard belongs in the repository
 from it and it can be reviewed.  Reaching for memory to record a convention is
 the signal that it should be codified here instead.
 
+The emitted ~.claude/settings.json~ therefore ships with ~autoMemoryEnabled:
+false~: the assistant's auto-memory — which otherwise accrues machine-local
+files under a contributor's home directory, invisible to review and scoped to a
+single clone — is off by default, so every learning is forced through the
+reviewable, checked-in docs above.  Re-enable it per clone only for genuinely
+local scratch context.
+
 * Capturing plans
 
 When a planning pass produces a design worth keeping, record it as a ~TODO~
@@ -510,6 +517,27 @@ nix develop --command git commit --message "your message"
 ** Run all tests after changes
 
 Run ~just test~ after making any change to verify nothing is broken.
+
+** Run clippy before offering Rust changes for review
+
+Any change that touches ~.rs~ files must pass the workspace clippy gate before
+it is presented for review:
+
+#+begin_src sh :results none :exports code
+nix develop --command cargo clippy --workspace --all-targets --all-features \
+  -- --deny warnings
+#+end_src
+
+This is the same gate CI enforces, so running it first keeps a lint failure from
+reaching the reviewer or the pipeline.  It also surfaces the combinator lints
+that steer toward the least-powerful construct (see "Rule of least power") while
+the change is still in hand, rather than after the fact.
+
+Claude Code agents may skip this step: the Stop hook at
+~.claude/hooks/review-stop.sh~ runs the same clippy gate deterministically on
+~.rs~ changes and blocks the turn until it passes, so the check is already
+enforced for them.  The instruction is spelled out here for other coding agents
+and humans, whose workflow that hook does not cover.
 
 * Template compliance
 

@@ -46,6 +46,54 @@ drives); otherwise comment each input.
 
 Add the comment as you introduce the dependency, not as a later cleanup pass.
 
+** Control flow: prefer expressions over early returns
+
+Rust is expression-oriented — ~if~/~else~, ~match~, and blocks all yield values.
+Prefer that shape: produce a value with an ~if/else if/else~ chain, a ~match~,
+or a combinator (~map~, ~unwrap_or_else~, ~map_or_else~) rather than scattering
+early ~return~ statements that each yield a different value.  The indentation of
+an expression tree /shows/ how much the code branches; a stack of guard-clause
+returns is flat in indentation only, and hides that branching from the reader.
+
+The one early return to keep is the uniform one: ~?~, and a bare guard clause
+with no ~else~.  Every ~?~ means the same thing — propagate this error unchanged
+— so it converges on a single exit rather than spidering out to many distinct
+return values.  That uniformity is what makes it readable where a hand-written
+~return Err(...)~ in the middle of a function is not.
+
+Bad — an early return that yields a distinct value, followed by an ~if/else~
+that is really an ~else if~:
+
+#+begin_src rust :results none :exports code
+if output.status.success() {
+    return Ok(Some(parse(&output)?));
+}
+if ref_resolves(git_ref)? {
+    Ok(None)
+} else {
+    Err(missing_ref(git_ref))
+}
+#+end_src
+
+Good — one expression whose branches sit at the same level, so the three
+outcomes read as one decision:
+
+#+begin_src rust :results none :exports code
+if output.status.success() {
+    Ok(Some(parse(&output)?))
+} else if ref_resolves(git_ref)? {
+    Ok(None)
+} else {
+    Err(missing_ref(git_ref))
+}
+#+end_src
+
+This is the /least-powerful-construct/ rule applied to control flow; see
+~llms.org~ "Rule of least power" for the principle and the combinator clippy
+lints that enforce its mechanical part.  Those lints catch manual combinator
+reimplementations, not early returns — whether a guard clause should collapse
+into an expression is a judgment the author makes, not something a lint decides.
+
 * Error handling
 
 This project uses *semantic error types* with ~thiserror~ rather than generic
