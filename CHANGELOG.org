@@ -3,6 +3,10 @@
 
 * Upcoming
 ** Added
+1. Spawned projects now disable Claude Code's auto-memory by default
+   (~autoMemoryEnabled: false~ in ~.claude/settings.json~), so the assistant no
+   longer accrues machine-local memory files outside the repository; record
+   conventions in the checked-in docs instead.  No action is needed.
 ** Fixes
 ** Breaking
 ** Maintenance
@@ -16,10 +20,12 @@
    work automatically.
 * v0.56.0
 ** Maintenance
-1. Bump clap from 4.6.3 to 4.6.4 (https://github.com/LoganBarnett/rust-template/pull/53)
+1. Bump clap from 4.6.3 to 4.6.4
+   (https://github.com/LoganBarnett/rust-template/pull/53)
 * v0.55.0
 ** Maintenance
-1. Bump clap from 4.6.2 to 4.6.3 (https://github.com/LoganBarnett/rust-template/pull/52)
+1. Bump clap from 4.6.2 to 4.6.3
+   (https://github.com/LoganBarnett/rust-template/pull/52)
 * v0.54.0
 ** Maintenance
 1. Bump proc-macro2 from 1.0.106 to 1.0.107

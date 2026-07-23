@@ -1287,6 +1287,17 @@ kind = "file-contains"
 target = ".claude/settings.json"
 contains = "review-stop.sh"
 
+# A separate concern that happens to live in the same file: the emitted
+# settings disable Claude Code's auto-memory, so conventions are codified in
+# the repo (llms.org, CONTRIBUTING.org, docs) rather than accrued as
+# machine-local memory that drifts and is invisible to other contributors.
+[[check]]
+id = "settings-disables-auto-memory"
+description = "The .claude/settings.json disables Claude Code auto-memory so conventions live in the repo rather than machine-local memory."
+kind = "file-contains"
+target = ".claude/settings.json"
+contains = '"autoMemoryEnabled": false'
+
 [[check]]
 id = "review-gate-hook"
 description = "The project ships the review-stop.sh Stop hook."

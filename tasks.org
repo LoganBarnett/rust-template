@@ -1,6 +1,364 @@
 #+title:     rust-template Tasks
 #+language:  en
 
+* TODO Codify the "justify await-in-a-loop" rule in template/llms.org
+
+An ~.await~ inside a loop is a smell: it serializes iterations that are often
+meant to run concurrently (~join_all~ / ~FuturesUnordered~), so it needs a
+justification /at the await site/ stating why sequential is correct.  Surfaced
+in the =jj= spawn, where a build-start poll loop awaited a request and a pacing
+sleep each iteration with no note explaining that polling is inherently
+sequential.  The two legitimate shapes are a poll/retry loop and a loop whose
+iteration depends on the previous result.
+
+The convention belongs in =template/llms.org= (the conventions emitted into
+spawns), alongside the existing "prefer functional combinators over loop/return"
+guidance.  State the rule and require a short marker comment at the site — e.g.
+~// await-in-loop:~ followed by the reason.
+
+Enforcement is the harder half.  Stock clippy has no ~await_in_loop~ lint (only
+the ~await_holding_*~ family), so "just turn it on" is not available.  Options
+to weigh:
+
+- A custom ~dylint~ lint that flags ~.await~ within a loop body absent an
+  ~#[allow]~ or a recognized ~// await-in-loop:~ marker.
+- A compliance-checker heuristic that greps for ~.await~ inside loop constructs
+  and requires an adjacent justification marker.
+
+Both are approximate.  Decide whether the prose rule alone suffices first, then
+whether the lint machinery earns its keep.  Per the /A propagated change needs a
+check/ guidance in =docs/compliance.org=, if this becomes an enforced rule it
+also needs a compliance check so existing spawns get flagged.
+
+* TODO Add compliance checks for the clippy-lints wiring and the .claude gitignore re-include
+
+Two things the template emits have /no codified checker rule/, so an existing
+spawn never gets flagged for missing them during a compliance sync — the checker
+stays green while the spawn is actually missing load-bearing infrastructure.
+Both surfaced while syncing the =jj= spawn, where the checker reported no gap
+yet the wiring was entirely absent.  Per the /A propagated change needs a check/
+guidance in =docs/compliance.org=, each needs a check so the change reaches
+repositories that already exist.
+
+** The clippy-lints wiring
+
+The template ships three coupled pieces that enforce the =llms.org= code
+conventions:
+
+- =[workspace.lints.clippy]= in the root =Cargo.toml= — the =unwrap_used= /
+  =expect_used= / =panic= denials and the =manual_*= / =option_if_let_else= /
+  =map_unwrap_or= "Rule of least power" nudges.
+- =clippy.toml= — the =allow-*-in-tests= exemptions those denials rely on.
+- =[lints] workspace = true= in every member crate — without it a crate opts out
+  of the workspace lints entirely.
+
+None of these is checked today.  A spawn can lack all three and pass compliance,
+even though the emitted =llms.org= describes the no-unwrap ban and the
+combinator nudges as /active/ — so the docs claim enforcement the spawn does not
+have.  Proposed checks: a value check that the root =Cargo.toml= carries
+=[workspace.lints.clippy]= with the deny trio, =file-present= for =clippy.toml=
+with the three =allow-*-in-tests= keys, and a per-crate check that each member
+sets =[lints] workspace = true=.  Confirm each passes against the template's own
+emission before relying on it.
+
+** The .claude gitignore re-include
+
+A user-global or system =/etc/gitignore= commonly ignores =.claude/= wholesale.
+The template's =.gitignore= re-includes it with =!.claude/= (keeping
+=.claude/settings.local.json= ignored) precisely so the review-gate files —
+=.claude/settings.json=, =.claude/hooks/review-stop.sh=, and
+=.claude/agents/template-compliance.md= — are tracked and actually commit.  A
+spawn whose =.gitignore= lacks that block silently leaves the review gate
+untracked: the files exist on disk (so the =review-gate-*= checks, which read
+the filesystem, pass) but never reach a commit, and the Stop hook is dead on a
+fresh clone.  Proposed check: a line-present check that the spawn's =.gitignore=
+contains the =!.claude/= re-include.
+
+* TODO Add compliance checks for the justfile and its devshell runner
+
+Same class as the clippy-lints and =.claude= gitignore gaps above: the template
+emits infrastructure with /no codified checker rule/, so an older spawn silently
+lacks it while the checker stays green.  The template ships =template/justfile=
+and puts =pkgs.just= on the emitted devShell's =PATH=, and the emitted
+=llms.org= Verification section tells the reader to run =nix develop --command
+just build= / =just test=.  Neither the justfile's presence nor =just='s
+availability is checked.
+
+This surfaced syncing the =loku= spawn, which predates both: it had no justfile
+and no =just= in its devShell, so the documented =just= commands were dead.  The
+sync diverged =loku='s =llms.org= to =cargo build --workspace= / =cargo test
+--workspace= to keep the doc honest — papering over the missing capability
+instead of restoring it, exactly the silent divergence a check is meant to
+prevent.  Per the /A propagated change needs a check/ guidance in
+=docs/compliance.org=, each needs a check.
+
+Two separate checks:
+
+- =file-present= for =justfile= at the workspace root.
+- A devShell check that =just= resolves on the =default= shell's =PATH= — the
+  same flake-evaluation shape the =RUST_TEMPLATE_SHELL= marker checks already
+  use (evaluate the =default= devShell and assert =just= is among its packages,
+  or run =nix develop --command sh -c 'command -v just'=).  A =file-present= on
+  the justfile alone is insufficient: a justfile with no runner on =PATH= is
+  inert, which is precisely loku's state.
+
+Confirm both pass against the template's own emission before relying on them —
+the emitted =template/flake.nix= already ships =pkgs.just= and
+=template/justfile=, so they should.  Once this lands and loku carries a
+justfile plus =just= in its devShell, restore loku's =llms.org= Verification
+section to the template's =just build= / =just test= wording.
+
+* TODO Prohibit and mechanically block =git commit --no-verify=
+
+The emitted =.cargo-husky= pre-commit hook runs treefmt and is the intended
+owner of formatting; =git commit --no-verify= (and =-n=) skips it silently.  An
+agent that reaches for =--no-verify= — because a formatter is momentarily
+unavailable, or out of habit — drops the formatting guarantee and reintroduces
+the exact manual-formatting burden the hook exists to remove.  Surfaced during
+the =loku= sync: early commits used =--no-verify= (the treefmt stack was not yet
+in that spawn's devShell), and the habit persisted after it was, forcing manual
+=treefmt= sweeps.
+
+A prose "don't use =--no-verify=" rule in =llms.org= / =CONTRIBUTING.org= is
+necessary but not sufficient — an agent can violate prose (this one did).  Per
+/capture learnings as code and config/, make the guard mechanical:
+
+- *Prose:* state in the emitted =llms.org= Verification section that =git commit
+  --no-verify= is prohibited unless the operator grants permission for that
+  specific commit, with the reason (it bypasses the formatting / compliance
+  hook).
+- *Mechanism (preferred):* gate it through tooling, not trust.  Either a
+  permission deny / PreToolUse hook in the emitted =.claude/settings.json= that
+  blocks a Bash =git commit … --no-verify= / =-n= and requires explicit
+  per-commit approval (the same shape as the shipped review-stop Stop hook), or
+  expose git through an MCP tool whose commit operation offers no
+  verify-skipping flag at all, so the capability is /absent/ rather than merely
+  discouraged.  Standardize on whichever the fleet adopts; the point is that the
+  skip is not reachable by default.
+
+Per /a propagated change needs a check/, add a compliance check when it lands so
+existing spawns adopt the guard — e.g. a mention/value check that the emitted
+=.claude/settings.json= carries the =--no-verify= block.
+
+* TODO foundation's auth feature drags in aws-lc-sys, breaking darwin cross-builds
+
+A spawn that enables the foundation =auth= feature and release-binaries its
+server fails the darwin release cross-build (cargo-zigbuild): =aws-lc-sys='s C
+build panics with =PermissionDenied= copying an include file, and even past
+that, aws-lc-sys + zig + =aarch64-apple-darwin= is unresolved upstream
+(aws/aws-lc-rs#680, #409).  Surfaced by the =loku= sync — the first auth server
+actually release-binaried and cross-built to darwin.
+
+Root cause is a /regression in a transitive auth dependency/, not the spawn.
+=cargo tree -i aws-lc-sys= traces it to:
+
+: aws-lc-sys ← aws-lc-rs ← rustls ← hyper-rustls ← reqwest("__rustls-aws-lc-rs")
+:   ← axum-jwt-auth("rustls-tls", via its default features) ← foundation("auth")
+
+=axum-jwt-auth= 0.6.3 (foundation 0.49, e.g. sonify-health) did /not/ force
+this; 0.7.0 (foundation 0.54, loku) turns on reqwest's aws-lc-rs rustls provider
+through its default features.  Because Cargo features are additive, a spawn
+/cannot/ evict aws-lc-sys by selecting =ring= (the trick sonify-health used on
+0.6.3) — the fix has to be in foundation.
+
+Fix, in =crates/foundation/Cargo.toml=: change =axum-jwt-auth = { version =
+"0.7", optional = true }= to add =default-features = false= and enable only the
+needed features with a non-aws-lc (ring or provider-agnostic) rustls-tls variant
+— the same shape foundation already uses for its /own/ reqwest
+(=default-features = false, features = ["rustls-tls-native-roots"]=).  Confirm
+=cargo tree -i aws-lc-sys= is empty for an auth server afterward.
+
+Why it slipped, and the coverage fix: =crates/cross-fixture= deliberately skips
+the =auth= feature, its comment asserting the auth "TLS/OIDC stack is pure-Rust
+(rustls) and already cross-compiles."  That is false — rustls' /default/
+provider is =aws-lc-rs=, a C library.  cross-fixture must add =auth= and
+cross-build it to /darwin/ (not only =server= on windows), so a regression like
+this fails a fixture build rather than a downstream spawn's release CI.  Then
+add a compliance check per /a propagated change needs a check/.
+
+Upstream context so this is not re-litigated: reqwest 0.13 intentionally
+defaults rustls to =aws-lc-rs= (seanmonstar/reqwest#2423, open, no resolution),
+and aws-lc-sys + zig + darwin is unresolved upstream — so the pragmatic durable
+path is a non-aws-lc provider in foundation's auth stack, not "make aws-lc-sys
+cross-compile."
+
+* TODO Emit integration-test infrastructure and CI, not just a placeholder test
+
+The template emits =crates/<crate>/tests/integration_test.rs= but lays down /no/
+way to actually run a service-dependent integration test in CI, and no pattern
+for the "stand up a service, exercise the binary against it" flow.  A spawn that
+needs this — jj runs its CLI against a live Jenkins — is forced to hand-roll the
+whole workflow, and that hand-rolled copy bit-rots invisibly: jj's
+=integration.yml= still used the shut-down
+=DeterminateSystems/nix-installer-action@v8= + =magic-nix-cache-action@v2= pair
+and failed outright on every PR until it was repointed at the =setup-nix=
+composite action by hand.
+
+The reusable CI's =Test= job does run =cargo test --workspace=, so integration
+tests /compile/ and /run/ — but a service-dependent one skips when its service
+env vars are absent (jj's tests skip without =JENKINS_URL=), so the template's
+CI never actually exercises that path.  The result is a false sense of coverage:
+the test file ships, appears to run, and tests nothing.
+
+What to provide, roughly in order of value:
+1. A documented pattern (and ideally a =reusable-integration.yml=) for
+   service-dependent integration tests: check out, =setup-nix=, restore the
+   cargo cache, then run a project-supplied service-startup + test script.  jj's
+   =.github/workflows/integration.yml= and =.github/scripts/run-tests.sh= are a
+   working reference to generalise from.
+2. A compliance check so existing spawns that hand-rolled their own integration
+   CI get flagged to adopt it (pairs with the checks proposed in the entry
+   above).
+3. At minimum, if the full flow stays project-specific, ensure any integration
+   workflow the template lays down references the =setup-nix= composite action,
+   so no spawn ever hand-carries a nix installer that can bit-rot.
+
+Discovered while syncing the =jj= spawn, whose integration CI was dead on
+arrival for reasons entirely outside its own domain logic.
+
+* TODO Dependabot's changelog commit lands unformatted, churning old entries
+
+The Dependabot auto-merge flow injects a =CHANGELOG.org= entry and commits it in
+CI, but that commit is never =org-fmt='d — so an unwrapped entry lands on main,
+and the *next* ordinary commit (whose pre-commit hook runs =treefmt=) reformats
+the stale entry, producing spurious churn unrelated to that later change.
+
+Observed on the #27 bump: =changelog-roller= wrote a single long line,
+
+: 1. Bump toml from 0.8.23 to 1.1.2+spec-1.1.0 (https://.../pull/27)
+
+which a later =treefmt CHANGELOG.org= wrapped onto two lines.
+
+Root cause: the "Append changelog entry and push to PR branch" step in
+=.github/workflows/reusable-dependabot-automerge.yml= runs =changelog-roller
+insert-item --in-place= then a bare =git commit= in the CI checkout — where the
+repo's pre-commit hook (which runs =treefmt=) is not installed at all.  So it is
+not that hooks are being /skipped/ (there is no =--no-verify=); the formatting
+hook simply never exists in CI, and =changelog-roller='s raw output is not
+org-fmt-wrapped.
+
+Fixes, in order of preference:
+1. Add =nix develop .#ci --command treefmt "$CHANGELOG_FILE"= (or =org-fmt
+   --in-place=) to that step, right after =insert-item= and before =git add= —
+   the step already runs inside =nix develop .#ci=, so the formatter is on hand.
+   One line; normalises the entry exactly as a local commit would.
+2. Teach =changelog-roller= to emit org-fmt-clean output at the source (heavier;
+   it would have to replicate org-fmt's line wrapping).
+3. Install and run the pre-commit hook in CI (heaviest; equivalent to (1), since
+   that hook is just =treefmt=).
+
+Scope: the fix belongs in the reusable workflow, so a single change repairs
+rust-template and every spawn (all consume it via =@main=).  A one-off =treefmt
+CHANGELOG.org= pass can normalise the entries already landed unformatted.
+
+* TODO SBOM attestation for release binaries (Rust)
+
+We already emit keyless SLSA /build-provenance/ attestations for every release
+archive (=actions/attest-build-provenance= in =reusable-release-binaries.yml=).
+An SBOM is the complementary, /orthogonal/ artifact, and we do not emit it yet.
+
+Provenance answers /pedigree/ — "this binary was built by this repo's CI, from
+this commit, untampered."  An SBOM answers /ingredients/ — "this binary
+/contains/ these components at these versions."  Having the first does not give
+you the second.
+
+Why we want it: a consumer holding /only the binary/ — no repo, no =Cargo.lock=
+— can then mechanically answer "is this release affected by CVE-2026-XXXX?" and
+feed the SBOM to their own scanners and policy gates.  Being signed and attested
+makes that ingredient list tamper-evident and bound to the exact artifact.
+
+Honest scope: for a pure-Rust, internally-consumed binary this is largely
+redundant with =Cargo.lock= (which already /is/ an SBOM-equivalent of the Rust
+graph).  The incremental value is real only for /external/ or /binary-only/
+consumers, a compliance mandate (US EO 14028, or a procurement "ship us an SBOM"
+ask), or the vendored-C parts (e.g. =ring=) that a binary scan surfaces but the
+lockfile only pins by crate version.  We want it anyway — the whole point of the
+template is to absorb the work once so every spawn inherits it.
+
+How: generate with =cargo-cyclonedx= (CycloneDX, reads Cargo metadata),
+=cargo-sbom= (SPDX + CycloneDX), or =syft= scanning the built binary (attests
+what actually ships).  Attach it on the same rails as our provenance — the
+generic =actions/attest= with an SBOM predicate (the standalone
+=actions/attest-sbom= is being folded into =actions/attest=), keyless Sigstore,
+the same attestation store, verified with =gh attestation verify
+--predicate-type ...=.  Emit into the template and add a compliance check that a
+spawn's release-binaries workflow carries the attest-SBOM step.
+
+Related: [[*cargo-deny / cargo-audit advisory gate (Rust)]] (the proactive
+build-time counterpart), [[*Nix closure SBOM + vuln scan (sbomnix / vulnix)]] and
+[[*Elm frontend supply-chain coverage]] (the same idea at other layers of the
+stack).
+
+* TODO cargo-deny / cargo-audit advisory gate (Rust)
+
+rust-template currently has /neither/ — no =deny.toml=, no advisory scan in CI.
+Add =cargo-deny= (the superset) or at least =cargo-audit= as a CI gate that
+fails a PR when the resolved dependency graph pulls a crate with a known RustSec
+advisory — and, with =cargo-deny=, also a disallowed licence, a banned crate, a
+duplicate version, or a non-allowlisted source.  Config lives in =deny.toml=.
+
+How it differs from [[*SBOM attestation for release binaries (Rust)]] — the reason
+these are two tasks, not one:
+- cargo-deny/audit is /proactive/ and /build-time/: it *blocks* a bad dependency
+  from ever landing or shipping.  It is a gate, acting on the source graph at
+  PR/CI time.
+- An SBOM is a /document/ produced /post-hoc/: it records what shipped so a
+  consumer can *react* later.  It blocks nothing.
+- They are complements.  The gate stops today's known-bad from getting in; the
+  SBOM lets a downstream answer "am I affected?" for a CVE disclosed /after/ you
+  shipped — which a build-time gate could not have known about.  =cargo-deny=
+  also enforces /licence policy/, which an SBOM only /describes/.
+
+Arguably higher-leverage than the SBOM: it protects all ~24 spawns proactively,
+and it is the cheaper of the two.  Emit =deny.toml= + a CI job into the
+template; add a compliance check for their presence.
+
+Related: [[*SBOM attestation for release binaries (Rust)]] (the reactive
+counterpart), [[*Nix closure SBOM + vuln scan (sbomnix / vulnix)]] (=vulnix= /
+=vulnxscan= are the closure-level analogue of this gate).
+
+* TODO Nix closure SBOM + vuln scan (sbomnix / vulnix)
+
+The flake's build closure is the /ground truth/ of everything in a build — every
+input, the toolchains, the system libraries, the xwin MSVC SDK — so a Nix-level
+SBOM/scan is the most /complete/ picture, a strict superset of the
+language-level tools, which cannot see the C libraries or the cross toolchains.
+
+Tools: =sbomnix= (tiiuae) generates CycloneDX + SPDX SBOMs from a flake ref or
+store path by reading derivations; its suite includes =vulnxscan= (a
+vulnerability scan driven off the SBOM) and =nix_outdated=.  =vulnix= is the
+classic store-path scanner against NVD.  =nix-sbom-helper= offers
+=sbomsForFlakeOutputs= for flake projects.
+
+Candidate: a CI job that runs =sbomnix= over the release package outputs and
+=vulnxscan= / =vulnix= as an advisory gate — informational first, blocking once
+the noise floor is understood.
+
+Related: [[*SBOM attestation for release binaries (Rust)]] (the Nix SBOM supersets
+it), [[*cargo-deny / cargo-audit advisory gate (Rust)]] (the Rust-level advisory
+gate this parallels).
+
+* TODO Elm frontend supply-chain coverage
+
+Cover the Elm frontend for parity, but be realistic: there is no mature
+Elm-native SBOM or advisory-database tooling (a web search for Elm-specific SBOM
+/ vulnerability audit turned up nothing).  Elm's constrained package model —
+enforced semver, pure-Elm packages, no arbitrary build code — shrinks the
+surface and is likely /why/ no "cargo-audit for Elm" exists.
+
+The real supply-chain surface is probably not the Elm packages but (a) any
+JS/npm tooling in the frontend build (covered by =npm audit= or =syft='s npm
+support) and (b) the compiled-JS bundle embedded in the server binary — which a
+binary-scan SBOM (=syft=; see [[*SBOM attestation for release binaries (Rust)]])
+would enumerate anyway.
+
+Action: check whether =syft= parses =elm.json=; if not, decide whether the
+JS-build-tooling scan plus the embedded-bundle SBOM already give adequate
+coverage, and record that decision rather than leaving a silent gap.
+
+Related: [[*SBOM attestation for release binaries (Rust)]], [[*Nix closure SBOM
++ vuln scan (sbomnix / vulnix)]].
+
 * DONE Land Windows cross-compilation as two coordinated PRs
 
 The Windows cross-compilation work — native gnullvm binaries for x86_64 and
@@ -787,6 +1145,32 @@ Most complex case: ~skip~ for OIDC with ~extra_cli = "OidcCliFields"~ and
 ~extra_file = "OidcFileFields"~, ~parse~ for listen address, ~required~ for
 base_url.  User provides ~resolve_oidc~, ~Display~, and ~ServerApp~ impls
 manually.
+
+* TODO MergeConfig: per-field validation hook on the merged value
+
+=MergeConfig= can parse a field (=parse=, via =FromStr=) but cannot /validate/
+one.  The only escape hatch is =#[merge_config(skip)]= + a hand-written
+=resolve_<field>=, which also forces routing the raw value through =extra_cli= /
+=extra_file= and re-implementing the CLI-or-file precedence by hand — a lot of
+boilerplate for "this value must satisfy a predicate."
+
+clap-derive solves the same problem with =value_parser=, but a clap
+=value_parser= only runs on CLI-provided values.  In the staged =CliRaw ->
+ConfigFileRaw -> Config= model a value can arrive from the TOML file, which clap
+never parses (and =parse= routes both sources through =FromStr= during the merge
+anyway), so validation has to run /after/ the merge — a clap-level parser is the
+wrong layer.
+
+Add a field attribute — =validate = "fn"= or =parse_with = "fn"= — that runs a
+=Fn(T) -> Result<T, E>= on the merged value inside =from_cli_and_file=,
+surfacing failures through =ConfigError= (using the field's =extra_error= type
+when one is declared).  This gives the =value_parser= ergonomics at the correct
+layer and retires the skip+resolve boilerplate for the common
+"required-and-valid" case.
+
+Surfaced during the =loku= sync: =library_path= must point at an existing
+directory, which today needs the full skip+resolve escape hatch.  Confirm the
+new attribute works against =example-server= before relying on it.
 
 * DONE Service helpers should use mkDefault for overridable config
 =mkNixosService= and =mkDarwinService= currently assign most of the systemd /
