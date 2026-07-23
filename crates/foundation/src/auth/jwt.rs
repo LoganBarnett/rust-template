@@ -134,6 +134,32 @@ pub enum JwtError {
 
 // ── public API ──────────────────────────────────────────────────────────────
 
+/// Register ring as the process-wide rustls crypto provider if none is set.
+///
+/// This is an in-memory registration — rustls' `install_default` sets a
+/// process-global slot to point at the already-compiled ring provider.
+/// Nothing is downloaded or installed on disk.
+///
+/// axum-jwt-auth builds its JWKS-fetching reqwest 0.13 client with the
+/// `rustls-no-provider` feature — chosen (see `Cargo.toml`) to keep the
+/// aws-lc-rs C library out of the dependency graph, since it breaks darwin
+/// cross-builds.  That path looks the crypto provider up from the process-wide
+/// default when the client is built and panics if none is set, so we register
+/// ring here before the first decoder is built.  Idempotent: a provider
+/// already set (by an earlier call or another component) is left in place.
+fn ensure_crypto_provider() {
+  if rustls::crypto::CryptoProvider::get_default().is_none() {
+    match rustls::crypto::ring::default_provider().install_default() {
+      Ok(()) => {}
+      // Lost the race to set the default; the winner's provider stands, and
+      // ring is interchangeable with it here.
+      Err(_existing) => {
+        tracing::debug!("rustls crypto provider already set; reusing it");
+      }
+    }
+  }
+}
+
 /// Build a JWKS-backed decoder for the claims type `T`.
 ///
 /// `T` is the application's claims struct — anything that implements
@@ -171,6 +197,8 @@ pub async fn build_decoder<T>(
 where
   T: serde::de::DeserializeOwned + Send + Sync + 'static,
 {
+  ensure_crypto_provider();
+
   let decoder = RemoteJwksDecoder::builder()
     .jwks_url(config.jwks_url.clone())
     .validation(config.validation())

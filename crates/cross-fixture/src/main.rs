@@ -2,9 +2,12 @@
 //! deliberately exercises the link paths the template's own crates do not:
 //!
 //! - `mkDarwinCrossPackages` — a C-compiling dependency (`ring`, whose build
-//!   script compiles C/assembly in crane's deps-only phase) and Apple framework
-//!   linking (`CoreFoundation`, resolved against the SDK's `.tbd` stubs), both
-//!   gated to macos targets.
+//!   script compiles C/assembly in crane's deps-only phase), Apple framework
+//!   linking (`CoreFoundation`, resolved against the SDK's `.tbd` stubs), and
+//!   foundation built with its `auth` feature — the JWKS/OIDC TLS stack
+//!   (`axum-jwt-auth` + `reqwest` + `rustls`) whose rustls provider must stay
+//!   ring, not the aws-lc-rs C library (`aws-lc-sys`) that panics under zig
+//!   cross-compilation to darwin.  All gated to macos targets.
 //! - `mkGnuPortablePackages` — linking a nixpkgs shared library built against a
 //!   modern glibc (`libasound`).  Its undefined references to post-2.17 glibc
 //!   symbols are what the helper's `--allow-shlib-undefined` link flag has to
@@ -43,15 +46,25 @@ extern "C" {
   fn CFAbsoluteTimeGetCurrent() -> f64;
 }
 
-// Reference `ring` (the C-compiling dependency) and a CoreFoundation symbol
-// (the framework link) so neither is pruned from the build graph before
-// linking.
+// Reference `ring` (the C-compiling dependency), a CoreFoundation symbol (the
+// framework link), and foundation's `auth` JWKS decoder builder (the TLS/OIDC
+// cross-compile shape) so none is pruned from the build graph before linking.
 #[cfg(target_os = "macos")]
 fn report() -> String {
   let digest = ring::digest::digest(&ring::digest::SHA256, b"cross-fixture");
   // SAFETY: CFAbsoluteTimeGetCurrent takes no arguments and returns a
   // CFTimeInterval (a plain f64); there is nothing to misuse.
   let now = unsafe { CFAbsoluteTimeGetCurrent() };
+  // Monomorphise foundation's JWKS decoder builder so the reqwest/rustls auth
+  // TLS stack is compiled and linked for the darwin target — the stack whose
+  // rustls provider must resolve to ring, never the aws-lc-rs C library that
+  // breaks this zig cross-build.  Held by reference through a black box so the
+  // optimiser cannot prune it; never called — the darwin fixture is built and
+  // signed, never run, so no crypto provider is registered.
+  let build_decoder = &rust_template_foundation::auth::jwt::build_decoder::<
+    rust_template_foundation::auth::jwt::ServiceClaims,
+  >;
+  std::hint::black_box(build_decoder);
   format!("darwin: {} digest bytes at t={now}", digest.as_ref().len())
 }
 

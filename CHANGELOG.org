@@ -4,6 +4,13 @@
 * Upcoming
 ** Added
 ** Fixes
+1. Foundation's ~auth~ feature no longer pulls the ~aws-lc-rs~ crypto provider
+   (the ~aws-lc-sys~ C library), whose build panics under zig cross-compilation
+   to darwin and broke the darwin release build of any server that enabled
+   ~auth~.  The JWKS/JWT TLS stack now resolves rustls to ring — matching
+   foundation's own HTTP client — and foundation registers ring as the process
+   default crypto provider when it builds a JWKS decoder.  Adopters on ~auth~
+   get working darwin cross-builds with no action needed.
 ** Breaking
 ** Maintenance
 * v0.58.0
