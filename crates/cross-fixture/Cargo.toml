@@ -36,12 +36,26 @@ ring = "0.17"
 # Compiling that feature here for the Windows targets guards that the server
 # cross-compiles, so a future Unix-only dependency slipped into the server
 # feature — as sd-notify once was — fails this build rather than only a real
-# server's.  The `auth` feature is not added: its TLS/OIDC stack is pure-Rust
-# (rustls) and already cross-compiles, so it carries none of the Unix-only risk
-# the server feature does.  Windows only: the darwin/gnu fixture variants and
-# the Linux CI host's native build do not pull it.
+# server's.  Windows only: the darwin/gnu fixture variants and the Linux CI
+# host's native build do not pull it.
 [target.'cfg(target_os = "windows")'.dependencies]
 rust-template-foundation = { workspace = true, features = ["server"] }
+
+# The auth archetype's cross-compile shape, guarded on darwin specifically.
+# foundation's `auth` feature pulls the JWKS/OIDC TLS stack (axum-jwt-auth +
+# reqwest + rustls), which must resolve rustls to ring, not aws-lc-rs:
+# aws-lc-sys is a C library whose build panics under zig cross-compilation to
+# darwin (and is unresolved upstream for aarch64-apple-darwin).  Compiling
+# `auth` here for the darwin targets guards that a regression re-introducing
+# aws-lc-sys — e.g. axum-jwt-auth's aws-lc-rs-enabling default features
+# drifting back on — fails this fixture build rather than a downstream auth
+# server's darwin release CI.  Darwin is the sharp guard because that is where
+# aws-lc-sys breaks; the earlier claim that the auth stack "is pure-Rust and
+# already cross-compiles" was false (rustls' default provider is the aws-lc-rs
+# C library).  macOS only: the windows/gnu fixture variants and the Linux
+# host's native build do not pull it.
+[target.'cfg(target_os = "macos")'.dependencies]
+rust-template-foundation = { workspace = true, features = ["auth"] }
 
 # The mkGnuPortablePackages guard (linking libasound) deliberately uses NO Cargo
 # dependency: an `alsa-sys` crate would be active on the Linux CI host for every

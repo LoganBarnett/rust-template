@@ -140,7 +140,45 @@ Per /a propagated change needs a check/, add a compliance check when it lands so
 existing spawns adopt the guard — e.g. a mention/value check that the emitted
 =.claude/settings.json= carries the =--no-verify= block.
 
-* TODO foundation's auth feature drags in aws-lc-sys, breaking darwin cross-builds
+* DONE foundation's auth feature drags in aws-lc-sys, breaking darwin cross-builds
+
+Fixed in =crates/foundation/=.  =cargo tree -i aws-lc-sys= is now empty for an
+=auth= build, and the shared rustls resolves to =ring=.
+
+The fix is larger than the one-line feature toggle sketched below, because the
+sketch predates the reality of the dependency surface: =reqwest= 0.13 /dropped
+its ring feature entirely/ (it offers only =rustls= = aws-lc-rs, or
+=rustls-no-provider= = bring-your-own), and =axum-jwt-auth= 0.7 exposes no ring
+path — its =rustls-tls-native-roots= even forwards to a reqwest feature that no
+longer exists.  So three coordinated changes in =crates/foundation/Cargo.toml=
+and =src/auth/jwt.rs=:
+
+- =axum-jwt-auth= gains =default-features = false=, dropping its =rustls-tls=
+  default that turned on reqwest 0.13's aws-lc-rs provider.
+- A renamed explicit =reqwest13 = { package = "reqwest", version = "0.13",
+  default-features = false, features = ["json", "rustls-no-provider"] }= selects
+  the provider-agnostic path — the sole non-aws-lc route reqwest 0.13 offers.
+- A direct =rustls = { ..., features = ["ring"] }= lets =build_decoder= register
+  ring as the process-wide crypto provider (an in-memory default, /not/ an
+  on-disk install), which reqwest 0.13's =rustls-no-provider= path requires or
+  it panics at client build.  Feature unification then resolves the shared
+  =rustls= to =ring=, evicting =aws-lc-sys= from the graph.
+
+Coverage: =crates/cross-fixture= now cross-builds foundation's =auth= feature to
+/darwin/ (it built only =server= on windows before), and its false "auth is
+pure-Rust, already cross-compiles" comment is corrected — so a regression
+re-introducing =aws-lc-sys= fails the fixture darwin build rather than a
+downstream spawn's release CI.  No =compliance-checks.toml= entry was added: per
+=docs/compliance.org='s /a propagated change needs a check/ "No" branch, this
+foundation-library change reaches spawns automatically through the foundation
+pin (=foundation-pins-current= gates it), and the cross-fixture darwin build is
+the regression guard.
+
+Validated locally (aarch64-darwin): workspace build / test / clippy green and
+=aws-lc-sys= gone from the =auth= graph.  The Linux→darwin zig cross-build of
+the fixture is validated by the =Darwin cross fixture build= CI job.
+
+The original diagnosis follows.
 
 A spawn that enables the foundation =auth= feature and release-binaries its
 server fails the darwin release cross-build (cargo-zigbuild): =aws-lc-sys='s C

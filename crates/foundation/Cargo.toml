@@ -30,6 +30,8 @@ auth = [
     "cli",
     "dep:openidconnect",
     "dep:reqwest",
+    "dep:reqwest13",
+    "dep:rustls",
     "dep:tower-sessions",
     "dep:axum-jwt-auth",
     "dep:jsonwebtoken",
@@ -69,7 +71,27 @@ rust-embed = { version = "8", features = ["mime-guess"], optional = true }
 openidconnect = { version = "3", features = ["reqwest"], optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-native-roots"], optional = true }
 tower-sessions = { version = "0.15", features = ["memory-store"], optional = true }
-axum-jwt-auth = { version = "0.7", optional = true }
+# JWKS-backed JWT validation.  `default-features = false` disables its
+# `rustls-tls` default, which forwards to reqwest 0.13's `rustls` feature and so
+# turns on the aws-lc-rs rustls provider — a C library (aws-lc-sys) whose build
+# panics under zig cross-compilation to darwin.  We instead drive its reqwest
+# 0.13 TLS through the `reqwest13` dependency below (rustls-no-provider) so the
+# shared rustls resolves to ring, matching our own reqwest above.
+axum-jwt-auth = { version = "0.7", default-features = false, optional = true }
+# axum-jwt-auth builds a reqwest 0.13 client internally to fetch JWKS.  We
+# depend on reqwest 0.13 explicitly (renamed, since our own reqwest above is
+# 0.12) only to select `rustls-no-provider`: reqwest 0.13 no longer offers a
+# ring feature, so its sole non-aws-lc-rs path is to bundle no provider itself
+# and defer to the process-wide default `build_decoder` registers (ring).
+# `json` matches the feature axum-jwt-auth needs; both unify onto the one
+# reqwest 0.13 build.
+reqwest13 = { package = "reqwest", version = "0.13", default-features = false, features = ["json", "rustls-no-provider"], optional = true }
+# Depended on directly so `build_decoder` can register ring as the process-wide
+# rustls crypto provider (an in-memory default, not an on-disk install), which
+# reqwest 0.13's `rustls-no-provider` path requires (it panics at client build
+# otherwise).  `ring` also unifies onto the shared rustls, keeping aws-lc-rs out
+# of the graph entirely.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"], optional = true }
 jsonwebtoken = { version = "10", optional = true }
 
 # Unix-only server dependencies: systemd's journal logging
