@@ -36,7 +36,7 @@ yaml-rust2 = "0.11"
 # on resolved items/attributes/idents rather than scraping source text (the
 # macro-expanded identifiers never appear pre-expansion).  `visit` powers the
 # method-chain traversal.
-syn = { version = "2", features = ["full", "visit", "extra-traits"] }
+syn = { version = "3", features = ["full", "visit", "extra-traits"] }
 # Enables method chaining and reduces superfluous local variables that only
 # exist to name intermediate results.  Prefer .tap() over temporary variables
 # when it improves readability.
