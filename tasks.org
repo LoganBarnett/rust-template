@@ -220,6 +220,87 @@ and aws-lc-sys + zig + darwin is unresolved upstream — so the pragmatic durabl
 path is a non-aws-lc provider in foundation's auth stack, not "make aws-lc-sys
 cross-compile."
 
+* TODO A server spawn's darwin build is broken from emission, and the template's CI can't see it
+
+Descriptive, not prescriptive — this frames a blind spot that the DONE aws-lc
+entry above and the two tasks below are each an /instance/ of.
+
+The emitted =server= archetype enables foundation's =auth= feature by default,
+and =auth= pulls the reqwest/rustls stack.  That stack has broken the darwin
+release cross-build of a freshly emitted server spawn /twice/, at two different
+layers: =aws-lc-sys='s C library would not zig-cross-compile to darwin (now
+fixed, DONE above), and the native cert store (=rustls-native-certs= /
+=rustls-platform-verifier=) links the macOS =Security= / =SystemConfiguration= /
+=CoreFoundation= frameworks that the emitted flake supplies no =appleSdk= for
+(open, below).  So a server spawn is /broken for darwin from the moment it is
+emitted/ — not from anything the spawn did, but because the archetype carries an
+auth stack the emitted flake cannot cross-build.  loku surfaced both.
+
+The template's own CI did not catch either, and structurally cannot: it
+release-binaries only =compliance-cli= (a =cli= crate, no auth), and its
+=cross-fixture= auth-darwin build passes only because the root =flake.nix= hands
+the fixture =appleSdk= that the /emitted/ flake never wires.  So the template
+stays green while every emitted server spawn's darwin release build is red — the
+fixture masks exactly the gap that ships.
+
+Two threads of work (design deferred; the specific mechanics are in the tasks
+below):
+- *Coverage:* the template's own CI should build a representative /server/ spawn
+  — =auth= on, through the /emitted/ flake — for darwin, so this whole class of
+  breakage fails the template's CI rather than a downstream spawn's release run.
+- *Fix in the emitted output:* the emitted flake must make a server spawn's
+  darwin build work out of the box.
+
+* TODO Emit appleSdk for auth-server spawns so their darwin release cross-builds
+
+The aws-lc fix above got the =auth= graph onto =ring=, but that exposed the
+/next/ darwin-cross wall the same auth stack hides: foundation's
+=rustls-tls-native-roots= pulls =rustls-native-certs= /
+=rustls-platform-verifier=, which /link the macOS =Security=,
+=SystemConfiguration=, and =CoreFoundation= frameworks/.  The zig cross-link
+needs Apple's SDK stubs (=apple-sdk.src=), and the *emitted*
+=template/flake.nix= does not pass =appleSdk= — it is opt-in-via-comment.  So
+every auth-server spawn's darwin release build fails with =unable to find
+framework 'Security'=.  Surfaced by the =loku= re-sync: bumping to the fixed
+foundation evicted aws-lc-sys, then the darwin =Release artifacts build= failed
+at link on the missing frameworks.
+
+The cross-fixture guard /masks/ this: the DONE entry's =crates/cross-fixture=
+darwin auth build passes only because the root =flake.nix= hands the fixture
+=appleSdk= (=fixtureDarwinPackages=, =apple-sdk.src=).  A spawn's emitted flake
+has no such wiring, so a green fixture build does not reflect a spawn's reality.
+
+Fix: when a spawn enables =auth= (its server links the frameworks by
+construction), the emitted =template/flake.nix= should wire =appleSdk =
+pkgs.apple-sdk.src= into its =mkDarwinCrossPackages= call and set
+=config.allowUnfree= / =allowUnsupportedSystem= on the =pkgs= import — the exact
+opt-in loku applied by hand (see its =flake.nix=).  Because =appleSdk= accepts
+the (unfree) Apple SDK licence, gate the emission on the =auth= feature rather
+than emitting it unconditionally.  Consider a compliance check tying "auth
+enabled" to "appleSdk wired", so existing auth spawns are flagged.
+
+* TODO Expose pkgsUnfreeFor as a foundation.lib helper
+
+The =appleSdk= wiring above needs an /unfree/ nixpkgs instance to evaluate
+=apple-sdk.src= (=allowUnfree= + =allowUnsupportedSystem=), quarantined from the
+main build =pkgs= so the licence acceptance does not widen the free graph.  The
+template's own =flake.nix= already has exactly this — a local =pkgsUnfreeFor=
+=let=-binding (root =flake.nix=) that the fixture darwin build consumes — but it
+is /not/ exposed through =foundation.lib=.  So every framework-linking spawn
+(loku just did; sonify-health for CoreAudio) re-derives the same ~10-line
+=import nixpkgs { config.allowUnfree = true; allowUnsupportedSystem = true; ...
+}= boilerplate by hand.  Foundation already knows this pattern; a spawn should
+not carry it.
+
+Expose it as =foundation.lib.pkgsUnfreeFor= (taking =nixpkgs=, =system=, and the
+=overlays= the spawn uses, to stay overlay-consistent with the spawn's own
+=pkgs=), so a spawn writes =appleSdk = (foundation.lib.pkgsUnfreeFor { ...
+}).apple-sdk.src= instead of a second hand-rolled =import nixpkgs=.  The emitted
+=template/flake.nix= (and the appleSdk-emission task above) should then wire
+=appleSdk= through this helper rather than the raw =import=.  Refactor the
+template's own =pkgsUnfreeFor= onto the shared helper too, so the repo dogfoods
+it.
+
 * TODO Emit integration-test infrastructure and CI, not just a placeholder test
 
 The template emits =crates/<crate>/tests/integration_test.rs= but lays down /no/

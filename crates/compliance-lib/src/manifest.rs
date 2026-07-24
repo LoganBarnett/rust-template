@@ -124,6 +124,16 @@ pub enum CheckKind {
     pointer: String,
     contains: String,
   },
+  /// `target` parses as YAML and the scalar at `pointer` does NOT contain
+  /// `contains` as a substring — and an absent pointer passes.  Forbids a
+  /// specific superseded value (e.g. an inline guard a reusable workflow now
+  /// owns) without forbidding an unrelated value a spawn set for its own
+  /// reasons, and without requiring the pointer to be present at all.
+  YamlPathNotContains {
+    target: String,
+    pointer: String,
+    contains: String,
+  },
   /// `target` parses as YAML and the sequence at `pointer` contains a scalar
   /// equal to `value`.
   YamlSeqContains {
@@ -459,6 +469,11 @@ impl RawCheck {
         value: require(&id, &kind, "value", value)?,
       },
       "yaml-path-contains" => CheckKind::YamlPathContains {
+        target: require(&id, &kind, "target", target)?,
+        pointer: require(&id, &kind, "pointer", pointer)?,
+        contains: require(&id, &kind, "contains", contains)?,
+      },
+      "yaml-path-not-contains" => CheckKind::YamlPathNotContains {
         target: require(&id, &kind, "target", target)?,
         pointer: require(&id, &kind, "pointer", pointer)?,
         contains: require(&id, &kind, "contains", contains)?,

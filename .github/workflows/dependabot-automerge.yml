@@ -23,17 +23,16 @@ permissions:
   contents: write
   # Perform the merge itself.
   pull-requests: write
-  # Dispatch publish.yml once the merge lands.
+  # Dispatch the CI re-run and publish.yml.
   actions: write
+  # Create and apply the dependabot-hold label.
+  issues: write
 
 jobs:
   automerge:
-    # The upstream CI run needs to have been triggered by a pull_request
-    # and to have succeeded; pushes to main, failed runs, and unrelated
-    # branches are ignored.
-    if: >
-      github.event.workflow_run.event == 'pull_request' &&
-      github.event.workflow_run.conclusion == 'success'
+    # No event/conclusion gate here — it lives on the reusable workflow's job,
+    # so this wrapper is a static pass-through (see
+    # reusable-dependabot-automerge.yml).
     # Local ref, as in ci.yml's use of ./reusable-ci.yml.  A
     # `workflow_run` trigger always resolves reusable workflows against
     # the default branch, so this is main's copy — the same commit a

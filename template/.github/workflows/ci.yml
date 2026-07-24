@@ -5,6 +5,12 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # The Dependabot auto-merge flow re-dispatches this workflow on a bump's
+  # branch after committing the changelog: a GITHUB_TOKEN push fires no
+  # `push`/`pull_request` run (the no-cascade rule), but `workflow_dispatch`
+  # is exempt, so dispatching is how the required checks run against the
+  # changelog commit.  See reusable-dependabot-automerge.yml.
+  workflow_dispatch:
 
 jobs:
   ci:
