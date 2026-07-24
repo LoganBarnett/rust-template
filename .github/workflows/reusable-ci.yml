@@ -23,9 +23,52 @@ on:
         default: "CHANGELOG.org"
 
 jobs:
+  # A cheap front gate that lets a Dependabot bump skip the expensive Nix jobs
+  # on its first CI pass — the one before the auto-merge flow has committed the
+  # changelog entry.  Running the full suite there is wasted: the flow adds the
+  # entry and re-dispatches CI, and only that second, changelog-bearing commit
+  # is ever merged, so the suite needs to run once, against it.  Every
+  # non-Dependabot event, and the re-dispatched (workflow_dispatch) pass, runs
+  # in full.  This is never itself a merge gate — the skipped first-pass commit
+  # is not a merge target, so the "a skipped required check blocks the merge"
+  # hazard does not apply; the commit that merges always ran the full suite.
+  gate:
+    name: Gate
+    runs-on: ubuntu-latest
+    outputs:
+      run_expensive: ${{ steps.decide.outputs.run_expensive }}
+    steps:
+      - name: Decide whether to run the expensive jobs
+        id: decide
+        run: |
+          # Only a Dependabot pull_request whose diff does not yet carry the
+          # changelog file is short-circuited.  Any doubt (a failed
+          # `gh pr diff`) defaults to running, so the gate never suppresses a
+          # suite it was unsure about.
+          run_expensive=true
+          if [ "$EVENT" = "pull_request" ] \
+              && [ "$ACTOR" = "dependabot[bot]" ]; then
+            if changed=$(gh pr diff "$PR" --repo "$REPO" --name-only) \
+                && ! printf '%s\n' "$changed" \
+                  | grep --quiet --line-regexp --fixed-strings \
+                    "$CHANGELOG_FILE"; then
+              run_expensive=false
+            fi
+          fi
+          echo "run_expensive=$run_expensive" >> "$GITHUB_OUTPUT"
+        env:
+          EVENT: ${{ github.event_name }}
+          ACTOR: ${{ github.actor }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          CHANGELOG_FILE: ${{ inputs.changelog-file }}
+          GH_TOKEN: ${{ github.token }}
+
   test:
     name: Test
     runs-on: ubuntu-latest
+    needs: gate
+    if: needs.gate.outputs.run_expensive == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -53,6 +96,8 @@ jobs:
   format:
     name: Formatting
     runs-on: ubuntu-latest
+    needs: gate
+    if: needs.gate.outputs.run_expensive == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -66,6 +111,8 @@ jobs:
   clippy:
     name: Clippy (warnings denied)
     runs-on: ubuntu-latest
+    needs: gate
+    if: needs.gate.outputs.run_expensive == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -95,19 +142,15 @@ jobs:
   changelog:
     name: Changelog entry required
     runs-on: ubuntu-latest
-    # Runs on PRs and on pushes (direct-to-main as well as branch
-    # pushes) so the changelog-entry requirement holds on every path
-    # into main, not only the PR-merge path.
-    #
-    # The dependabot exclusion below is mechanical, not a free pass.
-    # Dependabot cannot author a changelog entry, so this job is
-    # skipped for its bump here.  reusable-dependabot-automerge.yml
-    # then gates on this CI run being green, composes the entry from
-    # the PR, and runs this same `changelog-roller check-additions`
-    # inline before merging — so the gate still runs, just in the
-    # automerge rather than a second CI pass (a GITHUB_TOKEN push
-    # would trigger no second pass anyway).
-    if: github.actor != 'dependabot[bot]'
+    needs: gate
+    # Gated with the expensive jobs: skipped on a Dependabot bump's first CI
+    # pass (before the auto-merge flow has committed the entry) and run on the
+    # re-dispatched pass, where the entry is present and this check validates
+    # it for real — so Dependabot is no longer exempt, it is made to comply.
+    # Also runs on every non-Dependabot event, including pushes to main, so the
+    # changelog-entry requirement holds on every path into main, not only the
+    # PR-merge path.
+    if: needs.gate.outputs.run_expensive == 'true'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -141,6 +184,8 @@ jobs:
   abi:
     name: ABI compatibility
     runs-on: ubuntu-latest
+    needs: gate
+    if: needs.gate.outputs.run_expensive == 'true'
     # Runs on PRs and on pushes so the asymmetric "ABI break ⇒
     # Breaking entry" rule holds on every path into main, including
     # direct pushes that bypass the PR flow.
@@ -219,6 +264,8 @@ jobs:
   release-artifacts:
     name: Release artifacts build
     runs-on: ubuntu-latest
+    needs: gate
+    if: needs.gate.outputs.run_expensive == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -288,6 +335,8 @@ jobs:
   windows-smoke:
     name: Windows smoke (wine)
     runs-on: ubuntu-latest
+    needs: gate
+    if: needs.gate.outputs.run_expensive == 'true'
     steps:
       - uses: actions/checkout@v4
 

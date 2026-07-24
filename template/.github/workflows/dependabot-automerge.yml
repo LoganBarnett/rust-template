@@ -18,21 +18,17 @@ on:
     types: [completed]
 
 permissions:
-  # Push the changelog commit to main after the squash-merge.
+  # Push the changelog commit to the bump's branch before merging.
   contents: write
   # Perform the merge itself.
   pull-requests: write
-  # Dispatch `publish.yml` once the merge lands.  `workflow_dispatch`
-  # is exempt from the `GITHUB_TOKEN` no-cascade rule, so this is
-  # how publish actually gets to run.
+  # Dispatch the CI re-run (against the changelog commit) and `publish.yml`.
+  # `workflow_dispatch` is exempt from the `GITHUB_TOKEN` no-cascade rule, so
+  # this is how both actually get to run.
   actions: write
+  # Create and apply the dependabot-hold label.
+  issues: write
 
 jobs:
   automerge:
-    # The upstream CI run needs to have actually been triggered by a
-    # pull_request and to have succeeded; everything else (pushes to
-    # main, failed runs, re-runs of unrelated branches) is ignored.
-    if: >
-      github.event.workflow_run.event == 'pull_request' &&
-      github.event.workflow_run.conclusion == 'success'
     uses: LoganBarnett/rust-template/.github/workflows/reusable-dependabot-automerge.yml@main

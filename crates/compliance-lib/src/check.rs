@@ -172,6 +172,11 @@ pub fn run_check(check: &Check, ctx: &SpawnContext) -> Verdict {
       pointer,
       contains,
     } => yaml_path(ctx.dir, target, pointer, &PathMatch::Contains(contains)),
+    CheckKind::YamlPathNotContains {
+      target,
+      pointer,
+      contains,
+    } => yaml_path(ctx.dir, target, pointer, &PathMatch::NotContains(contains)),
     CheckKind::YamlSeqContains {
       target,
       pointer,
@@ -480,6 +485,10 @@ enum PathMatch<'a> {
   Equals(&'a str),
   /// The pointer resolves to a scalar containing this as a substring.
   Contains(&'a str),
+  /// The pointer resolves to a scalar that does NOT contain this substring —
+  /// or does not resolve at all.  Forbids a specific value without requiring
+  /// the pointer to be present.
+  NotContains(&'a str),
   /// The pointer resolves to a sequence containing a scalar equal to this.
   SeqContains(&'a str),
 }
@@ -539,6 +548,15 @@ fn verdict(
       None => Verdict::Fail {
         detail: format!("{target}: no scalar at \"{pointer}\""),
       },
+    },
+    // An absent scalar passes: the point is to forbid a specific value, not to
+    // require the pointer.  A present scalar carrying the needle is the one
+    // failure — e.g. a spawn still holding a guard the reusable now owns.
+    PathMatch::NotContains(needle) => match &resolved.scalar {
+      Some(actual) if actual.contains(needle) => Verdict::Fail {
+        detail: format!("{target}: \"{pointer}\" still contains \"{needle}\""),
+      },
+      _ => Verdict::Pass,
     },
     PathMatch::SeqContains(expected) => match &resolved.seq {
       Some(items) if items.iter().any(|item| item == expected) => Verdict::Pass,
@@ -1505,6 +1523,50 @@ mod tests {
       Some("org/repo/x.yml@main")
     );
     assert!(!resolve_yaml(doc, "jobs.missing").exists);
+  }
+
+  #[test]
+  fn not_contains_forbids_only_the_present_needle() {
+    // A wrapper still carrying the superseded guard fails; a spawn's own
+    // unrelated guard passes, and an absent guard passes.
+    let needle = "github.event.workflow_run.conclusion == 'success'";
+    let holding = Resolved {
+      exists: true,
+      scalar: Some(needle.to_string()),
+      seq: None,
+    };
+    let custom = Resolved {
+      exists: true,
+      scalar: Some("github.repository == 'owner/fork'".to_string()),
+      seq: None,
+    };
+    assert!(matches!(
+      verdict(
+        "w.yml",
+        "jobs.automerge.if",
+        &PathMatch::NotContains(needle),
+        &holding,
+      ),
+      Verdict::Fail { .. }
+    ));
+    assert!(matches!(
+      verdict(
+        "w.yml",
+        "jobs.automerge.if",
+        &PathMatch::NotContains(needle),
+        &custom,
+      ),
+      Verdict::Pass
+    ));
+    assert!(matches!(
+      verdict(
+        "w.yml",
+        "jobs.automerge.if",
+        &PathMatch::NotContains(needle),
+        &Resolved::absent(),
+      ),
+      Verdict::Pass
+    ));
   }
 
   #[test]

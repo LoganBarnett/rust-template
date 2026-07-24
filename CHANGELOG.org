@@ -4,6 +4,10 @@
 * Upcoming
 ** Added
 ** Fixes
+1. Dependabot version bumps now merge automatically instead of stalling when
+   several are open at once.  A bump whose CI fails is parked under a new
+   ~dependabot-hold~ label; remove the label once its CI is fixed to return it
+   to the queue.
 ** Breaking
 ** Maintenance
 * v0.62.0

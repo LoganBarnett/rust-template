@@ -1,31 +1,48 @@
 name: Dependabot auto-merge (reusable)
 
-# Invoked by a consumer wrapper that triggers on `workflow_run`
-# completing for the CI workflow.  All gating decisions happen here
-# so the wrapper stays a one-liner.
+# Invoked by a consumer wrapper that fires on `workflow_run` completing for
+# the CI workflow.  All gating lives here so the wrapper stays a one-liner.
 #
-# The flow runs in a single pass.  When CI passes on a Dependabot bump
-# this fires: it injects a changelog entry on the bump's branch and
-# squash-merges immediately, combining the bump and the changelog into
-# one commit on main.  The squash-merge itself is the mergeability gate
-# — GitHub lands it or rejects it — rather than a pre-check on the
-# asynchronously-computed mergeStateStatus, which races.
+# This is a serial, single-flight queue over Dependabot's open bumps, built
+# to land them cleanly under branch protection that requires the CI checks to
+# pass on the merged commit.  The core problem it solves: the changelog entry
+# must ride the same commit the checks run against, but committing it and
+# merging in one pass moves the head out from under the checks that passed —
+# and a GITHUB_TOKEN push cannot re-run them (the no-cascade rule).  So the
+# flow runs two passes over each bump:
 #
-# Dependabot cannot author a changelog entry, so it is exempt from the
-# "Changelog entry required" CI job.  This flow supplies what that job
-# would demand rather than skipping it: it composes the entry from the
-# PR and runs the same `changelog-roller` — both the insert and the
-# `check-additions` gate the CI job runs — inline.  Nothing is skipped;
-# the build and test checks already passed on the bump and the code
-# does not change.
+#   Pass 1 — CI has passed on the raw bump and it carries no changelog yet:
+#     compose the entry, commit it to the bump's branch, and re-dispatch CI
+#     via `workflow_dispatch` (which IS exempt from no-cascade) so the
+#     required checks run against the changelog-bearing commit.
+#   Pass 2 — CI has passed on that changelog-bearing commit: squash-merge it.
+#     The merged head is exactly what the checks validated.
 #
-# It deliberately does NOT push the changelog and wait for a second CI
-# run.  A commit pushed with `GITHUB_TOKEN` does not trigger workflows
-# (the no-cascade rule), so that second run would never fire and the
-# PR would deadlock — which is exactly what an earlier two-pass version
-# did once its author gate was fixed.  Publish is dispatched via
-# `workflow_dispatch` (itself exempt from the no-cascade rule) once the
-# merge lands.
+# The two passes are told apart by whether the changelog file is already in
+# the PR's diff (the allowlist action's `has-changelog` output).
+#
+# Supporting machinery, all aimed at not stranding a bump:
+#   - Single flight.  The concurrency group is a constant, so at most one
+#     bump is in flight; two merges cannot race and leave each other stale.
+#   - Rebase first.  A bump is advanced only while up to date with the base;
+#     a behind bump is nudged and left for its re-run.  The changelog is
+#     committed only once the bump is up to date, so the brief window in which
+#     its branch is "edited" (and thus un-rebaseable by Dependabot) is short.
+#   - Self-heal.  A branch carrying the changelog commit is disowned by
+#     Dependabot (it will not rebase a branch edited by someone else); if such
+#     a branch falls behind, it is `@dependabot recreate`d, which rebuilds it
+#     from scratch and discards the stray commit.
+#   - Hold label.  A bump whose CI fails is labeled and skipped, so a genuine
+#     breaking upgrade does not wedge the head of the queue; a human removes
+#     the label once the code is fixed.
+#   - Advance.  After each merge or park, the oldest still-behind bump is
+#     nudged, walking the queue one bump at a time.
+#
+# The squash-merge is the mergeability gate; "behind the base" is read from
+# the compare API's `behind_by` (derived synchronously from the commit graph,
+# unlike the asynchronously-computed mergeStateStatus, which races).  Publish
+# is dispatched via `workflow_dispatch` after the merge, for the same
+# no-cascade reason the CI re-dispatch exists.
 
 on:
   workflow_call:
@@ -33,30 +50,61 @@ on:
       changelog-file:
         type: string
         default: "CHANGELOG.org"
+      ci-workflow:
+        description: >-
+          File name of the CI workflow to re-dispatch after committing the
+          changelog, so the required checks run against the changelog commit.
+        type: string
+        default: "ci.yml"
       publish-workflow:
         description: >-
-          File name of the publish workflow to dispatch after merge.
-          Set to an empty string to skip the dispatch step entirely
-          (e.g. for repositories that have no publish step).
+          File name of the publish workflow to dispatch after merge.  Set to
+          an empty string to skip the dispatch entirely (e.g. a repository
+          with no publish step).
         type: string
         default: "publish.yml"
-
-# Serialize per PR so two CI completions for the same branch cannot
-# drive overlapping runs (e.g. a rebase landing while a merge is in
-# flight).  `cancel-in-progress: false` so we never abort a run that
-# is already past the gating checks and mid-merge.
-concurrency:
-  group: dependabot-automerge-${{ github.event.workflow_run.head_branch }}
-  cancel-in-progress: false
+      hold-label:
+        description: >-
+          Label applied to a Dependabot bump whose CI has failed, to park it
+          out of the queue until a human removes it.  The queue skips any bump
+          carrying it.
+        type: string
+        default: "dependabot-hold"
 
 jobs:
   automerge:
     name: Auto-merge
+    # The event/conclusion gate lives here, on the reusable's job, rather than
+    # in the consumer wrapper, so a spawn's wrapper is a static pass-through:
+    # changes to which events and conclusions drive the flow ride @main and
+    # never require a spawn to re-sync.  The reusable inherits the caller's
+    # `github` context, so `github.event.workflow_run` resolves here.  Fire on
+    # the CI run a bump's `pull_request` produced (pass 1) and the run its
+    # changelog re-dispatch produced (pass 2, a `workflow_dispatch` run), on
+    # both success and failure — a failure parks the bump.  Pushes to main and
+    # other events are ignored.
+    if: >
+      (github.event.workflow_run.event == 'pull_request' ||
+       github.event.workflow_run.event == 'workflow_dispatch') &&
+      (github.event.workflow_run.conclusion == 'success' ||
+       github.event.workflow_run.conclusion == 'failure')
+    # Repo-wide single flight, at the job level rather than the workflow level
+    # so an invocation the `if` skips never claims the group — a no-op run for
+    # an ignored event cannot displace a real merge waiting in the single
+    # pending slot.  The group is a constant, not keyed by branch, so at most
+    # one bump is in flight and two merges cannot race and strand each other.
+    # `cancel-in-progress: false` so a run already mid-merge is never aborted.
+    concurrency:
+      group: dependabot-automerge
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
+      # Dispatch the CI re-run and the publish workflow.
       actions: write
+      # Create and apply the hold label.
+      issues: write
     steps:
       - name: Resolve PR from workflow_run head
         id: pr
@@ -84,37 +132,42 @@ jobs:
         if: steps.pr.outputs.skip == 'false'
         run: |
           gh pr view "$PR_NUMBER" --repo "$REPO" \
-            --json author,title,labels,url,headRefName \
+            --json author,title,labels,url,headRefName,baseRefName \
             > pr.json
           AUTHOR=$(jq --raw-output '.author.login' pr.json)
           IS_BOT=$(jq --raw-output '.author.is_bot' pr.json)
           TITLE=$(jq --raw-output '.title' pr.json)
           URL=$(jq --raw-output '.url' pr.json)
           HEAD_REF=$(jq --raw-output '.headRefName' pr.json)
+          BASE_REF=$(jq --raw-output '.baseRefName' pr.json)
           IS_SECURITY=$(jq --raw-output \
             '[.labels[].name] | any(. == "security")' pr.json)
+          IS_HELD=$(jq --raw-output --arg hold "$HOLD_LABEL" \
+            '[.labels[].name] | any(. == $hold)' pr.json)
           {
             echo "author=$AUTHOR"
             echo "is_bot=$IS_BOT"
             echo "title=$TITLE"
             echo "url=$URL"
             echo "head_ref=$HEAD_REF"
+            echo "base_ref=$BASE_REF"
             echo "is_security=$IS_SECURITY"
+            echo "is_held=$IS_HELD"
           } >> "$GITHUB_OUTPUT"
         env:
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
+          HOLD_LABEL: ${{ inputs.hold-label }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Gate on author
         id: author
         if: steps.pr.outputs.skip == 'false'
         run: |
-          # `gh` spells the Dependabot GitHub App author `app/dependabot`,
-          # whereas the raw API and older `gh` releases use
-          # `dependabot[bot]`.  Accept either spelling, and require the
-          # bot flag so a human login that happens to collide cannot slip
-          # through — rather than pinning a single, drift-prone string.
+          # `gh` spells the Dependabot app author `app/dependabot`; the raw
+          # API and older `gh` use `dependabot[bot]`.  Accept either, and
+          # require the bot flag so a colliding human login cannot slip
+          # through.
           if [ "$IS_BOT" = "true" ] && \
              { [ "$AUTHOR" = "dependabot[bot]" ] || \
                [ "$AUTHOR" = "app/dependabot" ]; }; then
@@ -128,17 +181,55 @@ jobs:
           AUTHOR: ${{ steps.meta.outputs.author }}
           IS_BOT: ${{ steps.meta.outputs.is_bot }}
 
-      # Which files a Dependabot bump may touch — and whether the
-      # changelog is already present — is decided by a shared, unit-tested
-      # predicate (allowlist.sh), pulled in as a composite action so the
-      # rule has exactly one definition for every spawn consuming this flow
-      # via @main.  Local `./` refs are unavailable here: on a spawn this
-      # workflow runs in the caller's checkout, which has no rust-template
-      # scripts, so the action is referenced by its full owner/repo path
-      # (the same reason setup-nix is).
+      - name: Plan the run
+        id: plan
+        if: steps.pr.outputs.skip == 'false'
+        run: |
+          # A held or non-Dependabot PR is a no-op.  A failed CI run parks the
+          # bump; a passing one enters processing (allowlist, rebase-first,
+          # and the two-pass changelog/merge).
+          if [ "$IS_DEPENDABOT" != "true" ] || [ "$IS_HELD" = "true" ]; then
+            MODE=skip
+          elif [ "$CONCLUSION" = "failure" ]; then
+            MODE=park
+          elif [ "$CONCLUSION" = "success" ]; then
+            MODE=process
+          else
+            MODE=skip
+          fi
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+        env:
+          IS_DEPENDABOT: ${{ steps.author.outputs.is_dependabot }}
+          IS_HELD: ${{ steps.meta.outputs.is_held }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+
+      # --- Failure path: park the bump under the hold label ---
+
+      - name: Park the failing bump
+        if: steps.plan.outputs.mode == 'park'
+        run: |
+          # `--force` upserts, so this both self-provisions the label in a
+          # spawn that has never seen it and is idempotent on re-runs.
+          gh label create "$HOLD_LABEL" --repo "$REPO" --force \
+            --color BFD4F2 \
+            --description "Dependabot bump parked: CI is failing and it needs a manual fix before it can auto-merge.  Remove to return it to the queue."
+          gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label "$HOLD_LABEL"
+          echo "::notice::Parked #$PR_NUMBER under $HOLD_LABEL (CI failed)."
+        env:
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          HOLD_LABEL: ${{ inputs.hold-label }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # --- Success path: allowlist, rebase-first, two-pass changelog/merge ---
+
+      # Which files a bump may touch — and whether the changelog is already
+      # present — is decided by a shared, unit-tested predicate, pulled in as
+      # a composite action so the rule has one definition for every spawn that
+      # consumes this flow via @main.
       - name: Check the PR's files against the allowlist
         id: files
-        if: steps.author.outputs.is_dependabot == 'true'
+        if: steps.plan.outputs.mode == 'process'
         uses: LoganBarnett/rust-template/.github/actions/dependabot-allowlist@main
         with:
           repo: ${{ github.repository }}
@@ -148,53 +239,91 @@ jobs:
 
       - name: Decide whether to proceed
         id: gate
-        if: steps.pr.outputs.skip == 'false'
+        if: steps.plan.outputs.mode == 'process'
         run: |
-          if [ "$IS_DEPENDABOT" != "true" ]; then
-            echo "proceed=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
           if [ -n "$UNEXPECTED" ]; then
-            echo "::warning::PR touches unexpected files — skipping"
+            echo "::warning::PR touches unexpected files — leaving for a human."
             echo "$UNEXPECTED"
             echo "proceed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # No mergeability pre-check here.  mergeStateStatus is computed
-          # asynchronously, so polling it and timing out is a race that
-          # drops still-mergeable PRs.  The squash-merge below is the gate
-          # instead: it succeeds or fails on GitHub's own verdict, and its
-          # retry absorbs the brief "mergeability still computing" window.
-          # CI success is already established by the workflow_run trigger
-          # that fired this run.
-          # Idempotency: a re-fire after a partial run may already carry
-          # the changelog entry, so record whether it still needs adding.
           echo "has_changelog=$HAS_CHANGELOG" >> "$GITHUB_OUTPUT"
           echo "proceed=true" >> "$GITHUB_OUTPUT"
         env:
-          IS_DEPENDABOT: ${{ steps.author.outputs.is_dependabot }}
           UNEXPECTED: ${{ steps.files.outputs.unexpected }}
           HAS_CHANGELOG: ${{ steps.files.outputs.has-changelog }}
 
-      # --- Inject the changelog entry on the PR branch ---
+      - name: Check whether the bump is up to date
+        id: fresh
+        if: steps.gate.outputs.proceed == 'true'
+        run: |
+          # `behind_by` is the count of base commits the head is missing;
+          # under a "require up to date" rule any nonzero value blocks the
+          # merge.  Read it from the commit graph (synchronous) rather than
+          # mergeStateStatus (asynchronous, races).
+          BEHIND=$(gh api \
+            "repos/$REPO/compare/$BASE_REF...$HEAD_REF" --jq '.behind_by')
+          if [ "$BEHIND" -gt 0 ]; then
+            echo "up_to_date=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "up_to_date=true" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          REPO: ${{ github.repository }}
+          BASE_REF: ${{ steps.meta.outputs.base_ref }}
+          HEAD_REF: ${{ steps.meta.outputs.head_ref }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Nudge a behind bump forward
+        if: >
+          steps.gate.outputs.proceed == 'true' &&
+          steps.fresh.outputs.up_to_date == 'false'
+        run: |
+          # Bring the bump up to date before touching its branch.  If it
+          # already carries the changelog commit it is disowned by Dependabot
+          # (which will not rebase an edited branch), so rebuild it from
+          # scratch with `recreate`; otherwise a plain `rebase` suffices.  Its
+          # re-run re-enters this flow up to date.
+          if [ "$HAS_CHANGELOG" = "true" ]; then
+            cmd=recreate
+          else
+            cmd=rebase
+          fi
+          gh pr comment "$PR_NUMBER" --repo "$REPO" \
+            --body "@dependabot $cmd"
+          echo "::notice::#$PR_NUMBER is behind $BASE_REF; requested $cmd."
+        env:
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          BASE_REF: ${{ steps.meta.outputs.base_ref }}
+          HAS_CHANGELOG: ${{ steps.gate.outputs.has_changelog }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # --- Pass 1: commit the changelog and re-dispatch CI ---
 
       - uses: actions/checkout@v4
-        if: steps.gate.outputs.proceed == 'true'
+        if: >
+          steps.gate.outputs.proceed == 'true' &&
+          steps.fresh.outputs.up_to_date == 'true' &&
+          steps.gate.outputs.has_changelog == 'false'
         with:
           ref: ${{ steps.meta.outputs.head_ref }}
           token: ${{ secrets.GITHUB_TOKEN }}
-          # Full history so the `check-additions` gate below can diff the
-          # entry against `origin/main`, exactly as the CI job does.
+          # Full history so `changelog-roller` can diff against origin/main.
           fetch-depth: 0
 
-      # Install Nix + restore/save the `/nix` store cache.  See
-      # `.github/actions/setup-nix` for the rationale.
+      # Install Nix + restore/save the `/nix` store cache so `changelog-roller`
+      # is available.  See `.github/actions/setup-nix` for the rationale.
       - uses: LoganBarnett/rust-template/.github/actions/setup-nix@main
-        if: steps.gate.outputs.proceed == 'true'
-
-      - name: Append changelog entry and push to PR branch
         if: >
           steps.gate.outputs.proceed == 'true' &&
+          steps.fresh.outputs.up_to_date == 'true' &&
+          steps.gate.outputs.has_changelog == 'false'
+
+      - name: Commit the changelog entry and re-dispatch CI
+        if: >
+          steps.gate.outputs.proceed == 'true' &&
+          steps.fresh.outputs.up_to_date == 'true' &&
           steps.gate.outputs.has_changelog == 'false'
         run: |
           if [ "$IS_SECURITY" = "true" ]; then
@@ -204,46 +333,49 @@ jobs:
           fi
           BODY="${TITLE} (${URL})"
           # Compose the entry from the PR and insert it with the same
-          # changelog-roller the CI check uses.  Dependabot is exempt
-          # from the "Changelog entry required" job, so this supplies
-          # what that job would demand — it does not bypass it.
+          # changelog-roller the CI check uses.  The CI changelog job then
+          # validates it for real on the re-dispatched run — this composes the
+          # entry, it does not bypass the check.
           nix develop .#ci --command changelog-roller insert-item \
             --input-file "$CHANGELOG_FILE" \
             --heading "$HEADING" \
             --body "$BODY" \
             --in-place
-          # Run the CI job's own gate against the result, so the
-          # changelog check is genuinely enforced here rather than
-          # merely satisfied by construction.
-          nix develop .#ci --command changelog-roller check-additions \
-            --input-file "$CHANGELOG_FILE" \
-            --base origin/main
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add "$CHANGELOG_FILE"
           git commit --message "changelog for #${PR_NUMBER}"
           git push origin "HEAD:$HEAD_REF"
+          # A GITHUB_TOKEN push fires no `pull_request` run (no-cascade), so
+          # re-run CI explicitly against the changelog commit via
+          # `workflow_dispatch`, which is exempt.  That run's required checks
+          # land on this SHA, and its completion re-enters this flow at pass 2.
+          gh workflow run "$CI_WORKFLOW" --repo "$REPO" --ref "$HEAD_REF"
+          echo "::notice::Committed changelog for #${PR_NUMBER} and re-dispatched CI."
         env:
           CHANGELOG_FILE: ${{ inputs.changelog-file }}
+          CI_WORKFLOW: ${{ inputs.ci-workflow }}
+          REPO: ${{ github.repository }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           TITLE: ${{ steps.meta.outputs.title }}
           URL: ${{ steps.meta.outputs.url }}
           IS_SECURITY: ${{ steps.meta.outputs.is_security }}
           HEAD_REF: ${{ steps.meta.outputs.head_ref }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # --- Squash-merge and dispatch publish ---
+      # --- Pass 2: squash-merge the changelog-bearing commit ---
 
-      # The squash-merge is the gate.  We do not pre-check mergeability
-      # (see the gate step): GitHub decides here.  Success means the bump
-      # and its changelog land as one commit on main.  A failure is
-      # usually the brief window where GitHub is still computing
-      # mergeability after the changelog push, so retry patiently; a
-      # failure that persists is a genuine conflict, and we leave the PR
-      # for a human rather than force it.
       - name: Squash-merge the PR
         id: merge
-        if: steps.gate.outputs.proceed == 'true'
+        if: >
+          steps.gate.outputs.proceed == 'true' &&
+          steps.fresh.outputs.up_to_date == 'true' &&
+          steps.gate.outputs.has_changelog == 'true'
         run: |
+          # The merge is the gate: GitHub lands it or rejects it on its own
+          # verdict.  A transient rejection is usually the brief window where
+          # mergeability is still computing, so retry patiently; a persistent
+          # one is a genuine block, and we leave the PR for a human.
           merged=false
           n=0
           while [ $n -lt 12 ]; do
@@ -254,8 +386,6 @@ jobs:
               merged=true
               break
             fi
-            # The merge may have landed even if branch deletion errored;
-            # trust the PR state over the command's exit code.
             if [ "$(gh pr view "$PR_NUMBER" --repo "$REPO" \
                 --json state --jq '.state')" = "MERGED" ]; then
               merged=true
@@ -266,7 +396,7 @@ jobs:
           done
           if [ "$merged" != "true" ]; then
             echo "::warning::squash-merge did not succeed after retries;" \
-              "leaving the PR for a human (likely a genuine conflict)."
+              "leaving #$PR_NUMBER for a human."
           fi
           echo "merged=$merged" >> "$GITHUB_OUTPUT"
         env:
@@ -278,8 +408,60 @@ jobs:
         if: >
           steps.merge.outputs.merged == 'true' &&
           inputs.publish-workflow != ''
-        run: gh workflow run "$WORKFLOW" --repo "$REPO" --ref main
+        run: gh workflow run "$WORKFLOW" --repo "$REPO" --ref "$BASE_REF"
         env:
           REPO: ${{ github.repository }}
           WORKFLOW: ${{ inputs.publish-workflow }}
+          BASE_REF: ${{ steps.meta.outputs.base_ref }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # --- Advance the queue ---
+
+      - name: Advance the queue
+        if: >
+          steps.plan.outputs.mode == 'park' ||
+          steps.merge.outputs.merged == 'true' ||
+          (steps.plan.outputs.mode == 'process' &&
+           steps.gate.outputs.proceed == 'false')
+        continue-on-error: true
+        run: |
+          # Nudge exactly one bump — the oldest open, Dependabot-authored,
+          # non-held PR that has fallen behind the base — to bring it forward.
+          # A branch carrying the changelog commit is disowned by Dependabot
+          # and ignores `rebase`, so it is `recreate`d instead.  One nudge per
+          # run keeps the drain strictly serial.
+          gh pr list --repo "$REPO" --state open --limit 50 \
+            --json number,createdAt,author,labels,headRefName > queue.json
+          numbers=$(jq --raw-output --arg hold "$HOLD_LABEL" '
+            [ .[]
+              | select(
+                  (.author.login == "dependabot[bot]"
+                    or .author.login == "app/dependabot")
+                  and (any(.labels[].name; . == $hold) | not)
+                )
+            ] | sort_by(.createdAt) | .[].number' queue.json)
+          for n in $numbers; do
+            head=$(jq --raw-output --argjson n "$n" \
+              '.[] | select(.number == $n) | .headRefName' queue.json)
+            behind=$(gh api "repos/$REPO/compare/$BASE...$head" \
+              --jq '.behind_by' 2>/dev/null || echo 0)
+            if [ "$behind" -gt 0 ]; then
+              external=$(gh pr view "$n" --repo "$REPO" --json commits --jq '
+                [ .commits[].authors[].login ]
+                | map(. != "dependabot[bot]" and . != "app/dependabot")
+                | any')
+              if [ "$external" = "true" ]; then
+                cmd=recreate
+              else
+                cmd=rebase
+              fi
+              gh pr comment "$n" --repo "$REPO" --body "@dependabot $cmd"
+              echo "::notice::Advanced queue: requested $cmd on #$n ($behind behind)."
+              break
+            fi
+          done
+        env:
+          REPO: ${{ github.repository }}
+          BASE: ${{ steps.meta.outputs.base_ref }}
+          HOLD_LABEL: ${{ inputs.hold-label }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

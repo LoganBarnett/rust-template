@@ -270,6 +270,13 @@ target = ".github/workflows/ci.yml"
 pointer = "on.pull_request.branches"
 value = "main"
 
+[[check]]
+id = "ci-workflow-workflow-dispatch"
+description = "CI must be dispatchable so dependabot-automerge can re-run the required checks against the changelog commit."
+kind = "yaml-path-exists"
+target = ".github/workflows/ci.yml"
+pointer = "on.workflow_dispatch"
+
 # ---------------------------------------------------------------------------
 # Publish workflow (.github/workflows/publish.yml) — emitted in every spawn,
 # public or private.  Whether it publishes to crates.io is governed by each
@@ -436,21 +443,19 @@ target = ".github/workflows/dependabot-automerge.yml"
 pointer = "on.workflow_run.types"
 value = "completed"
 
+# The event/conclusion gate now lives on the reusable workflow's own job
+# (consumed via @main), so the wrapper no longer carries an `if` — and this
+# check forces an older spawn still holding the superseded guard to re-sync and
+# drop it, since that guard would filter out the changelog re-dispatch pass and
+# wedge the two-pass flow.  It forbids only the exact superseded condition, so a
+# spawn that sets its own unrelated `if` (or none) is unaffected.
 [[check]]
-id = "dependabot-automerge-if-guards-pull-request"
-description = "The automerge job must guard on the upstream run having been a pull_request event."
-kind = "yaml-path-contains"
+id = "dependabot-automerge-no-legacy-if"
+description = "The automerge wrapper must not carry the superseded inline event/conclusion guard the reusable workflow now owns (a spawn still holding it filters out the changelog re-dispatch pass); a spawn's own unrelated guard is unaffected."
+kind = "yaml-path-not-contains"
 target = ".github/workflows/dependabot-automerge.yml"
 pointer = "jobs.automerge.if"
-contains = "github.event.workflow_run.event == 'pull_request'"
-
-[[check]]
-id = "dependabot-automerge-if-guards-success"
-description = "The automerge job must guard on the upstream CI run having succeeded."
-kind = "yaml-path-contains"
-target = ".github/workflows/dependabot-automerge.yml"
-pointer = "jobs.automerge.if"
-contains = "github.event.workflow_run.conclusion == 'success'"
+contains = "github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'"
 
 [[check]]
 id = "dependabot-automerge-contents-write"
@@ -470,10 +475,18 @@ value = "write"
 
 [[check]]
 id = "dependabot-automerge-actions-write"
-description = "Auto-merge must grant actions: write to dispatch the publish workflow after merge."
+description = "Auto-merge must grant actions: write to re-dispatch CI and dispatch the publish workflow."
 kind = "yaml-path-equals"
 target = ".github/workflows/dependabot-automerge.yml"
 pointer = "permissions.actions"
+value = "write"
+
+[[check]]
+id = "dependabot-automerge-issues-write"
+description = "Auto-merge must grant issues: write to create and apply the dependabot-hold label."
+kind = "yaml-path-equals"
+target = ".github/workflows/dependabot-automerge.yml"
+pointer = "permissions.issues"
 value = "write"
 
 # ---------------------------------------------------------------------------
