@@ -2458,7 +2458,7 @@ dependencies = [
 
 [[package]]
 name = "rust-template-compliance-cli"
-version = "0.59.0"
+version = "0.60.0"
 dependencies = [
  "clap",
  "owo-colors",
@@ -2474,7 +2474,7 @@ dependencies = [
 
 [[package]]
 name = "rust-template-compliance-lib"
-version = "0.59.0"
+version = "0.60.0"
 dependencies = [
  "orgize",
  "rust-template-foundation",
@@ -2491,7 +2491,7 @@ dependencies = [
 
 [[package]]
 name = "rust-template-cross-fixture"
-version = "0.59.0"
+version = "0.60.0"
 dependencies = [
  "ring",
  "rust-template-foundation",
@@ -2500,7 +2500,7 @@ dependencies = [
 
 [[package]]
 name = "rust-template-foundation"
-version = "0.59.0"
+version = "0.60.0"
 dependencies = [
  "aide",
  "axum",
@@ -2535,7 +2535,7 @@ dependencies = [
 
 [[package]]
 name = "rust-template-foundation-derive"
-version = "0.59.0"
+version = "0.60.0"
 dependencies = [
  "proc-macro2",
  "quote",
