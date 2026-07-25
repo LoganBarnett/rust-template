@@ -33,15 +33,11 @@
     # cross-fixture's framework-linking build can evaluate `apple-sdk.src` on a
     # Linux builder.  The acceptance stays visible here rather than depending on
     # a NIXPKGS_ALLOW_UNFREE env var, matching what CONTRIBUTING.org tells
-    # consumers whose crates link Apple frameworks.
+    # consumers whose crates link Apple frameworks.  This delegates to the
+    # shared `foundation.lib.pkgsUnfreeFor` helper so the repo dogfoods the
+    # same quarantined-unfree-nixpkgs machinery spawns consume.
     pkgsUnfreeFor = system:
-      import nixpkgs {
-        inherit overlays system;
-        config = {
-          allowUnfree = true;
-          allowUnsupportedSystem = true;
-        };
-      };
+      import ./nix/lib/pkgsUnfreeFor.nix {inherit nixpkgs overlays system;};
     mkRustPackages = import ./nix/lib/mkRustPackages.nix;
     # The baseline CI/release shell, with foundation's changelog-roller
     # input pre-bound.  Consumed both by this repo's own `.#ci` devShell
@@ -317,6 +313,7 @@
       mkMuslPackages = import ./nix/lib/mkMuslPackages.nix;
       mkGnuPortablePackages = import ./nix/lib/mkGnuPortablePackages.nix;
       mkDarwinCrossPackages = import ./nix/lib/mkDarwinCrossPackages.nix;
+      pkgsUnfreeFor = import ./nix/lib/pkgsUnfreeFor.nix;
       mkDarwinSignatureCheck = import ./nix/lib/mkDarwinSignatureCheck.nix;
       mkWindowsCrossPackages = import ./nix/lib/mkWindowsCrossPackages.nix;
       mkWindowsSmokeCheck = import ./nix/lib/mkWindowsSmokeCheck.nix;

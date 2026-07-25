@@ -38,12 +38,19 @@
 
 use tap::Tap as _;
 
-// A CoreFoundation symbol.  Referencing it from `report` forces the linker to
-// resolve the framework, which needs the SDK's `.tbd` stub — the appleSdk path
-// under test.
+// One symbol per Apple framework linked by build.rs.  Referencing each from
+// `report` forces the linker to resolve that framework, which needs the SDK's
+// `.tbd` stub — the appleSdk path under test.  CFAbsoluteTimeGetCurrent
+// (CoreFoundation) is called for its value; the audio symbols (CoreAudio,
+// AudioToolbox — the framework class a media spawn links but the auth stack
+// does not) are referenced only by address, never called, so their declared
+// signatures need not match the real ABI: the link test needs only each name to
+// exist in its framework.
 #[cfg(target_os = "macos")]
 extern "C" {
   fn CFAbsoluteTimeGetCurrent() -> f64;
+  fn AudioObjectGetPropertyData();
+  fn AudioComponentFindNext();
 }
 
 // Reference `ring` (the C-compiling dependency), a CoreFoundation symbol (the
@@ -65,6 +72,14 @@ fn report() -> String {
     rust_template_foundation::auth::jwt::ServiceClaims,
   >;
   std::hint::black_box(build_decoder);
+  // Force the CoreAudio and AudioToolbox links (see the extern block): take
+  // each symbol's address through a black box so it becomes an undefined
+  // reference the linker must satisfy from the framework, without calling it —
+  // the fixture is built and signed, never run.
+  std::hint::black_box([
+    AudioObjectGetPropertyData as *const (),
+    AudioComponentFindNext as *const (),
+  ]);
   format!("darwin: {} digest bytes at t={now}", digest.as_ref().len())
 }
 
