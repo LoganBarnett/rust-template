@@ -4,12 +4,16 @@
 * Upcoming
 ** Added
 ** Fixes
+1. The changelog entry Dependabot's auto-merge commits is now org-formatted
+   before it lands, so it no longer wraps under a later commit's ~treefmt~ and
+   surfaces as spurious churn.  Adopters inherit this through their ~@main~
+   reference to the reusable workflow — no action needed.
 ** Breaking
 ** Maintenance
 * v0.65.0
 ** Fixes
-1. Dependabot bumps that passed CI but were left unmerged now merge on their
-   own again.  No action needed.
+1. Dependabot bumps that passed CI but were left unmerged now merge on their own
+   again.  No action needed.
 * v0.64.0
 ** Added
 1. ~rust-template.json~ gains an ~"apple-frameworks"~ field.  A server on the

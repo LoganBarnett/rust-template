@@ -24,7 +24,10 @@
 # making all devShell fields available as overrides.  To diverge
 # completely, a consumer stops calling this helper and writes its own
 # `mkShell`.
-{changelog-roller}: {
+{
+  changelog-roller,
+  org-fmt,
+}: {
   pkgs,
   system,
   toolchain ?
@@ -36,6 +39,7 @@
       ];
     },
   changelogRoller ? changelog-roller.packages.${system}.default,
+  orgFmt ? org-fmt.packages.${system}.default,
   semverChecks ? pkgs.cargo-semver-checks.overrideAttrs (_: {doCheck = false;}),
   buildInputs ? [],
   shellHook ? "",
@@ -49,6 +53,7 @@
     "system"
     "toolchain"
     "changelogRoller"
+    "orgFmt"
     "semverChecks"
     "buildInputs"
     "shellHook"
@@ -60,6 +65,8 @@
     # Rolls and checks the CHANGELOG; the `changelog` and `abi` jobs, the
     # publish flow, and dependabot-automerge all shell out to it.
     changelogRoller
+    # Formats org-mode files (*.org).
+    orgFmt
     # The ABI baseline gate the `abi` job runs against crates.io.
     semverChecks
     # Packs Windows release binaries into `.zip` archives (the release-binaries
