@@ -4,6 +4,8 @@
 * Upcoming
 ** Added
 ** Fixes
+1. Dependabot bumps that passed CI but were left unmerged now merge on their
+   own again.  No action needed.
 ** Breaking
 ** Maintenance
 * v0.64.0
