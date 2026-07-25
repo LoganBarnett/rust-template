@@ -1,10 +1,15 @@
 // Wires the fixture's three host-link guards, each confined to the build that
 // needs it so no plain workspace build pays for any:
 //
-// - macos: emit the CoreFoundation framework link, so the darwin-cross build
-//   exercises the SDK's `.tbd` framework stubs and the linker's `-F` framework
-//   search path — the appleSdk half of mkDarwinCrossPackages that the
-//   template's own crates never touch.
+// - macos: emit a representative spread of Apple framework links, so the
+//   darwin-cross build must locate each framework in the SDK and resolve it
+//   against the `.tbd` stubs via the linker's `-F` search path — the appleSdk
+//   half of mkDarwinCrossPackages that the template's own crates never touch.
+//   Beyond CoreFoundation it links the audio frameworks (CoreAudio,
+//   AudioToolbox) a media spawn pulls through cpal / coreaudio-sys — a class
+//   the auth stack never links — so a regression reaching only a
+//   CoreAudio-linking spawn fails here instead.  main.rs references one symbol
+//   from each so the linker cannot drop a framework before resolving it.
 //
 // - windows: emit the winmm link, so the gnullvm cross build must resolve a
 //   non-default Win32 system DLL's import library from llvm-mingw's mingw-w64
@@ -27,7 +32,9 @@ fn main() {
   println!("cargo:rustc-check-cfg=cfg(link_asound)");
 
   if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
-    println!("cargo:rustc-link-lib=framework=CoreFoundation");
+    for framework in ["CoreFoundation", "CoreAudio", "AudioToolbox"] {
+      println!("cargo:rustc-link-lib=framework={framework}");
+    }
   }
 
   if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {

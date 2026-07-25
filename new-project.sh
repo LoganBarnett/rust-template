@@ -143,10 +143,17 @@ done || true
 # subsequent compliance work scope diffs precisely (see docs/compliance.org
 # § "Compliance process").
 TEMPLATE_HASH="$(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")"
+# `apple-frameworks` is the opt-in that wires the Apple SDK into the darwin
+# cross-build (via foundation.lib.pkgsUnfreeFor in the emitted flake).  It is
+# seeded false here and flipped true by crate-add.sh when a server crate is
+# added — whose foundation `auth` feature links the macOS Security /
+# SystemConfiguration / CoreFoundation frameworks — so the flag tracks framework
+# linking whether the server is in the initial crate set or added later.
 cat > "$OUTPUT/rust-template.json" <<EOF
 {
   "template_sync_hashes": ["$TEMPLATE_HASH"],
-  "windows-msvc": false
+  "windows-msvc": false,
+  "apple-frameworks": false
 }
 EOF
 

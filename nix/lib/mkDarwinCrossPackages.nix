@@ -215,7 +215,19 @@ in
       in
         acc
         // lib.mapAttrs' (
-          key: pkg: lib.nameValuePair "${key}-${suffix}" pkg
+          # `appleSdkWired` is an eval-only marker (not a build input)
+          # recording whether this cross-build received the Apple SDK.  A
+          # framework-linking consumer must pass `appleSdk`; the emission test
+          # reads this attr back with `nix eval` to prove an auth spawn's flake
+          # actually wired the SDK rather than merely setting its opt-in flag —
+          # catching a broken wiring the fixture's own build cannot, since the
+          # fixture is handed `appleSdk` directly.  Attached with `//` so the
+          # value stays a plain derivation for `nix build`.
+          key: pkg:
+            lib.nameValuePair "${key}-${suffix}" (pkg
+              // {
+                appleSdkWired = appleSdk != null;
+              })
         )
         darwinPackages
     ) {}

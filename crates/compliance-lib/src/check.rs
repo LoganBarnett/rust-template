@@ -81,6 +81,16 @@ pub fn run_check(check: &Check, ctx: &SpawnContext) -> Verdict {
     };
   }
 
+  // Feature-conditional checks skip on spawns that do not enable the feature,
+  // reusing the same crate-manifest scan the `foundation-feature` kind runs.
+  if let Some(feature) = &check.when_foundation_feature {
+    if !foundation_feature_present(ctx.dir, feature) {
+      return Verdict::Skip {
+        reason: format!("foundation feature \"{feature}\" not enabled"),
+      };
+    }
+  }
+
   match &check.kind {
     CheckKind::FilePresent { path } => file_present(ctx.dir, path),
     CheckKind::JsonValid { path } => json_valid(ctx.dir, path),

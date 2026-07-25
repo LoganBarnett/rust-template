@@ -322,22 +322,28 @@ cache instead.
 The one exception is a crate that links Apple frameworks — anything that
 (transitively) pulls ~cpal~, ~objc2-*~, ~core-foundation~, ~security-framework~,
 ~coreaudio-sys~, and similar.  This is not CLI-specific; the ~server~ crate can
-link them just as readily.  Such a crate needs Apple's framework headers and
-link stubs, which come from the (unfree) Apple SDK.  To enable it, touch two
-spots in ~flake.nix~:
+link them just as readily — and it does whenever the foundation ~auth~ feature
+is on, whose TLS stack links the ~Security~, ~SystemConfiguration~, and
+~CoreFoundation~ frameworks.  Such a crate needs Apple's framework headers and
+link stubs, which come from the (unfree) Apple SDK.
 
-1. add ~config.allowUnfree = true~ and ~config.allowUnsupportedSystem = true~ to
-   the ~nixpkgs~ import (the latter is needed whenever that ~pkgs~ is
-   non-darwin, i.e. in Linux CI), because ~apple-sdk~ is unfree and
-   darwin-gated; and
-2. pass ~appleSdk = pkgs.apple-sdk.src~ to the ~mkDarwinCrossPackages~ call.
+Enabling it is a single opt-in: set ~"apple-frameworks": true~ at the top level
+of ~rust-template.json~ (the same flag shape as ~"windows-msvc"~).  That hands
+~mkDarwinCrossPackages~ its ~appleSdk~, taken from a quarantined unfree
+~nixpkgs~ (~foundation.lib.pkgsUnfreeFor~) that accepts the darwin-gated Apple
+SDK licence.  A ~cli~/~server~ spawn ships with the flag already ~true~ because
+its server enables ~auth~; a ~cli~/~lib~-only spawn ships it ~false~.
 
-~apple-sdk.src~ is a plain fetch of the SDK's inert data (headers and ~.tbd~
-stubs); the full ~apple-sdk~ package does not build on Linux, but its ~.src~
-does.  Keeping the ~allowUnfree~ acceptance in your own ~flake.nix~ is
-deliberate — the licence consent is visible in your project, not hidden in the
-foundation library.  A pure-libSystem executable does nothing: zig bundles the
-libSystem stubs, so it cross-compiles licence-free.
+Because ~apple-sdk~ is unfree and darwin-gated, ~pkgsUnfreeFor~ accepts both
+~allowUnfree~ and ~allowUnsupportedSystem~ — but only for that /quarantined/
+instance, so the licence acceptance never widens the free package graph your
+project actually builds against.  ~appleSdk~ is ~apple-sdk.src~, a plain fetch
+of the SDK's inert data (headers and ~.tbd~ stubs); the full ~apple-sdk~ package
+does not build on Linux, but its ~.src~ does.  Keeping the acceptance tied to a
+flag in /your/ ~rust-template.json~ is deliberate — the licence consent is
+visible in your project, not hidden in the foundation library.  Left ~false~, a
+pure-libSystem executable cross-compiles licence-free: zig bundles the libSystem
+stubs, so no Apple SDK is fetched.
 
 ** Windows binaries
 

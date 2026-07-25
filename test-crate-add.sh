@@ -136,6 +136,38 @@ assert_flake_eval() {
     fi
 }
 
+# Assert every `-aarch64-darwin` output the emitted spawn exposes carries the
+# expected `appleSdkWired` marker: `true` for a framework-linking (auth) spawn,
+# `false` otherwise.  This reads back the passthru mkDarwinCrossPackages
+# attaches to each darwin package, proving the emitted flake's flag-driven
+# wiring actually reaches the SDK argument — the class of surprise the repo's
+# own fixture cannot catch, since it is handed `appleSdk` directly.  Evaluated
+# for x86_64-linux
+# (where the darwin cross outputs exist) against the on-disk foundation, from
+# whatever host runs the test; eval-only, so no darwin build is realized.
+assert_apple_sdk_wired() {
+    local dir="$1" expected="$2"
+    if ! command -v nix &>/dev/null; then
+        echo "  (skipping appleSdk-wired eval — nix not on PATH)"
+        return 0
+    fi
+    # Every `-aarch64-darwin` package must report the expected marker, and there
+    # must be at least one (an empty match would vacuously pass).
+    local apply="p: let names = builtins.filter (n: builtins.match \".*-aarch64-darwin\" n != null) (builtins.attrNames p); in names != [] && builtins.all (n: p.\${n}.appleSdkWired == $expected) names"
+    local got
+    got=$(nix \
+        --extra-experimental-features 'nix-command flakes' \
+        eval \
+        --override-input foundation "git+file://$SCRIPT_DIR" \
+        --no-update-lock-file \
+        "$dir#packages.x86_64-linux" \
+        --apply "$apply" 2>/dev/null)
+    if [[ "$got" != "true" ]]; then
+        echo "  assertion failed: expected all -aarch64-darwin appleSdkWired == $expected for $dir (eval result: '${got:-<empty>}')" >&2
+        return 1
+    fi
+}
+
 # Assert that a freshly emitted project passes every compliance check — that
 # "the template emits a compliant project" actually holds.
 #
@@ -215,6 +247,10 @@ test_new_project_default() {
     assert_file_contains "$dir/crates/server/Cargo.toml" 'name = "test-app-server"'
     assert_file_contains "$dir/crates/lib/Cargo.toml" 'name = "test-app-lib"'
 
+    # A server spawn enables foundation auth, which links Apple frameworks, so
+    # the emission sets the apple-frameworks opt-in that wires the darwin SDK.
+    assert_file_contains "$dir/rust-template.json" '"apple-frameworks": true'
+
     # Point foundation at the on-disk template and relock so every check runs
     # against the template that emitted this spawn, not the stale revision the
     # emitted flake ships pinned.
@@ -225,6 +261,10 @@ test_new_project_default() {
 
     # Flake-eval assertion: catches API drift between template and foundation.
     assert_flake_eval "$dir" || return 1
+
+    # An auth spawn's darwin cross outputs must actually receive the Apple SDK —
+    # proves the emitted flag-driven wiring reaches mkDarwinCrossPackages.
+    assert_apple_sdk_wired "$dir" true || return 1
 
     # Cargo check (nix-gated).
     if [[ "$RUN_CARGO_CHECK" == true ]]; then
@@ -260,10 +300,18 @@ test_new_project_cli_only() {
     # Private spawns keep an empty publish list — nothing reaches crates.io.
     assert_file_not_contains "$dir/crates/lib/Cargo.toml" 'crates-io'
 
+    # A cli/lib-only spawn links no Apple frameworks, so the opt-in stays false
+    # and no unfree Apple SDK licence is accepted.
+    assert_file_contains "$dir/rust-template.json" '"apple-frameworks": false'
+
     localize_foundation "$dir" || return 1
     assert_compliant "$dir" "cli" || return 1
 
     assert_flake_eval "$dir" || return 1
+
+    # A cli/lib-only spawn links no frameworks, so its darwin outputs must
+    # report the SDK unwired — the licence-free path.
+    assert_apple_sdk_wired "$dir" false || return 1
 }
 
 # ---------------------------------------------------------------------------
@@ -285,6 +333,10 @@ test_new_project_server_only() {
 
     assert_file_contains "$dir/flake.nix" '# CRATE:server:begin'
     assert_file_not_contains "$dir/flake.nix" '# CRATE:cli:begin'
+
+    # A server spawn enables foundation auth (framework-linking), so it carries
+    # the apple-frameworks opt-in.
+    assert_file_contains "$dir/rust-template.json" '"apple-frameworks": true'
 
     localize_foundation "$dir" || return 1
     assert_compliant "$dir" "server" || return 1

@@ -176,6 +176,19 @@ else
     release_binary=true
 fi
 provenance="$PROJECT_DIR/rust-template.json"
+# A server crate enables foundation's `auth` feature, whose TLS stack links
+# the macOS Security / SystemConfiguration / CoreFoundation frameworks, so
+# adding one turns on the `apple-frameworks` opt-in that wires the Apple SDK
+# into the darwin cross-build (via foundation.lib.pkgsUnfreeFor).  The flag is
+# always written explicitly so rust-template.json never leaves it absent: a
+# server forces it true, any other archetype preserves an already-true value,
+# and otherwise writes false — so a project that already links frameworks
+# stays opted in, and one that does not carries an explicit false.
+if [[ "$CRATE_TYPE" == "server" ]]; then
+    apple_frameworks_expr='true'
+else
+    apple_frameworks_expr='(.["apple-frameworks"] // false)'
+fi
 # jq has no in-place edit, so write a sibling temp and move it back — the same
 # idiom new-project.sh uses for config.json.  A missing provenance file is the
 # normal case for spawns created before this inventory existed, so seed a fresh
@@ -183,11 +196,11 @@ provenance="$PROJECT_DIR/rust-template.json"
 # silently replaced.
 if [[ -f "$provenance" ]]; then
     jq --arg name "$CRATE_NAME" --argjson release "$release_binary" \
-       '.workspaces[$name] = {"release-binary": $release}' \
+       ".workspaces[\$name] = {\"release-binary\": \$release} | .[\"apple-frameworks\"] = $apple_frameworks_expr" \
        "$provenance" > "$provenance.tmp" && mv "$provenance.tmp" "$provenance"
 else
     jq --null-input --arg name "$CRATE_NAME" --argjson release "$release_binary" \
-       '{workspaces: {($name): {"release-binary": $release}}}' \
+       "{workspaces: {(\$name): {\"release-binary\": \$release}}} | .[\"apple-frameworks\"] = $apple_frameworks_expr" \
        > "$provenance.tmp" && mv "$provenance.tmp" "$provenance"
 fi
 

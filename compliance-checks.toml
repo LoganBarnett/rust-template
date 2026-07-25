@@ -113,6 +113,38 @@ kind = "file-contains"
 target = "flake.nix"
 contains = "mkDarwinCrossPackages"
 
+# The flake carries the flag-driven Apple-SDK wiring (appleSdk taken from
+# foundation.lib.pkgsUnfreeFor when apple-frameworks is set), so a spawn whose
+# flake predates that wiring — and would therefore silently drop the SDK even
+# with the flag on — is flagged for a sync.  Ungated: the wiring is emitted
+# unconditionally (the flag only decides the value at eval), so every current
+# spawn carries it regardless of whether it links frameworks.  The companion
+# json check above guards the flag itself.
+[[check]]
+id = "flake-wires-apple-sdk"
+description = "The flake carries the foundation.lib.pkgsUnfreeFor Apple-SDK wiring so a framework-linking spawn's darwin cross-build receives the SDK."
+kind = "file-contains"
+target = "flake.nix"
+contains = "pkgsUnfreeFor"
+
+# Enabling foundation's `auth` feature *forces* Apple-framework linking (its
+# rustls-native-certs / platform-verifier stack links the Security,
+# SystemConfiguration, and CoreFoundation frameworks), so an auth spawn whose
+# darwin cross-build has no Apple SDK fails at link on the missing frameworks.
+# The emitted flake wires `appleSdk` (via foundation.lib.pkgsUnfreeFor) only
+# when `apple-frameworks` is true, so an auth spawn must set that flag.  It is
+# gated on the feature via `when_foundation_feature`: a spawn that runs a
+# server without auth links no frameworks, so the check skips rather than
+# demanding an SDK it does not need.
+[[check]]
+id = "auth-spawn-wires-apple-frameworks"
+description = "An auth-enabled spawn sets apple-frameworks=true in rust-template.json so its darwin cross-build links the Apple frameworks the auth TLS stack requires."
+kind = "json-path-equals"
+target = "rust-template.json"
+pointer = "apple-frameworks"
+value = "true"
+when_foundation_feature = "auth"
+
 # The always-on Windows cross build, the mirror of the darwin check above.
 # Unlike darwin (which only runs on x86_64-linux), the Windows helper is
 # host-agnostic — it cross-compiles native Windows PEs via llvm-mingw for the

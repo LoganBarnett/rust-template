@@ -4,7 +4,10 @@
 //! from the finite set the engine implements, and the parameters that kind
 //! needs.  An optional `when_crates_contains` restricts a check to spawns whose
 //! crate-role list contains a given substring (e.g. only run a server check on
-//! spawns generated with a `server` crate).
+//! spawns generated with a `server` crate); an optional
+//! `when_foundation_feature` restricts it to spawns that enable a given
+//! foundation feature (e.g. only run the Apple-SDK wiring check on spawns that
+//! enable `auth`).
 //!
 //! The manifest is parsed in two stages: TOML into [`RawCheck`] (all
 //! kind-specific parameters optional), then validated into a typed [`Check`]
@@ -27,6 +30,11 @@ pub struct Check {
   /// When `Some(true)`, the check only applies to spawns marked public; others
   /// report `Skip`.  Used for the crates.io publish machinery.
   pub when_public: Option<bool>,
+  /// When set, the check only applies to spawns that enable this foundation
+  /// feature (any `crates/**/Cargo.toml` lists it on the foundation
+  /// dependency); others report `Skip`.  Gates feature-coupled wiring — e.g.
+  /// an auth spawn that must wire the Apple SDK its TLS stack links.
+  pub when_foundation_feature: Option<String>,
   pub kind: CheckKind,
 }
 
@@ -233,6 +241,8 @@ struct RawCheck {
   #[serde(default)]
   when_public: Option<bool>,
   #[serde(default)]
+  when_foundation_feature: Option<String>,
+  #[serde(default)]
   target: Option<String>,
   #[serde(default)]
   path: Option<String>,
@@ -369,6 +379,7 @@ impl RawCheck {
       kind,
       when_crates_contains,
       when_public,
+      when_foundation_feature,
       target,
       path,
       section,
@@ -582,6 +593,7 @@ impl RawCheck {
       description,
       when_crates_contains,
       when_public,
+      when_foundation_feature,
       kind: resolved,
     })
   }
@@ -782,6 +794,37 @@ mod tests {
       .validate()
       .unwrap_err();
     assert!(matches!(error, ComplianceError::ManifestInvalid { .. }));
+  }
+
+  #[test]
+  fn carries_when_foundation_feature() {
+    let toml = r#"
+            [[check]]
+            id = "x"
+            description = "d"
+            kind = "json-path-equals"
+            target = "rust-template.json"
+            pointer = "apple-frameworks"
+            value = "true"
+            when_foundation_feature = "auth"
+        "#;
+    let raw: RawManifest = toml::from_str(toml).unwrap();
+    let check = raw.check.into_iter().next().unwrap().validate().unwrap();
+    assert_eq!(check.when_foundation_feature.as_deref(), Some("auth"));
+  }
+
+  #[test]
+  fn when_foundation_feature_defaults_to_none() {
+    let toml = r#"
+            [[check]]
+            id = "x"
+            description = "d"
+            kind = "file-present"
+            path = "flake.nix"
+        "#;
+    let raw: RawManifest = toml::from_str(toml).unwrap();
+    let check = raw.check.into_iter().next().unwrap().validate().unwrap();
+    assert!(check.when_foundation_feature.is_none());
   }
 
   #[test]

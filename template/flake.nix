@@ -27,9 +27,12 @@
     forAllSystems =
       nixpkgs.lib.genAttrs nixpkgs.lib.systems.flakeExposed;
     perSystem = forAllSystems (system: let
+      # Hoisted so the quarantined `pkgsUnfreeFor` instance below (used only
+      # when this project links Apple frameworks) stays overlay-consistent with
+      # this build `pkgs` — both see the same overlay set.
+      overlays = [(import rust-overlay)];
       pkgs = import nixpkgs {
-        inherit system;
-        overlays = [(import rust-overlay)];
+        inherit system overlays;
       };
       craneLib =
         (crane.mkLib pkgs).overrideToolchain
@@ -79,11 +82,25 @@
       };
       # The x86_64-linux build cross-compiles macOS `<key>-<arch>-darwin`
       # variants via zig so a release needs no macOS runner; empty on other
-      # systems.  Add `appleSdk = pkgs.apple-sdk.src;` here (and set
-      # config.allowUnfree / config.allowUnsupportedSystem on the pkgs import
-      # above) only if a crate links Apple frameworks — see CONTRIBUTING.org.
+      # systems.  A crate that links Apple frameworks (transitively pulling
+      # cpal, objc2-*, security-framework, the auth TLS stack, and similar) also
+      # needs the Apple SDK's headers and link stubs.  That is opt-in: set
+      # `"apple-frameworks": true` in rust-template.json — the same flag shape
+      # as `windows-msvc` below.  When set, `appleSdk` is taken from a
+      # quarantined unfree nixpkgs (foundation.lib.pkgsUnfreeFor) that accepts
+      # the darwin-gated Apple SDK licence; evaluating it accepts that licence
+      # in this project's own flake — the visible consent — while leaving this
+      # build `pkgs` graph free.  Left false (the default) no SDK is wired and
+      # the cross build stays licence-free.  See CONTRIBUTING.org.
+      appleFrameworksEnabled =
+        (builtins.fromJSON (builtins.readFile ./rust-template.json)).apple-frameworks
+        or false;
       darwinCrossPackages = foundation.lib.mkDarwinCrossPackages {
         inherit self pkgs system crates crane commonArgs;
+        appleSdk =
+          if appleFrameworksEnabled
+          then (foundation.lib.pkgsUnfreeFor {inherit nixpkgs system overlays;}).apple-sdk.src
+          else null;
       };
       # Native Windows PE variants (`<key>-{x86_64,aarch64}-windows`),
       # cross-compiled via llvm-mingw for the gnullvm targets — no Microsoft

@@ -3,6 +3,9 @@
 
 * Upcoming
 ** Added
+1. ~rust-template.json~ gains an ~"apple-frameworks"~ field.  A server on the
+   foundation ~auth~ feature needs it set ~true~ so its darwin release links the
+   Apple frameworks that stack pulls in; the compliance check flags it for you.
 ** Fixes
 ** Breaking
 ** Maintenance
@@ -14,13 +17,16 @@
    to the queue.
 * v0.62.0
 ** Maintenance
-1. Bump tokio from 1.51.0 to 1.53.1 (https://github.com/LoganBarnett/rust-template/pull/28)
+1. Bump tokio from 1.51.0 to 1.53.1
+   (https://github.com/LoganBarnett/rust-template/pull/28)
 * v0.61.0
 ** Maintenance
-1. Bump rustls from 0.23.37 to 0.23.42 (https://github.com/LoganBarnett/rust-template/pull/58)
+1. Bump rustls from 0.23.37 to 0.23.42
+   (https://github.com/LoganBarnett/rust-template/pull/58)
 * v0.60.0
 ** Maintenance
-1. Bump quote from 1.0.45 to 1.0.47 (https://github.com/LoganBarnett/rust-template/pull/23)
+1. Bump quote from 1.0.45 to 1.0.47
+   (https://github.com/LoganBarnett/rust-template/pull/23)
 * v0.59.0
 ** Fixes
 1. Foundation's ~auth~ feature no longer pulls the ~aws-lc-rs~ crypto provider
