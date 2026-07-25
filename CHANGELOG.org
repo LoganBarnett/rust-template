@@ -3,12 +3,14 @@
 
 * Upcoming
 ** Added
-1. ~rust-template.json~ gains an ~"apple-frameworks"~ field.  A server on the
-   foundation ~auth~ feature needs it set ~true~ so its darwin release links the
-   Apple frameworks that stack pulls in; the compliance check flags it for you.
 ** Fixes
 ** Breaking
 ** Maintenance
+* v0.64.0
+** Added
+1. ~rust-template.json~ gains an ~"apple-frameworks"~ field.  A server on the
+   foundation ~auth~ feature needs it set ~true~ so its darwin release links the
+   Apple frameworks that stack pulls in; the compliance check flags it for you.
 * v0.63.0
 ** Fixes
 1. Dependabot version bumps now merge automatically instead of stalling when
