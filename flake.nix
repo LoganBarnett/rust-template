@@ -42,7 +42,7 @@
     # The baseline CI/release shell, with foundation's changelog-roller
     # input pre-bound.  Consumed both by this repo's own `.#ci` devShell
     # below and, via `foundation.lib.mkCiShell`, by every spawned project.
-    mkCiShell = import ./nix/lib/mkCiShell.nix {inherit changelog-roller;};
+    mkCiShell = import ./nix/lib/mkCiShell.nix {inherit changelog-roller org-fmt;};
     # Binary crates this repo ships as release artifacts.  Mirrors the
     # release-binary = true entries in rust-template.json: compliance-cli is the
     # only binary; the foundation crates and compliance-lib are libraries.

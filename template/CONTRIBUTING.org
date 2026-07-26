@@ -408,6 +408,8 @@ ABI.
 
 * Changelog conventions
 
+** Changelog structure
+
 ~CHANGELOG.org~'s ~* Upcoming~ section uses three subheadings:
 
 - ~** Added~ — features or behavior added.  This is the loose "what's new"
@@ -424,6 +426,8 @@ A single change may appear under more than one subheading when it fits more than
 one.  A fix that also adds an option to opt out of the broken behavior belongs
 under both ~** Added~ and ~** Fixes~.
 
+** Changelog style
+
 Each entry should be a complete sentence-or-two written for an adopter reading
 the release notes, not a reviewer reading the diff.  Name what changed in terms
 of the surface the adopter sees, not the implementation.  Lead with the impact
@@ -437,7 +441,30 @@ entry per underlying change.
 Write each entry as a numbered list item (~1.~, ~2.~, …) under its subheading,
 not a dash bullet.
 
+** Changelog requirements
+
 Every pull request must add at least one entry under ~* Upcoming~; CI rejects a
 pull request that adds none.  This keeps the changelog written incrementally,
 while the context is fresh, rather than reconstructed from the diff at release
 time.
+
+** Changelog examples
+
+This is a bad example for ~Fixes~:
+
+#+begin_quote
+1. Dependabot bumps merge on their own again.  The auto-merge that shipped last
+   release committed the changelog and then re-ran CI, but a token-dispatched
+   re-run cannot trigger the follow-up that does the merge (GitHub suppresses
+   it), so bumps sat green but unmerged; the flow now commits, re-runs CI, and
+   merges within a single run.  No action needed.
+#+end_quote
+
+This sits on the long side, and gives us way too much context about the inner
+workings of the code.  As a migrator interested in seeing what changed and what
+they need to do, they have to sift that information out.  A better form would
+be:
+
+#+begin_quote
+1. Dependabot bumps merge on their own again.  No action needed.
+#+end_quote

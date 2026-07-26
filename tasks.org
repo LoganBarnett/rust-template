@@ -220,7 +220,8 @@ and aws-lc-sys + zig + darwin is unresolved upstream — so the pragmatic durabl
 path is a non-aws-lc provider in foundation's auth stack, not "make aws-lc-sys
 cross-compile."
 
-* TODO A server spawn's darwin build is broken from emission, and the template's CI can't see it
+* DONE A server spawn's darwin build is broken from emission, and the template's CI can't see it
+CLOSED: [2026-07-25 Sat 14:15]
 
 Descriptive, not prescriptive — this frames a blind spot that the DONE aws-lc
 entry above and the two tasks below are each an /instance/ of.
@@ -251,7 +252,8 @@ below):
 - *Fix in the emitted output:* the emitted flake must make a server spawn's
   darwin build work out of the box.
 
-* TODO Emit appleSdk for auth-server spawns so their darwin release cross-builds
+* DONE Emit appleSdk for auth-server spawns so their darwin release cross-builds
+CLOSED: [2026-07-25 Sat 14:15]
 
 The aws-lc fix above got the =auth= graph onto =ring=, but that exposed the
 /next/ darwin-cross wall the same auth stack hides: foundation's
@@ -279,7 +281,8 @@ the (unfree) Apple SDK licence, gate the emission on the =auth= feature rather
 than emitting it unconditionally.  Consider a compliance check tying "auth
 enabled" to "appleSdk wired", so existing auth spawns are flagged.
 
-* TODO Expose pkgsUnfreeFor as a foundation.lib helper
+* DONE Expose pkgsUnfreeFor as a foundation.lib helper
+CLOSED: [2026-07-25 Sat 14:15]
 
 The =appleSdk= wiring above needs an /unfree/ nixpkgs instance to evaluate
 =apple-sdk.src= (=allowUnfree= + =allowUnsupportedSystem=), quarantined from the
@@ -335,7 +338,8 @@ What to provide, roughly in order of value:
 Discovered while syncing the =jj= spawn, whose integration CI was dead on
 arrival for reasons entirely outside its own domain logic.
 
-* TODO Dependabot's changelog commit lands unformatted, churning old entries
+* DONE Dependabot's changelog commit lands unformatted, churning old entries
+CLOSED: [2026-07-25 Sat 14:44]
 
 The Dependabot auto-merge flow injects a =CHANGELOG.org= entry and commits it in
 CI, but that commit is never =org-fmt='d — so an unwrapped entry lands on main,
