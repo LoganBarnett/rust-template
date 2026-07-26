@@ -4,12 +4,14 @@
 * Upcoming
 ** Added
 ** Fixes
+** Breaking
+** Maintenance
+* v0.66.0
+** Fixes
 1. The changelog entry Dependabot's auto-merge commits is now org-formatted
    before it lands, so it no longer wraps under a later commit's ~treefmt~ and
    surfaces as spurious churn.  Adopters inherit this through their ~@main~
    reference to the reusable workflow — no action needed.
-** Breaking
-** Maintenance
 * v0.65.0
 ** Fixes
 1. Dependabot bumps that passed CI but were left unmerged now merge on their own
