@@ -6,6 +6,8 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+* v0.67.0
+** Maintenance
 1. Bump rust-embed from 8.11.0 to 8.12.0
    (https://github.com/LoganBarnett/rust-template/pull/33)
 * v0.66.0
