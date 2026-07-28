@@ -106,6 +106,10 @@
       # pre-commit hook needs rustfmt on PATH, hence the duplication noted
       # at the top of this file.
       rust
+      # The command runner for this repo's justfile recipes, and the binary the
+      # compliance checker's justfile-recipe check shells out to
+      # (`just --summary`) — declared here rather than borrowed from the system.
+      pkgs.just
       # Unified formatter and the per-language binaries it invokes.
       # `new-project.sh` runs `treefmt` as its final spawn step, so this
       # devShell needs to provide them when users invoke the script from
@@ -133,6 +137,10 @@
       # the binary, not its test suite, so disabling the check phase
       # does not affect what the workflow runs.
       (pkgs.cargo-semver-checks.overrideAttrs (_: {doCheck = false;}))
+      # The one-shot Dependabot-backlog combiner, taken from this flake's own
+      # package output — the very package spawns pull in via
+      # foundation.packages.<system>.dependabot-combine.
+      self.packages.${system}.dependabot-combine
     ];
   in {
     devShells = forAllSystems (system: {
@@ -260,7 +268,18 @@
         // gnuPortableFixturePackages
         // windowsCrossFixturePackages
         // windowsMsvcCrossFixturePackages
-        // {default = cratePackages.compliance-cli;}
+        // {
+          default = cratePackages.compliance-cli;
+          # One-shot Dependabot-backlog combiner, exposed so spawns include it
+          # in their dev shell (foundation.packages.<system>.dependabot-combine)
+          # rather than carry a copy that drifts.  Only cargo is needed from the
+          # toolchain (for `cargo update --precise`), so the base toolchain is
+          # passed rather than the dev shell's extended one.
+          dependabot-combine = (pkgsFor system).callPackage ./nix/dependabot-combine.nix {
+            rustToolchain = (pkgsFor system).rust-bin.stable.latest.default;
+            changelog-roller = changelog-roller.packages.${system}.default;
+          };
+        }
     );
 
     apps = forAllSystems (system: (rustPackagesFor system).apps);

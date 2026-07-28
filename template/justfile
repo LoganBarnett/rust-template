@@ -19,3 +19,13 @@ test-rust:
 # Build Elm then run via cargo, forwarding all arguments.
 run *args: build-elm
     cargo run {{args}}
+
+# Combine all passing open Dependabot PRs into one PR and merge it.
+#
+# One-shot catch-up for a Dependabot backlog: takes the versions Dependabot
+# already resolved, bundles the passing bumps onto one branch, opens a single
+# PR, and merges it once green (failing bumps are left for a human).  Per-PR
+# auto-merge handles the steady-state trickle.  Pass --dry-run or --no-merge to
+# hold back.
+dependabot-combine *args:
+    dependabot-combine {{args}}

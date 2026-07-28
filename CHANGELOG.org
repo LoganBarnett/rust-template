@@ -3,6 +3,8 @@
 
 * Upcoming
 ** Added
+1. New projects gain a ~just dependabot-combine~ command that bundles all
+   passing open Dependabot PRs into one PR and merges it.  No action needed.
 ** Fixes
 ** Breaking
 ** Maintenance

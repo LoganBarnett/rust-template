@@ -80,9 +80,9 @@ path = "rust-template.json"
 [[check]]
 id = "foundation-dependency-present"
 description = "The workspace Cargo.toml depends on rust-template-foundation."
-kind = "file-contains"
+kind = "toml-path-exists"
 target = "Cargo.toml"
-contains = "rust-template-foundation"
+pointer = "workspace.dependencies.rust-template-foundation"
 
 [[check]]
 id = "ci-uses-reusable-workflows"
@@ -106,12 +106,19 @@ target = "flake.nix"
 # and that string appears nowhere else in a spawn's flake.nix.
 contains = "rust-template"
 
+# The macOS cross-compiled package output (`<crate>-aarch64-darwin`), built on
+# x86_64-linux via zig so no macOS runner is needed.  Evaluating it rather than
+# matching text proves the mkDarwinCrossPackages wiring resolves, not merely
+# that a call producing it appears in flake.nix.  The flake gates the darwin
+# outputs to x86_64-linux, so this evaluates that system's package set
+# explicitly; the crate prefix varies per spawn, so it matches by name suffix.
 [[check]]
 id = "flake-darwin-cross-wired"
-description = "The flake wires mkDarwinCrossPackages so macOS binaries cross-compile on Linux instead of on a macOS runner."
-kind = "file-contains"
-target = "flake.nix"
-contains = "mkDarwinCrossPackages"
+description = "The flake exposes an aarch64 macOS cross-compiled package output that resolves, proving the mkDarwinCrossPackages wiring is present."
+kind = "flake-output-present"
+output = "packages"
+system = "x86_64-linux"
+suffix = "-aarch64-darwin"
 
 # The flake carries the flag-driven Apple-SDK wiring (appleSdk taken from
 # foundation.lib.pkgsUnfreeFor when apple-frameworks is set), so a spawn whose
@@ -520,6 +527,27 @@ kind = "yaml-path-equals"
 target = ".github/workflows/dependabot-automerge.yml"
 pointer = "permissions.issues"
 value = "write"
+
+# ---------------------------------------------------------------------------
+# Dependabot backlog combiner — a one-shot `just dependabot-combine` that
+# bundles the passing open Dependabot PRs into one PR and merges it, for
+# clearing a backlog the per-PR auto-merge did not.  The tool is a package on
+# the rust-template (foundation) flake, not a per-spawn copy, so these checks
+# assert the spawn wires that package into its dev shell and exposes the recipe
+# — nothing is emitted to check for presence.
+# ---------------------------------------------------------------------------
+
+[[check]]
+id = "dependabot-combine-flake-includes-package"
+description = "The spawn's flake must pull the combiner package from the foundation flake into its dev shell."
+kind = "dev-shell-package"
+package = "dependabot-combine"
+
+[[check]]
+id = "dependabot-combine-justfile-recipe"
+description = "The spawn's justfile must expose the combiner as the dependabot-combine recipe."
+kind = "justfile-recipe"
+recipe = "dependabot-combine"
 
 # ---------------------------------------------------------------------------
 # Dependabot config (.github/dependabot.yml) — always emitted.
@@ -1283,13 +1311,6 @@ kind = "section-exists"
 target = "CHANGELOG.org"
 section = ["Upcoming", "Breaking"]
 
-[[check]]
-id = "flake-default-devshell"
-description = "The flake exposes a default devShell."
-kind = "file-contains"
-target = "flake.nix"
-contains = "devShells"
-
 # Both devShells export a RUST_TEMPLATE_SHELL marker naming which shell they
 # are.  These checks evaluate the flake (rather than matching text) to confirm
 # each shell resolves and carries its marker: the `default` shell, and the `ci`
@@ -1311,6 +1332,29 @@ kind = "dev-shell-env"
 shell = "ci"
 var = "RUST_TEMPLATE_SHELL"
 value = "ci"
+
+# The default devShell must provide the load-bearing tools spawns and CI drive
+# by name.  Evaluating the resolved shell's inputs rather than matching text
+# means only a tool actually pulled into the shell satisfies the check; a spawn
+# that drops one from its devShell is flagged even if the name lingers in a
+# comment.
+[[check]]
+id = "dev-shell-provides-just"
+description = "The default devShell provides just, the runner every recipe (including CI's) invokes."
+kind = "dev-shell-package"
+package = "just"
+
+[[check]]
+id = "dev-shell-provides-changelog-roller"
+description = "The default devShell provides changelog-roller, which the changelog and abi CI jobs invoke."
+kind = "dev-shell-package"
+package = "changelog-roller"
+
+[[check]]
+id = "dev-shell-provides-cargo-semver-checks"
+description = "The default devShell provides cargo-semver-checks, which the abi check invokes to detect public-API breaks."
+kind = "dev-shell-package"
+package = "cargo-semver-checks"
 
 # ── Code-review gate (.claude) ───────────────────────────────────────
 # Every spawned project ships a deterministic review gate: a Stop hook

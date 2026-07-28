@@ -214,6 +214,11 @@
             changelog-roller.packages.${system}.default
             # Formats org-mode documents (treefmt delegates .org files to it).
             org-fmt.packages.${system}.default
+            # One-shot Dependabot-backlog combiner, provided by the
+            # rust-template (foundation) flake rather than copied in, so it
+            # stays current with the template.  Run as
+            # `just dependabot-combine`.
+            foundation.packages.${system}.dependabot-combine
             # ABI baseline check used by the reusable CI workflow's `abi`
             # job.  Compares the workspace's current public API against the
             # previous version on crates.io and reports breaking changes;
