@@ -142,6 +142,10 @@ pub enum CheckKind {
     pointer: String,
     contains: String,
   },
+  /// The spawn's `just --summary` lists a recipe named `recipe`.  Unlike a text
+  /// search this queries just's own parser, so a mention in a comment does not
+  /// satisfy it — only a real recipe definition does.
+  JustfileRecipe { recipe: String },
   /// `target` parses as YAML and the sequence at `pointer` contains a scalar
   /// equal to `value`.
   YamlSeqContains {
@@ -205,6 +209,18 @@ pub enum CheckKind {
     shell: Option<String>,
     var: String,
     value: String,
+  },
+  /// `nix eval` of the spawn's devShell (the flake's default devShell when
+  /// `shell` is `None`) has a build input whose derivation name is `package`.
+  /// Reading the resolved shell's inputs rather than grepping flake.nix means
+  /// only a package actually pulled into the shell satisfies it — a mention in
+  /// a comment or an unrelated string does not.  Like DevShellEnv this
+  /// evaluates the flake (proving the shell resolves) without realizing the
+  /// shell's closure, and requires the spawn's foundation input to resolve, so
+  /// tests run it against a spawn localized to the template under test.
+  DevShellPackage {
+    shell: Option<String>,
+    package: String,
   },
   /// `nix eval` the flake output attrset `<output>.<system>` (the host
   /// double when `system` is `None`) and confirm it exposes a required
@@ -284,6 +300,10 @@ struct RawCheck {
   system: Option<String>,
   #[serde(default)]
   suffix: Option<String>,
+  #[serde(default)]
+  recipe: Option<String>,
+  #[serde(default)]
+  package: Option<String>,
 }
 
 /// Require a kind-specific parameter, naming the check and kind on absence.
@@ -401,6 +421,8 @@ impl RawCheck {
       output,
       system,
       suffix,
+      recipe,
+      package,
     } = self;
 
     let resolved = match kind.as_str() {
@@ -489,6 +511,9 @@ impl RawCheck {
         pointer: require(&id, &kind, "pointer", pointer)?,
         contains: require(&id, &kind, "contains", contains)?,
       },
+      "justfile-recipe" => CheckKind::JustfileRecipe {
+        recipe: require(&id, &kind, "recipe", recipe)?,
+      },
       "yaml-seq-contains" => CheckKind::YamlSeqContains {
         target: require(&id, &kind, "target", target)?,
         pointer: require(&id, &kind, "pointer", pointer)?,
@@ -539,6 +564,14 @@ impl RawCheck {
         var: require(&id, &kind, "var", var)?,
         value: require(&id, &kind, "value", value)?,
       },
+      "dev-shell-package" => {
+        let package = require(&id, &kind, "package", package)?;
+        // `package` is interpolated into the nix-eval predicate, so hold it to
+        // the bare-identifier rule that keeps the whole expression
+        // injection-free.
+        require_flake_ident(&id, &kind, "package", &package)?;
+        CheckKind::DevShellPackage { shell, package }
+      }
       // `attr` doubles as the exact-name selector here; `suffix` selects by
       // name suffix.  Exactly one must be set — a suffix for the per-crate
       // package outputs, an exact name for a fixed output like a flake check.

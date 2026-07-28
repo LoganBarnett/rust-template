@@ -187,6 +187,7 @@ pub fn run_check(check: &Check, ctx: &SpawnContext) -> Verdict {
       pointer,
       contains,
     } => yaml_path(ctx.dir, target, pointer, &PathMatch::NotContains(contains)),
+    CheckKind::JustfileRecipe { recipe } => justfile_recipe(ctx.dir, recipe),
     CheckKind::YamlSeqContains {
       target,
       pointer,
@@ -236,6 +237,9 @@ pub fn run_check(check: &Check, ctx: &SpawnContext) -> Verdict {
     } => rust_method_chain(ctx.dir, target, function, methods),
     CheckKind::DevShellEnv { shell, var, value } => {
       dev_shell_env(ctx.dir, shell.as_deref(), var, value)
+    }
+    CheckKind::DevShellPackage { shell, package } => {
+      dev_shell_package(ctx.dir, shell.as_deref(), package)
     }
     CheckKind::FlakeOutputPresent {
       output,
@@ -1194,6 +1198,117 @@ fn dev_shell_env(
   }
 }
 
+/// `nix eval` the spawn's devShell (default or `shell`) and confirm one of its
+/// build inputs is the package whose derivation name is `package`.  Reading the
+/// resolved shell's `buildInputs`/`nativeBuildInputs` — rather than grepping
+/// flake.nix — means only a package actually pulled into the shell satisfies
+/// it, and (like dev_shell_env) evaluating the inputs' names never realizes the
+/// shell's heavy closure the way `nix develop` would.  Pass when found; Fail
+/// when absent or the shell does not evaluate; Error when nix cannot be run.
+fn dev_shell_package(
+  dir: &Path,
+  shell: Option<&str>,
+  package: &str,
+) -> Verdict {
+  let attr =
+    format!("devShells.{}.{}", nix_system(), shell.unwrap_or("default"));
+  // `package` is a manifest-validated bare identifier (require_flake_ident), so
+  // interpolating it into the predicate stays injection-free.  mkShell routes
+  // `packages` into nativeBuildInputs and `buildInputs` into buildInputs, so
+  // both lists are scanned; a package's clean name is `pname` when it carries a
+  // version and `name` otherwise (a writeShellApplication has only `name`).
+  let apply = format!(
+    "shell: builtins.any (p: (p.pname or p.name or \"\") == \"{package}\") \
+     ((shell.buildInputs or []) ++ (shell.nativeBuildInputs or []))"
+  );
+  // Every argument is long-form; the applied function prints a bare boolean.
+  let evaluated = match Command::new("nix")
+    .args([
+      "eval",
+      "--extra-experimental-features",
+      "nix-command flakes",
+      &format!("{}#{attr}", dir.display()),
+      "--apply",
+      &apply,
+    ])
+    .output()
+  {
+    Ok(evaluated) => evaluated,
+    Err(error) => {
+      return Verdict::Error {
+        detail: format!("could not run nix eval for {attr}: {error}"),
+      }
+    }
+  };
+  if !evaluated.status.success() {
+    return Verdict::Fail {
+      detail: format!(
+        "{attr} did not evaluate (shell absent or flake broken): {}",
+        String::from_utf8_lossy(&evaluated.stderr).trim()
+      ),
+    };
+  }
+  match String::from_utf8_lossy(&evaluated.stdout).trim() {
+    "true" => Verdict::Pass,
+    "false" => Verdict::Fail {
+      detail: format!("{attr} has no build input named \"{package}\""),
+    },
+    other => Verdict::Error {
+      detail: format!("{attr} check returned unexpected \"{other}\""),
+    },
+  }
+}
+
+/// Run `just --summary` in the spawn and confirm it lists a recipe named
+/// `recipe`.  Querying just's own recipe list rather than searching the file
+/// text means a mention in a comment does not satisfy the check — only a real
+/// recipe does.  A spawn without a justfile skips.
+fn justfile_recipe(dir: &Path, recipe: &str) -> Verdict {
+  let justfile = dir.join("justfile");
+  if !justfile.exists() {
+    return Verdict::Skip {
+      reason: "justfile not present".to_string(),
+    };
+  }
+  // `--summary` prints the recipe names space-separated; `--justfile` and
+  // `--working-directory` point just at the spawn rather than the process's own
+  // directory.  Every argument is long-form.
+  let output = match Command::new("just")
+    .arg("--justfile")
+    .arg(&justfile)
+    .arg("--working-directory")
+    .arg(dir)
+    .arg("--summary")
+    .output()
+  {
+    Ok(output) => output,
+    Err(error) => {
+      return Verdict::Error {
+        detail: format!("could not run just --summary: {error}"),
+      }
+    }
+  };
+  if !output.status.success() {
+    return Verdict::Fail {
+      detail: format!(
+        "just --summary failed (unparseable justfile?): {}",
+        String::from_utf8_lossy(&output.stderr).trim()
+      ),
+    };
+  }
+  let listed = String::from_utf8_lossy(&output.stdout);
+  if listed.split_whitespace().any(|name| name == recipe) {
+    Verdict::Pass
+  } else {
+    Verdict::Fail {
+      detail: format!(
+        "justfile has no recipe \"{recipe}\"; recipes: {}",
+        listed.trim()
+      ),
+    }
+  }
+}
+
 /// `nix eval` the flake output attrset `<output>.<system>` (the host double when
 /// `system` is `None`) and confirm it exposes a required attribute: any name
 /// ending with `suffix` (for a per-crate package like `<crate>-x86_64-windows`,
@@ -1258,9 +1373,9 @@ fn flake_output_present(
     };
   }
   let want = match (suffix, name) {
-    (Some(suffix), _) => format!("an attribute ending \"{suffix}\""),
-    (None, Some(name)) => format!("the attribute \"{name}\""),
-    (None, None) => "the required attribute".to_string(),
+    (Some(suffix), _) => format!("attribute ending \"{suffix}\""),
+    (None, Some(name)) => format!("attribute \"{name}\""),
+    (None, None) => "required attribute".to_string(),
   };
   let printed = String::from_utf8_lossy(&evaluated.stdout);
   match printed.trim() {
@@ -1577,6 +1692,32 @@ mod tests {
       ),
       Verdict::Pass
     ));
+  }
+
+  #[test]
+  fn justfile_recipe_queries_just_not_the_text() {
+    // Skip when `just` is absent (e.g. `cargo test` outside the dev shell); in
+    // CI it is present, so the assertions run there.
+    if Command::new("just").arg("--version").output().is_err() {
+      return;
+    }
+    let dir =
+      std::env::temp_dir().join(format!("cdb-just-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+      dir.join("justfile"),
+      "# ghost is only named in this comment\nreal *args:\n    echo {{args}}\n",
+    )
+    .unwrap();
+    // A real recipe passes; a name that appears only in a comment does not —
+    // the whole point of querying `just --summary` over a text search.
+    assert!(matches!(justfile_recipe(&dir, "real"), Verdict::Pass));
+    assert!(matches!(justfile_recipe(&dir, "ghost"), Verdict::Fail { .. }));
+    assert!(matches!(
+      justfile_recipe(&dir.join("missing"), "real"),
+      Verdict::Skip { .. }
+    ));
+    std::fs::remove_dir_all(&dir).ok();
   }
 
   #[test]

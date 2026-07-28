@@ -53,3 +53,13 @@ test-review-stop:
 # pass through, e.g. `just compliance --project my-app --format json`.
 compliance *ARGS:
   cargo run --quiet --package rust-template-compliance-cli -- {{ARGS}}
+
+# Combine this repo's passing Dependabot PRs into one PR and merge it.
+#
+# One-shot catch-up for a Dependabot backlog.  Runs the dependabot-combine
+# package this flake exposes (nix/dependabot-combine.*) — the same package
+# spawns pull from foundation — put on PATH by this repo's dev shell.  The
+# script auto-detects the github.com remote, so this repo's Gitea origin is a
+# non-issue.  Pass --dry-run or --no-merge to hold back.
+dependabot-combine *args:
+  dependabot-combine {{args}}

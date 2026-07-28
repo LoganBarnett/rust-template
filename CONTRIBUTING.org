@@ -133,6 +133,9 @@ commit body is too long.  When several internal changes add up to one
 adopter-visible outcome, prefer a single entry describing that outcome over one
 entry per underlying change.
 
+When no action is needed, the change itself gets a one-sentence budget — no
+run-ons.
+
 Write each entry as a numbered list item (=1.=, =2.=, …) under its subheading,
 not a dash bullet.
 
