@@ -212,7 +212,7 @@ jobs:
       # published asset always has matching provenance.  The .sha256 is a plain
       # integrity digest and needs none.
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: ${{ steps.package.outputs.asset }}
 
