@@ -6,6 +6,8 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+1. Bump schemars from 1.2.1 to 1.2.2
+   (https://github.com/LoganBarnett/rust-template/pull/66)
 * v0.67.0
 ** Maintenance
 1. Bump rust-embed from 8.11.0 to 8.12.0
