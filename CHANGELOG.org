@@ -6,6 +6,7 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+* v0.70.0
 * v0.69.0
 ** Maintenance
 1. Bump actions/attest-build-provenance from 2 to 4
