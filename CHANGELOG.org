@@ -6,6 +6,8 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+1. Bump serde from 1.0.228 to 1.0.229
+   (https://github.com/LoganBarnett/rust-template/pull/50)
 * v0.70.0
 * v0.69.0
 ** Maintenance
