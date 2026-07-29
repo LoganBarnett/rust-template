@@ -6,6 +6,8 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+* v0.69.0
+** Maintenance
 1. Bump actions/attest-build-provenance from 2 to 4
    (https://github.com/LoganBarnett/rust-template/pull/14)
 * v0.68.0
