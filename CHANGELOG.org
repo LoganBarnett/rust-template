@@ -6,6 +6,8 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+* v0.72.0
+** Maintenance
 1. Bump thiserror from 2.0.18 to 2.0.19
    (https://github.com/LoganBarnett/rust-template/pull/51)
 * v0.71.0
