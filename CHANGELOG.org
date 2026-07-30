@@ -6,6 +6,8 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+1. Bump syn from 2.0.118 to 3.0.3
+   (https://github.com/LoganBarnett/rust-template/pull/65)
 * v0.74.0
 ** Maintenance
 1. Bump actions/checkout from 4 to 7
