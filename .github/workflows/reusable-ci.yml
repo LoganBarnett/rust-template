@@ -70,7 +70,7 @@ jobs:
     needs: gate
     if: needs.gate.outputs.run_expensive == 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Install Nix + restore/save the `/nix` store cache.  See
       # `.github/actions/setup-nix` for the rationale.
@@ -99,7 +99,7 @@ jobs:
     needs: gate
     if: needs.gate.outputs.run_expensive == 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Install Nix + restore/save the `/nix` store cache.  See
       # `.github/actions/setup-nix` for the rationale.
@@ -114,7 +114,7 @@ jobs:
     needs: gate
     if: needs.gate.outputs.run_expensive == 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Install Nix + restore/save the `/nix` store cache.  See
       # `.github/actions/setup-nix` for the rationale.
@@ -152,7 +152,7 @@ jobs:
     # PR-merge path.
     if: needs.gate.outputs.run_expensive == 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -190,7 +190,7 @@ jobs:
     # Breaking entry" rule holds on every path into main, including
     # direct pushes that bypass the PR flow.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -267,7 +267,7 @@ jobs:
     needs: gate
     if: needs.gate.outputs.run_expensive == 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Install Nix; restore-only.  `save-store: "false"` keeps this
       # job's large musl/zig-cross-darwin closures from bloating and
@@ -338,7 +338,7 @@ jobs:
     needs: gate
     if: needs.gate.outputs.run_expensive == 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Install Nix; restore-only.  `save-store: "false"` keeps this job's
       # llvm-mingw + Windows-cross + wine closure from evicting the shared

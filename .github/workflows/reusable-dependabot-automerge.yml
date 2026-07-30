@@ -285,7 +285,7 @@ jobs:
 
       # --- Commit the changelog on the up-to-date branch, then revalidate ---
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: >
           steps.gate.outputs.proceed == 'true' &&
           steps.fresh.outputs.up_to_date == 'true' &&
