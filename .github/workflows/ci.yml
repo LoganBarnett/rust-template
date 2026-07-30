@@ -51,7 +51,7 @@ jobs:
           - test-review-stop.sh
           - test-dependabot-allowlist.sh
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Install Nix + restore/save the `/nix` store cache.  Local `./`
       # ref (the `reusable-*.yml` workflows use the `@main` form) so a PR
@@ -75,7 +75,7 @@ jobs:
     name: Darwin cross fixture build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Install Nix; restore-only cross-compile job.  Local `./` ref for
       # PR self-testing (see `template-tests` above); `save-store:
@@ -105,7 +105,7 @@ jobs:
     name: Gnu portable fixture build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Install Nix; restore-only portable-build job.  Local `./` ref for PR
       # self-testing (see `template-tests` above); `save-store: "false"` so its
@@ -137,7 +137,7 @@ jobs:
     name: Windows cross fixture build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Install Nix; restore-only cross-compile job.  Local `./` ref for PR
       # self-testing (see `template-tests` above); `save-store: "false"` so its
