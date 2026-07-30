@@ -6,6 +6,8 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+* v0.74.0
+** Maintenance
 1. Bump actions/checkout from 4 to 7
    (https://github.com/LoganBarnett/rust-template/pull/13)
 * v0.73.0
