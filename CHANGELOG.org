@@ -6,6 +6,8 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+* v0.73.0
+** Maintenance
 1. Bump rustls from 0.23.42 to 0.23.43
    (https://github.com/LoganBarnett/rust-template/pull/67)
 * v0.72.0
