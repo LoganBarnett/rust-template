@@ -44,12 +44,17 @@
     # below and, via `foundation.lib.mkCiShell`, by every spawned project.
     mkCiShell = import ./nix/lib/mkCiShell.nix {inherit changelog-roller org-fmt;};
     # Binary crates this repo ships as release artifacts.  Mirrors the
-    # release-binary = true entries in rust-template.json: compliance-cli is the
-    # only binary; the foundation crates and compliance-lib are libraries.
+    # release-binary = true entries in rust-template.json: compliance-cli and
+    # dependency-bump-cli are the binaries; the foundation crates and the
+    # *-lib crates are libraries.
     crates = {
       compliance-cli = {
         name = "rust-template-compliance-cli";
         binary = "rust-template-compliance-cli";
+      };
+      dependency-bump-cli = {
+        name = "rust-template-dependency-bump-cli";
+        binary = "rust-template-dependency-bump-cli";
       };
     };
     # A build-only regression fixture guarding the zig-linked build paths the
@@ -141,6 +146,10 @@
       # package output — the very package spawns pull in via
       # foundation.packages.<system>.dependabot-combine.
       self.packages.${system}.dependabot-combine
+      # The daily dependency bumper, likewise taken from this flake's own
+      # package output so `just dependency-bump` works here the same way it
+      # does in a spawn.
+      self.packages.${system}.dependency-bump
     ];
   in {
     devShells = forAllSystems (system: {
@@ -278,6 +287,17 @@
           dependabot-combine = (pkgsFor system).callPackage ./nix/dependabot-combine.nix {
             rustToolchain = (pkgsFor system).rust-bin.stable.latest.default;
             changelog-roller = changelog-roller.packages.${system}.default;
+          };
+          # The daily dependency bumper (crates/dependency-bump-*), wrapped
+          # with its runtime tools on PATH and exposed so spawns pull it from
+          # foundation.packages.<system>.dependency-bump rather than carry a
+          # copy that drifts.  The scheduled workflow `nix run`s this same
+          # attribute at main, keeping tool and workflow in lockstep.
+          dependency-bump = (pkgsFor system).callPackage ./nix/dependency-bump.nix {
+            dependency-bump-cli = cratePackages.dependency-bump-cli;
+            rustToolchain = (pkgsFor system).rust-bin.stable.latest.default;
+            changelog-roller = changelog-roller.packages.${system}.default;
+            org-fmt = org-fmt.packages.${system}.default;
           };
         }
     );

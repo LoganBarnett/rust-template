@@ -520,14 +520,6 @@ target = ".github/workflows/dependabot-automerge.yml"
 pointer = "permissions.actions"
 value = "write"
 
-[[check]]
-id = "dependabot-automerge-issues-write"
-description = "Auto-merge must grant issues: write to create and apply the dependabot-hold label."
-kind = "yaml-path-equals"
-target = ".github/workflows/dependabot-automerge.yml"
-pointer = "permissions.issues"
-value = "write"
-
 # ---------------------------------------------------------------------------
 # Dependabot backlog combiner — a one-shot `just dependabot-combine` that
 # bundles the passing open Dependabot PRs into one PR and merges it, for
@@ -548,6 +540,81 @@ id = "dependabot-combine-justfile-recipe"
 description = "The spawn's justfile must expose the combiner as the dependabot-combine recipe."
 kind = "justfile-recipe"
 recipe = "dependabot-combine"
+
+# ---------------------------------------------------------------------------
+# Dependency bump (.github/workflows/dependency-bump.yml) — always emitted.
+#
+# The daily scheduled `cargo update` flow that replaces Dependabot.  The
+# compliance surface stops at this wrapper and its @main delegation to
+# rust-template's reusable-dependency-bump workflow; the bump engine itself is
+# the `dependency-bump` package on the foundation flake (wired below), never
+# emitted into a spawn.  Only the schedule's presence is asserted, not its
+# timing — spawns are invited to re-stagger the cron.
+# ---------------------------------------------------------------------------
+
+[[check]]
+id = "dependency-bump-workflow-present"
+description = "The dependency-bump workflow file must exist."
+kind = "file-present"
+path = ".github/workflows/dependency-bump.yml"
+
+[[check]]
+id = "dependency-bump-uses-reusable"
+description = "The bump job must delegate to the rust-template reusable-dependency-bump workflow."
+kind = "yaml-path-contains"
+target = ".github/workflows/dependency-bump.yml"
+pointer = "jobs.bump.uses"
+contains = "rust-template/.github/workflows/reusable-dependency-bump.yml@main"
+
+[[check]]
+id = "dependency-bump-schedule-trigger"
+description = "The bump must run on a cron schedule (any timing suits; only presence is asserted)."
+kind = "yaml-path-exists"
+target = ".github/workflows/dependency-bump.yml"
+pointer = "on.schedule.0.cron"
+
+[[check]]
+id = "dependency-bump-dispatch-trigger"
+description = "The bump must be manually runnable via workflow_dispatch for catch-up runs."
+kind = "yaml-path-exists"
+target = ".github/workflows/dependency-bump.yml"
+pointer = "on.workflow_dispatch"
+
+[[check]]
+id = "dependency-bump-contents-write"
+description = "The bump must grant contents: write to push the bump branch and its commit."
+kind = "yaml-path-equals"
+target = ".github/workflows/dependency-bump.yml"
+pointer = "permissions.contents"
+value = "write"
+
+[[check]]
+id = "dependency-bump-pull-requests-write"
+description = "The bump must grant pull-requests: write to open and merge the bump PR."
+kind = "yaml-path-equals"
+target = ".github/workflows/dependency-bump.yml"
+pointer = "permissions.pull-requests"
+value = "write"
+
+[[check]]
+id = "dependency-bump-actions-write"
+description = "The bump must grant actions: write to dispatch CI, approve its gated run, and dispatch publish."
+kind = "yaml-path-equals"
+target = ".github/workflows/dependency-bump.yml"
+pointer = "permissions.actions"
+value = "write"
+
+[[check]]
+id = "dependency-bump-flake-includes-package"
+description = "The spawn's flake must pull the bump tool package from the foundation flake into its dev shell."
+kind = "dev-shell-package"
+package = "dependency-bump"
+
+[[check]]
+id = "dependency-bump-justfile-recipe"
+description = "The spawn's justfile must expose the bump tool as the dependency-bump recipe."
+kind = "justfile-recipe"
+recipe = "dependency-bump"
 
 # ---------------------------------------------------------------------------
 # Dependabot config (.github/dependabot.yml) — always emitted.

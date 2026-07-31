@@ -3,7 +3,7 @@ name: Dependabot auto-merge (reusable)
 # Invoked by a consumer wrapper that fires on `workflow_run` completing for the
 # CI workflow.  All gating lives here so the wrapper stays a one-liner.
 #
-# This is a serial, single-flight queue over Dependabot's open bumps, built to
+# This is a serial, single-flight flow over Dependabot's open bumps, built to
 # land them cleanly under branch protection that requires the CI checks to pass
 # on the merged commit.  The core problem it solves: the changelog entry must
 # ride the same commit the checks run against, but committing it and merging in
@@ -34,11 +34,6 @@ name: Dependabot auto-merge (reusable)
 #     Dependabot (it will not rebase a branch edited by someone else); if such a
 #     branch falls behind, it is `@dependabot recreate`d, which rebuilds it from
 #     scratch and discards the stray commit.
-#   - Hold label.  A bump whose CI fails — the first run or the re-dispatched
-#     one — is labeled and skipped, so a genuine breaking upgrade does not wedge
-#     the head of the queue; a human removes the label once the code is fixed.
-#   - Advance.  After each merge or park, the oldest still-behind bump is
-#     nudged, walking the queue one bump at a time.
 #
 # The squash-merge is the mergeability gate; "behind the base" is read from the
 # compare API's `behind_by` (derived synchronously from the commit graph,
@@ -65,13 +60,6 @@ on:
           with no publish step).
         type: string
         default: "publish.yml"
-      hold-label:
-        description: >-
-          Label applied to a Dependabot bump whose CI has failed, to park it
-          out of the queue until a human removes it.  The queue skips any bump
-          carrying it.
-        type: string
-        default: "dependabot-hold"
 
 jobs:
   automerge:
@@ -84,12 +72,12 @@ jobs:
     # on the `pull_request` CI run Dependabot itself produced — a real actor, so
     # its `workflow_run` fires; our own re-dispatched run is GITHUB_TOKEN-driven
     # and deliberately does not re-enter here (this run waits on it inline
-    # instead).  Both success and failure are handled — a failure parks the
-    # bump.  Pushes to main and other events are ignored.
+    # instead).  Only a successful run proceeds; a failing bump is simply left
+    # alone — its red checks on the PR already say why.  Pushes to main and
+    # other events are ignored.
     if: >
       github.event.workflow_run.event == 'pull_request' &&
-      (github.event.workflow_run.conclusion == 'success' ||
-       github.event.workflow_run.conclusion == 'failure')
+      github.event.workflow_run.conclusion == 'success'
     # Repo-wide single flight, at the job level rather than the workflow level
     # so an invocation the `if` skips never claims the group — a no-op run for
     # an ignored event cannot displace a real merge waiting in the single
@@ -105,8 +93,6 @@ jobs:
       pull-requests: write
       # Dispatch the CI re-run and the publish workflow.
       actions: write
-      # Create and apply the hold label.
-      issues: write
     steps:
       - name: Resolve PR from workflow_run head
         id: pr
@@ -144,8 +130,6 @@ jobs:
           BASE_REF=$(jq --raw-output '.baseRefName' pr.json)
           IS_SECURITY=$(jq --raw-output \
             '[.labels[].name] | any(. == "security")' pr.json)
-          IS_HELD=$(jq --raw-output --arg hold "$HOLD_LABEL" \
-            '[.labels[].name] | any(. == $hold)' pr.json)
           {
             echo "author=$AUTHOR"
             echo "is_bot=$IS_BOT"
@@ -154,12 +138,10 @@ jobs:
             echo "head_ref=$HEAD_REF"
             echo "base_ref=$BASE_REF"
             echo "is_security=$IS_SECURITY"
-            echo "is_held=$IS_HELD"
           } >> "$GITHUB_OUTPUT"
         env:
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
-          HOLD_LABEL: ${{ inputs.hold-label }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Gate on author
@@ -183,28 +165,6 @@ jobs:
           AUTHOR: ${{ steps.meta.outputs.author }}
           IS_BOT: ${{ steps.meta.outputs.is_bot }}
 
-      - name: Plan the run
-        id: plan
-        if: steps.pr.outputs.skip == 'false'
-        run: |
-          # A held or non-Dependabot PR is a no-op.  A failed CI run parks the
-          # bump; a passing one enters processing (allowlist, rebase-first, and
-          # the commit-changelog-revalidate-merge sequence).
-          if [ "$IS_DEPENDABOT" != "true" ] || [ "$IS_HELD" = "true" ]; then
-            MODE=skip
-          elif [ "$CONCLUSION" = "failure" ]; then
-            MODE=park
-          elif [ "$CONCLUSION" = "success" ]; then
-            MODE=process
-          else
-            MODE=skip
-          fi
-          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
-        env:
-          IS_DEPENDABOT: ${{ steps.author.outputs.is_dependabot }}
-          IS_HELD: ${{ steps.meta.outputs.is_held }}
-          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
-
       # --- Success path: allowlist, rebase, changelog, revalidate, merge ---
 
       # Which files a bump may touch — and whether the changelog is already
@@ -213,7 +173,7 @@ jobs:
       # consumes this flow via @main.
       - name: Check the PR's files against the allowlist
         id: files
-        if: steps.plan.outputs.mode == 'process'
+        if: steps.author.outputs.is_dependabot == 'true'
         uses: LoganBarnett/rust-template/.github/actions/dependabot-allowlist@main
         with:
           repo: ${{ github.repository }}
@@ -223,7 +183,7 @@ jobs:
 
       - name: Decide whether to proceed
         id: gate
-        if: steps.plan.outputs.mode == 'process'
+        if: steps.author.outputs.is_dependabot == 'true'
         run: |
           if [ -n "$UNEXPECTED" ]; then
             echo "::warning::PR touches unexpected files — leaving for a human."
@@ -433,29 +393,6 @@ jobs:
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # --- Park a failing bump under the hold label ---
-
-      # Fires for a bump whose first CI run failed (the `park` plan) or whose
-      # re-dispatched CI failed, so a genuine breaking upgrade leaves the queue
-      # rather than wedging it.
-      - name: Park a failing bump
-        if: >
-          steps.plan.outputs.mode == 'park' ||
-          steps.revalidate.outputs.ci_conclusion == 'failure'
-        run: |
-          # `--force` upserts, so this both self-provisions the label in a
-          # spawn that has never seen it and is idempotent on re-runs.
-          gh label create "$HOLD_LABEL" --repo "$REPO" --force \
-            --color BFD4F2 \
-            --description "Dependabot bump parked: CI is failing and it needs a manual fix before it can auto-merge.  Remove to return it to the queue."
-          gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label "$HOLD_LABEL"
-          echo "::notice::Parked #$PR_NUMBER under $HOLD_LABEL (CI failed)."
-        env:
-          REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ steps.pr.outputs.number }}
-          HOLD_LABEL: ${{ inputs.hold-label }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Dispatch publish
         if: >
           steps.merge.outputs.merged == 'true' &&
@@ -465,64 +402,4 @@ jobs:
           REPO: ${{ github.repository }}
           WORKFLOW: ${{ inputs.publish-workflow }}
           BASE_REF: ${{ steps.meta.outputs.base_ref }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # --- Advance the queue ---
-
-      # Move the queue on whenever this run finished with the current bump —
-      # merged it, parked it, or gave up on it (unexpected files, or a
-      # re-dispatched CI that failed, timed out, or could not be located).  A
-      # bump that was merely nudged because it was behind is deliberately not
-      # an advance trigger: its own re-run drives it.
-      - name: Advance the queue
-        if: >
-          steps.plan.outputs.mode == 'park' ||
-          steps.merge.outputs.merged == 'true' ||
-          steps.merge.outputs.merged == 'false' ||
-          steps.revalidate.outputs.ci_conclusion == 'failure' ||
-          steps.revalidate.outputs.ci_conclusion == 'timeout' ||
-          steps.revalidate.outputs.ci_conclusion == 'unknown' ||
-          (steps.plan.outputs.mode == 'process' &&
-           steps.gate.outputs.proceed == 'false')
-        continue-on-error: true
-        run: |
-          # Nudge exactly one bump — the oldest open, Dependabot-authored,
-          # non-held PR that has fallen behind the base — to bring it forward.
-          # A branch carrying the changelog commit is disowned by Dependabot
-          # and ignores `rebase`, so it is `recreate`d instead.  One nudge per
-          # run keeps the drain strictly serial.
-          gh pr list --repo "$REPO" --state open --limit 50 \
-            --json number,createdAt,author,labels,headRefName > queue.json
-          numbers=$(jq --raw-output --arg hold "$HOLD_LABEL" '
-            [ .[]
-              | select(
-                  (.author.login == "dependabot[bot]"
-                    or .author.login == "app/dependabot")
-                  and (any(.labels[].name; . == $hold) | not)
-                )
-            ] | sort_by(.createdAt) | .[].number' queue.json)
-          for n in $numbers; do
-            head=$(jq --raw-output --argjson n "$n" \
-              '.[] | select(.number == $n) | .headRefName' queue.json)
-            behind=$(gh api "repos/$REPO/compare/$BASE...$head" \
-              --jq '.behind_by' 2>/dev/null || echo 0)
-            if [ "$behind" -gt 0 ]; then
-              external=$(gh pr view "$n" --repo "$REPO" --json commits --jq '
-                [ .commits[].authors[].login ]
-                | map(. != "dependabot[bot]" and . != "app/dependabot")
-                | any')
-              if [ "$external" = "true" ]; then
-                cmd=recreate
-              else
-                cmd=rebase
-              fi
-              gh pr comment "$n" --repo "$REPO" --body "@dependabot $cmd"
-              echo "::notice::Advanced queue: requested $cmd on #$n ($behind behind)."
-              break
-            fi
-          done
-        env:
-          REPO: ${{ github.repository }}
-          BASE: ${{ steps.meta.outputs.base_ref }}
-          HOLD_LABEL: ${{ inputs.hold-label }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

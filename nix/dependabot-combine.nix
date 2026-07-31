@@ -3,23 +3,23 @@
 # installed globally.  See dependabot-combine.sh for what it does.
 {
   writeShellApplication,
-  # GitHub CLI: lists the open bump PRs and their check status, opens the
-  # combined PR, merges it, and closes the superseded PRs.
+  # GitHub CLI: lists the open bump PRs and their check status, reads each PR's
+  # diff, opens the combined PR, merges it, and closes the superseded PRs.
   gh,
-  # Drives the throwaway worktree, replays each bump's manifest change, and
-  # pushes the combined branch.
+  # Clones the target repo into the throwaway checkout, branches off the base,
+  # and pushes the combined branch.
   git,
-  # `cargo update --precise` reconciles Cargo.lock to Dependabot's chosen
-  # versions without re-resolving anything; supplied as the project toolchain.
+  # `cargo update` bumps each package a PR signalled to the newest release its
+  # existing constraint allows; supplied as the project toolchain.
   rustToolchain,
   # Inserts the combined PR's changelog entries so CI's changelog gate passes.
   changelog-roller,
-  # Resolves which git remote hosts the GitHub repo (the `awk` over
-  # `git remote --verbose`).
+  # `awk` parses each Cargo.lock diff for the packages that moved and picks the
+  # git remote that hosts the GitHub repo.
   gawk,
   # Tests the combined PR's aggregated check output for pending/failing runs.
   gnugrep,
-  # sleep, cat, rm, and the other core utilities the script relies on.
+  # mkdir, cut, rm, sleep, and the other core utilities the script relies on.
   coreutils,
 }:
 writeShellApplication {

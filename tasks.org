@@ -140,6 +140,49 @@ Per /a propagated change needs a check/, add a compliance check when it lands so
 existing spawns adopt the guard — e.g. a mention/value check that the emitted
 =.claude/settings.json= carries the =--no-verify= block.
 
+* TODO Decide whether the lowercase env-var rule covers ~RUST_TEMPLATE_SHELL~
+
+=crates/foundation/USAGE.org= specifies that env-var names are lowercase with an
+app-name prefix — ~<app>_<flag>~ — and backs it with POSIX.1-2017 §8.1, quoted
+verbatim: the uppercase namespace belongs to the Shell and Utilities volume, and
+the namespace containing lowercase letters is reserved for applications.  It
+names the ~APP_FOO~ form specifically as a cargo-culted carry-over from the
+utility rule.  The =MergeConfig= derive and the =mkNixosService= /
+=mkDarwinService= helpers all implement the lowercase rule.
+
+The devShell marker does not.  The default shell in =flake.nix=, the emitted
+=template/flake.nix=, and =nix/lib/mkCiShell.nix= all export
+~RUST_TEMPLATE_SHELL~ — uppercase, and in exactly the shape USAGE.org rejects.
+
+Whether that is a violation is the actual question, and it should be settled
+before anything is renamed.  The case that it /is/: §8.1 reserves a namespace,
+and the reservation says nothing about who reads the variable — an uppercase
+name sitting in a developer's environment is precisely what the standard assigns
+to the Standard Utilities.  The case that it is /not/: USAGE.org's rule is
+written for env vars an application reads as configuration, and this is a
+build-environment marker named after the template rather than after any app, so
+it may sit outside the rule's scope.
+
+If the rule does cover it, the rename reaches further than it first appears.
+The marker is emitted into every spawn's =flake.nix=, so the fleet carries it; a
+compliance check reads it back through ~nix eval~ to confirm the shell
+evaluates, so the checker moves in lockstep; and anything branching on which
+devShell is active — personal shell config, CI steps — breaks silently rather
+than loudly, since an unset variable just reads as empty.  Sweep those before
+landing it, and per /a propagated change needs a check/ in =docs/compliance.org=
+make sure the check enforces the new spelling so spawns actually adopt it.
+
+If the rule does not cover it, say so in USAGE.org.  Leaving the template
+visibly breaking its own documented convention teaches every reader — and every
+agent, which reads =flake.nix= far more often than =USAGE.org= — that the rule
+is advisory.
+
+Surfaced while auditing whether the =jj= spawn owed an env-var rename after a
+proposal to move the template from POSIX to a GNU convention.  The proposal did
+not survive checking (the GNU Coding Standards contain no env-var naming
+guidance at all — the cited section and quotes do not exist), and =jj= turned
+out to be conformant already.  The template was the only thing out of step.
+
 * DONE foundation's auth feature drags in aws-lc-sys, breaking darwin cross-builds
 
 Fixed in =crates/foundation/=.  =cargo tree -i aws-lc-sys= is now empty for an
@@ -2333,3 +2376,28 @@ warnings=.
 
 The single =nix/lib/mkGnuPortablePackages.nix= serves both this repo and every
 spawn (via =foundation.lib=), so the one fix covers all consumers.
+
+* TODO Dependency-bump: coupled and conditional hold rules
+
+The v1 hold table (~[workspace.metadata.dependency-bump]~ in the workspace
+~Cargo.toml~, parsed by =crates/dependency-bump-lib=) supports only a flat
+exclusion: ~{ package, reason }~.  Two richer rules were the reason the tool
+became a Rust crate rather than a Bash script, and both belong on this same
+table:
+
+- /Coupled bumps/: "A does not bump unless B bumps in the same run" — e.g.
+  proc-macro pairs whose versions must advance together.  Shape sketch: ~{
+  package = "a", with = "b" }~; enforcement is a post-update check that reverts
+  A (the same ~--precise~ re-pin the hold path uses) when B did not move.
+- /Conditional holds/: "X stays held until the fix for issue #N is contained in
+  a release tag" — a hold that lifts itself.  Shape sketch: ~{ package = "x",
+  reason = "...", until-issue = "owner/repo#123" }~; the engine asks the forge
+  whether a release tag contains the fix commit and drops the hold when it does.
+  Needs network access and forge auth, so it must degrade to a plain hold when
+  offline.
+
+Also carried from the Phase 2 dogfood plan: record the June-11 probe outcome
+here (does the approval-gated ~pull_request~ run block the merge when the
+dispatched run's checks are green, and does the approve endpoint work for
+non-fork gated runs?), then trim whichever of the approve/dispatch legs the
+probe shows to be redundant in =.github/workflows/reusable-dependency-bump.yml=.

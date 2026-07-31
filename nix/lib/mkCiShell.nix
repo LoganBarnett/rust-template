@@ -41,6 +41,7 @@
   changelogRoller ? changelog-roller.packages.${system}.default,
   orgFmt ? org-fmt.packages.${system}.default,
   semverChecks ? pkgs.cargo-semver-checks.overrideAttrs (_: {doCheck = false;}),
+  cargoAudit ? pkgs.cargo-audit,
   buildInputs ? [],
   shellHook ? "",
   ...
@@ -55,6 +56,7 @@
     "changelogRoller"
     "orgFmt"
     "semverChecks"
+    "cargoAudit"
     "buildInputs"
     "shellHook"
   ];
@@ -69,6 +71,12 @@
     orgFmt
     # The ABI baseline gate the `abi` job runs against crates.io.
     semverChecks
+    # Advisory scanning for local parity with the scheduled dependency-bump
+    # flow's Security/Maintenance classification (`nix develop .#ci --command
+    # cargo audit`).  The workflow itself runs the packaged dependency-bump
+    # tool via `nix run`, which carries its own copy — this one is not
+    # load-bearing there.
+    cargoAudit
     # Packs Windows release binaries into `.zip` archives (the release-binaries
     # workflow ships Windows assets as `.zip`, the format Windows users expect,
     # while Linux/macOS assets stay `.tar.gz`).  Linux/macOS packaging uses tar

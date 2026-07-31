@@ -2553,6 +2553,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "rust-template-dependency-bump-cli"
+version = "0.74.0"
+dependencies = [
+ "clap",
+ "rust-template-dependency-bump-lib",
+ "rust-template-foundation",
+ "serde",
+ "thiserror 2.0.19",
+ "tracing",
+]
+
+[[package]]
+name = "rust-template-dependency-bump-lib"
+version = "0.74.0"
+dependencies = [
+ "rust-template-foundation",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.19",
+ "toml",
+ "tracing",
+]
+
+[[package]]
 name = "rust-template-foundation"
 version = "0.74.0"
 dependencies = [

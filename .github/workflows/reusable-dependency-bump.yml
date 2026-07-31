@@ -1,0 +1,333 @@
+name: Dependency bump (reusable)
+
+# The landing half of the scheduled dependency-bump flow.  A consumer
+# wrapper fires this daily (cron) and on manual dispatch; one run does the
+# whole journey: bump, changelog, branch, PR, CI, merge, publish.
+#
+# The tool half (the `dependency-bump` package on the rust-template flake,
+# built from crates/dependency-bump-*) owns the working-tree
+# transformation: `cargo update` across the workspace, hold re-pinning from
+# the workspace manifest's `[workspace.metadata.dependency-bump]` table,
+# Security/Maintenance classification via `cargo audit`, and the CHANGELOG
+# entries.  This workflow owns everything with a remote side effect: the
+# commit, the branch push, the PR, the CI dispatch, the merge, and the
+# publish dispatch.
+#
+# Everything runs on GITHUB_TOKEN — no PAT, no per-project setup.  That
+# shapes the flow in two documented ways:
+#   - The branch push fires no `pull_request` run (the no-cascade rule), so
+#     the required checks are produced by dispatching the CI workflow via
+#     `workflow_dispatch` (exempt from no-cascade) and polling it inline.
+#   - The merge's push to the base branch fires no `push` run either, so
+#     the publish workflow is dispatched explicitly after the merge.
+#
+# Wreckage visibility is a design invariant: the PR is opened as early as
+# possible, so nearly every failure leaves an open PR with red or missing
+# checks; failures before the branch exists surface as a red run in the
+# Actions tab.  A run that finds nothing to bump exits quietly.
+#
+# Since June 11 2026, a PR created or updated with GITHUB_TOKEN spawns its
+# `pull_request` run in an approval-required state instead of not at all.
+# Whether that pending run blocks the merge is being probed by dogfooding;
+# the flow approves any such run right after opening the PR (harmless when
+# approval is declined — the dispatched run still carries the required
+# checks) and retries the approval inside the merge loop.
+
+on:
+  workflow_call:
+    inputs:
+      changelog-file:
+        type: string
+        default: "CHANGELOG.org"
+      ci-workflow:
+        description: >-
+          File name of the CI workflow to dispatch against the bump branch,
+          so the required checks run against the bump commit (a
+          GITHUB_TOKEN push triggers none on its own).
+        type: string
+        default: "ci.yml"
+      publish-workflow:
+        description: >-
+          File name of the publish workflow to dispatch after merge.  Set
+          to an empty string to skip the dispatch entirely (e.g. a
+          repository with no publish step).
+        type: string
+        default: "publish.yml"
+      tool-flake:
+        description: >-
+          Flake reference providing the `dependency-bump` package.  The
+          default keeps the tool in lockstep with this reusable workflow at
+          main; a fork points this at its own copy.
+        type: string
+        default: "github:LoganBarnett/rust-template"
+
+jobs:
+  bump:
+    name: Dependency bump
+    # One bump run at a time: a second scheduled or manual run queues
+    # rather than racing the first through the branch and the merge, and a
+    # run mid-merge is never cancelled.
+    concurrency:
+      group: dependency-bump
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    permissions:
+      # Push the bump branch and its commit.
+      contents: write
+      # Open and merge the bump PR.
+      pull-requests: write
+      # Dispatch the CI run against the bump branch, approve the
+      # approval-gated `pull_request` run, and dispatch the publish
+      # workflow.
+      actions: write
+    steps:
+      - uses: actions/checkout@v7
+
+      # Install Nix + restore/save the `/nix` store cache so the
+      # dependency-bump closure stays warm across the daily runs.  See
+      # `.github/actions/setup-nix` for the rationale.
+      - uses: LoganBarnett/rust-template/.github/actions/setup-nix@main
+
+      - name: Bump dependencies and compose the changelog
+        id: bump
+        run: |
+          # The tool mutates only the working tree (lockfiles + changelog)
+          # and reports what moved via the TSV report file; an empty report
+          # means nothing to do.  Running it from the flake at main keeps
+          # the tool in lockstep with this workflow, instead of lagging on
+          # the consumer's pinned foundation input.
+          nix run "$TOOL_FLAKE#dependency-bump" -- \
+            --changelog "$CHANGELOG_FILE" \
+            --report-file "$RUNNER_TEMP/bump-report.tsv"
+          if [ -s "$RUNNER_TEMP/bump-report.tsv" ]; then
+            count=$(wc --lines < "$RUNNER_TEMP/bump-report.tsv" | tr --delete ' ')
+            echo "bumped=true" >> "$GITHUB_OUTPUT"
+            echo "count=$count" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::All dependencies are current; nothing to bump."
+            echo "bumped=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          TOOL_FLAKE: ${{ inputs.tool-flake }}
+          CHANGELOG_FILE: ${{ inputs.changelog-file }}
+          # Authenticate the flake fetch so it does not ride the anonymous
+          # GitHub API rate limit shared by every Actions runner.
+          NIX_CONFIG: access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
+
+      - name: Commit the bumps and push the branch
+        id: push
+        if: steps.bump.outputs.bumped == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # `checkout -B` create-or-resets the bump branch onto the tip
+          # just bumped.  The branch is machine-owned: a leftover from an
+          # earlier failed run is stale by definition (its bumps re-resolve
+          # from today's index), so the push below force-replaces it, and
+          # the PR step adopts any PR still open on it rather than
+          # duplicating.  The short flag has no long form.
+          git checkout -B dependency-bump
+          # `--update` stages only modifications to tracked files (the
+          # lockfiles and the changelog); it cannot scoop up stray
+          # untracked files.
+          git add --update
+          {
+            echo "bump $COUNT dependencies"
+            echo
+            # `read -r` reads raw, leaving backslashes literal.  The short
+            # flag has no long form.
+            while IFS=$'\t' read -r name from to heading; do
+              echo "Bump $name from $from to $to"
+            done < "$RUNNER_TEMP/bump-report.tsv"
+          } > "$RUNNER_TEMP/bump-msg"
+          git commit --file "$RUNNER_TEMP/bump-msg"
+          git push --force origin dependency-bump
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        env:
+          COUNT: ${{ steps.bump.outputs.count }}
+
+      - name: Open the pull request
+        id: pr
+        if: steps.bump.outputs.bumped == 'true'
+        run: |
+          # Open the PR as early as possible: everything after this point
+          # that fails leaves an open PR as visible wreckage rather than
+          # only a red run in the Actions tab.
+          existing=$(gh pr list --repo "$REPO" --head dependency-bump \
+            --state open --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            echo "number=$existing" >> "$GITHUB_OUTPUT"
+            echo "Adopted existing bump PR #$existing."
+          else
+            {
+              echo "Daily scheduled dependency bump."
+              echo
+              # `read -r` reads raw, leaving backslashes literal.  The
+              # short flag has no long form.
+              while IFS=$'\t' read -r name from to heading; do
+                echo "- $name $from -> $to ($heading)"
+              done < "$RUNNER_TEMP/bump-report.tsv"
+            } > "$RUNNER_TEMP/pr-body"
+            url=$(gh pr create --repo "$REPO" --base "$BASE" \
+              --head dependency-bump \
+              --title "bump $COUNT dependencies" \
+              --body-file "$RUNNER_TEMP/pr-body")
+            echo "number=${url##*/}" >> "$GITHUB_OUTPUT"
+            echo "Opened $url"
+          fi
+        env:
+          REPO: ${{ github.repository }}
+          BASE: ${{ github.ref_name }}
+          COUNT: ${{ steps.bump.outputs.count }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Approve the approval-gated PR run, if any
+        if: steps.bump.outputs.bumped == 'true'
+        run: |
+          # Since June 11 2026 a PR created or updated with GITHUB_TOKEN
+          # spawns its `pull_request` CI run held awaiting approval.
+          # Approve it right away: if approval works, the PR's own checks
+          # run in parallel with the dispatched run below and are green by
+          # merge time; if the endpoint declines (it is only documented for
+          # fork PRs), the dispatched run still carries the required checks
+          # — the dogfood runs of this flow probe which of the two the
+          # merge actually needs.
+          sleep 10
+          gh run list --repo "$REPO" --branch dependency-bump \
+            --status action_required --json databaseId \
+            --jq '.[].databaseId' 2>/dev/null |
+            while read -r pending; do
+              if gh api --method POST \
+                  "repos/$REPO/actions/runs/$pending/approve"; then
+                echo "Approved gated run $pending."
+              else
+                echo "::notice::could not approve gated run $pending;" \
+                  "relying on the dispatched CI run."
+              fi
+            done
+        env:
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Dispatch CI against the bump branch and wait for it
+        id: ci
+        if: steps.bump.outputs.bumped == 'true'
+        run: |
+          # A GITHUB_TOKEN push fires no `pull_request` run (the no-cascade
+          # rule), so the required checks are produced by dispatching the
+          # CI workflow on the bump branch — `workflow_dispatch` is exempt
+          # — and polling it here.
+          gh workflow run "$CI_WORKFLOW" --repo "$REPO" \
+            --ref dependency-bump
+          # Locate the dispatched run by matching its head SHA to the
+          # commit just pushed (not merely "the newest dispatch run", which
+          # races a concurrent manual dispatch).  Registration takes a few
+          # seconds.
+          run_id=""
+          for _ in $(seq 1 20); do
+            sleep 6
+            run_id=$(gh run list --repo "$REPO" --workflow "$CI_WORKFLOW" \
+              --branch dependency-bump --event workflow_dispatch \
+              --limit 5 --json databaseId,headSha 2>/dev/null |
+              jq --raw-output --arg sha "$SHA" \
+                '[.[] | select(.headSha == $sha)][0].databaseId // empty' \
+              || true)
+            [ -n "$run_id" ] && break
+          done
+          if [ -z "$run_id" ]; then
+            echo "::warning::could not find the dispatched CI run;" \
+              "leaving the PR for a human."
+            echo "conclusion=unknown" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Waiting on CI run $run_id..."
+          # Poll to completion (up to ~60 minutes); a run that never
+          # finishes is left for a human rather than merged blind.
+          conclusion=timeout
+          for _ in $(seq 1 120); do
+            info=$(gh run view "$run_id" --repo "$REPO" \
+              --json status,conclusion \
+              --jq '"\(.status)|\(.conclusion // "")"' 2>/dev/null || true)
+            if [ "${info%%|*}" = "completed" ]; then
+              conclusion=${info#*|}
+              break
+            fi
+            sleep 30
+          done
+          echo "CI for the bump concluded: ${conclusion:-unknown}"
+          echo "conclusion=${conclusion:-unknown}" >> "$GITHUB_OUTPUT"
+        env:
+          REPO: ${{ github.repository }}
+          CI_WORKFLOW: ${{ inputs.ci-workflow }}
+          SHA: ${{ steps.push.outputs.sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Squash-merge on green
+        id: merge
+        if: steps.ci.outputs.conclusion == 'success'
+        run: |
+          # The merge is the gate: GitHub lands it or rejects it on its own
+          # verdict.  A transient rejection is usually the brief window
+          # where mergeability is still computing, so retry patiently; a
+          # persistent one leaves the PR open for a human.  Each retry also
+          # re-attempts approval of any still-gated run, in case the merge
+          # is blocked on its "expected" checks.
+          merged=false
+          n=0
+          while [ $n -lt 12 ]; do
+            if gh pr merge "$PR_NUMBER" --repo "$REPO" \
+                --squash --delete-branch; then
+              merged=true
+              break
+            fi
+            if [ "$(gh pr view "$PR_NUMBER" --repo "$REPO" \
+                --json state --jq '.state')" = "MERGED" ]; then
+              merged=true
+              break
+            fi
+            gh run list --repo "$REPO" --branch dependency-bump \
+              --status action_required --json databaseId \
+              --jq '.[].databaseId' 2>/dev/null |
+              while read -r pending; do
+                gh api --method POST \
+                  "repos/$REPO/actions/runs/$pending/approve" 2>/dev/null \
+                  || true
+              done
+            n=$((n + 1))
+            sleep 15
+          done
+          if [ "$merged" != "true" ]; then
+            echo "::warning::merge did not succeed after retries;" \
+              "leaving the PR open."
+          fi
+          echo "merged=$merged" >> "$GITHUB_OUTPUT"
+        env:
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Dispatch publish
+        if: >
+          steps.merge.outputs.merged == 'true' &&
+          inputs.publish-workflow != ''
+        run: |
+          # The merge's push to the base branch fires no `push` run (the
+          # no-cascade rule), so publish is dispatched explicitly.  A
+          # failed dispatch must not fail a landed merge.
+          gh workflow run "$WORKFLOW" --repo "$REPO" --ref "$BASE" ||
+            echo "::warning::could not dispatch $WORKFLOW; run it manually."
+        env:
+          REPO: ${{ github.repository }}
+          WORKFLOW: ${{ inputs.publish-workflow }}
+          BASE: ${{ github.ref_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Report an unmerged bump
+        if: >
+          steps.bump.outputs.bumped == 'true' &&
+          steps.merge.outputs.merged != 'true'
+        run: |
+          echo "::warning::bump PR #$PR_NUMBER did not merge this run;" \
+            "it remains open with its checks for inspection."
+        env:
+          PR_NUMBER: ${{ steps.pr.outputs.number }}

@@ -515,24 +515,27 @@ own.  When that trickle becomes a /backlog/ instead — a machine slept for a
 week, or bumps outpaced the merge queue — =just dependabot-combine= clears it in
 one shot: it gathers every open Dependabot PR whose checks are green, rolls
 their bumps onto one branch, opens a single combined PR, and merges it once that
-PR passes.  Failing or held bumps are left alone.
+PR passes.  Failing or unvalidated bumps are left alone.
 
 You should not need this often.  It is the escape hatch for when the PRs have
 piled up and you are allergic to toil.  Every project generated from the
 template ships the same command in its dev shell.
 
-Run it from the *root of the repository whose backlog you are clearing*, inside
-the Nix dev shell — the command lives in that shell, and it reads the
-repository's GitHub remote to find the PRs:
+Run it inside the Nix dev shell (the command lives there).  With no arguments it
+targets the GitHub repo of the current checkout, so run it from within that
+repo; or point it at any repo from anywhere with =--repo=, which needs no local
+checkout — the tool clones the target fresh into a throwaway directory under
+=$TMPDIR= and does all its work there:
 
 #+begin_src sh :exports code
-nix develop              # or: direnv allow
-just dependabot-combine
+nix develop                                # or: direnv allow
+just dependabot-combine                    # the current checkout's repo
+just dependabot-combine --repo owner/name  # any repo, from anywhere
 #+end_src
 
 =--dry-run= lists the PRs it would combine and stops before touching anything;
 =--no-merge= opens the combined PR but leaves the merge to you; =--help= covers
-the rest.  If a run fails it leaves its git worktree in place and prints the
+the rest.  If a run fails it leaves that throwaway clone in place and prints the
 path, so the half-finished state is there to inspect rather than swept away.
 
 * LLM instructions

@@ -29,3 +29,14 @@ run *args: build-elm
 # hold back.
 dependabot-combine *args:
     dependabot-combine {{args}}
+
+# Bump every dependency the workspace's constraints allow, with changelog.
+#
+# The working-tree half of the scheduled dependency-bump flow: runs `cargo
+# update` across the workspace, classifies each bump against `cargo audit`,
+# and composes the CHANGELOG entries — then stops.  Nothing is committed or
+# pushed; review the diff and commit yourself.  The scheduled workflow
+# (.github/workflows/dependency-bump.yml) runs the same engine and owns the
+# branch/PR/merge half.  Pass --dry-run true to preview.
+dependency-bump *args:
+    dependency-bump {{args}}

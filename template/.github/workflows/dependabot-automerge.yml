@@ -26,8 +26,6 @@ permissions:
   # `workflow_dispatch` is exempt from the `GITHUB_TOKEN` no-cascade rule, so
   # this is how both actually get to run.
   actions: write
-  # Create and apply the dependabot-hold label.
-  issues: write
 
 jobs:
   automerge:

@@ -146,3 +146,13 @@ question_mark = "warn"
 single_match_else = "warn"
 collapsible_match = "warn"
 redundant_pattern_matching = "warn"
+
+# Policy for the scheduled dependency-bump flow (the daily `cargo update`
+# that replaces Dependabot; see .github/workflows/dependency-bump.yml).
+# Each hold names a lockfile package the bump must not advance and the
+# reason a human needs before lifting it; every run reports the held set,
+# so a hold cannot rot silently.  Example:
+#   { package = "foo", reason = "waiting on owner/repo#123 to ship in a tag" }
+[workspace.metadata.dependency-bump]
+hold = [
+]
