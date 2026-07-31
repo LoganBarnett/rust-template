@@ -1,0 +1,30 @@
+name: Dependency bump
+
+# The daily scheduled dependency bump — the replacement for Dependabot:
+# `cargo update` is the signal, the usual CI is the gate, and the merge
+# lands lockfile + changelog in one commit.  See
+# reusable-dependency-bump.yml for the flow, and
+# `[workspace.metadata.dependency-bump]` in Cargo.toml for holds.
+on:
+  schedule:
+    # Daily, at a deliberately off-hour minute — GitHub delays or drops
+    # top-of-hour cron runs under load.
+    - cron: "43 5 * * *"
+  # Manual catch-up: run the bump now instead of waiting for the schedule.
+  workflow_dispatch:
+
+permissions:
+  # Push the bump branch and its commit.
+  contents: write
+  # Open and merge the bump PR.
+  pull-requests: write
+  # Dispatch CI against the bump branch, approve its gated run, and
+  # dispatch publish.
+  actions: write
+
+jobs:
+  bump:
+    # Local ref, as in ci.yml: PRs editing the reusable workflow are tested
+    # against the PR's own copy.  Spawned projects use the `@main` form
+    # (see template/.github/workflows/dependency-bump.yml).
+    uses: ./.github/workflows/reusable-dependency-bump.yml

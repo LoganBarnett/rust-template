@@ -5,8 +5,24 @@
 ** Added
 1. New projects gain a ~just dependabot-combine~ command that bundles all
    passing open Dependabot PRs into one PR and merges it.  No action needed.
+2. A daily scheduled ~dependency-bump~ workflow replaces Dependabot as the
+   update signal: ~cargo update~ bumps everything the workspace's constraints
+   allow, ~cargo audit~ files advisory-driven bumps under Security, the
+   changelog entry rides the same commit, and the PR merges itself once the
+   usual CI gates pass — all on ~GITHUB_TOKEN~, no PAT.  Packages can be
+   excluded via a ~hold~ table (with a mandatory reason) under
+   ~[workspace.metadata.dependency-bump]~ in ~Cargo.toml~.  Run the same engine
+   locally with ~just dependency-bump~ (working tree only; you review and
+   commit).
 ** Fixes
 ** Breaking
+1. The ~dependabot-hold~ label is gone: auto-merge no longer labels a bump whose
+   CI failed — the red checks on the PR already say so.  A failing bump is
+   simply left alone, and any later run finding it green re-evaluates it freely.
+   The after-merge queue advance is gone too; a piled-up backlog is now cleared
+   with ~just dependabot-combine~ instead.  Adopters inherit this through their
+   ~@main~ reference to the reusable workflow; any existing ~dependabot-hold~
+   label is inert and can be deleted.
 ** Maintenance
 * v0.74.0
 ** Maintenance

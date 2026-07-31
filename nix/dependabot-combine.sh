@@ -4,20 +4,35 @@
 # Dependabot opens one pull request per dependency bump.  When auto-merge has
 # been paused or broken, these pile up, and landing them one at a time is slow
 # and conflict-prone — every merge restacks the rest on Cargo.lock.  This
-# bundles them instead: it takes the versions Dependabot already resolved,
-# replays each bump's manifest change onto a fresh branch off the base branch,
-# reconciles Cargo.lock to exactly those versions (it does not re-resolve
-# anything), composes the changelog, opens one pull request, and — once that
-# PR's CI is green — merges it, landing every safe bump at once.  A bump whose
-# own CI is red is left untouched for a human.
+# bundles them instead, but it never merges, cherry-picks, or applies the
+# Dependabot branches: combining their diffs would force automatic resolution of
+# changes that are meant for a human.  It reads each PR purely as a signal of
+# *which* packages moved — from the Cargo.lock diff, the one place Dependabot
+# cannot reword out from under us — and then bumps those packages itself with
+# `cargo update` on a fresh branch off the base.  Cargo does the resolution, so
+# any set of bumps lands correctly no matter how they overlap.
+#
+# It does not chase the exact version Dependabot picked: `cargo update
+# --package <name>` advances a package to the newest release its existing
+# Cargo.toml constraint already allows, touching only Cargo.lock.  A bump that
+# would cross the constraint (a major, or a caret-0.x minor) does not advance
+# and is left alone on purpose — those need a human's judgment, which this tool
+# must not fake.
+#
+# A bump whose own build is not proven green is left for a human; so is a PR
+# that touches no Cargo.lock (a GitHub Actions bump, say), since it signals no
+# package to move.  Once the combined PR's CI is green it is merged.
 #
 # It runs as the invoking user, who has push access, so the Dependabot
 # bot-command restrictions do not apply.  It is a one-shot: run it to clear a
 # backlog, then let per-PR auto-merge handle the steady-state trickle.
 #
-# The assembly happens in a throwaway git worktree at a fixed path under
-# $TMPDIR.  On success the worktree is removed; on failure it is left in place
-# so its state can be inspected, and a subsequent run refuses until it is gone.
+# The target repository is cloned fresh into a throwaway checkout at a fixed
+# path under $TMPDIR, so the tool can be pointed at any repo with --repo without
+# a local checkout — the repo does not need to carry this tool.  With no --repo
+# it targets the GitHub repo of the current checkout.  On success the clone is
+# removed; on failure it is left in place so its state can be inspected, and a
+# subsequent run for the same repo refuses until it is gone.
 #
 # This script is packaged as a Nix derivation (dependabot-combine.nix) that puts
 # every tool it calls on PATH; do not assume anything beyond that set is
@@ -28,15 +43,45 @@ usage() {
   cat <<'EOF'
 Usage: dependabot-combine [options]
 
-Bundle all passing open Dependabot PRs into one PR and merge it.
+Bundle all green open Dependabot PRs into one PR and merge it.
 
-  --repo owner/name   Target repository (default: gh's auto-detection).
+  --repo owner/name   Target repository.  Defaults to the GitHub repo of the
+                      current checkout; pass it to target any repo from
+                      anywhere, with no local checkout required.
   --base branch       Base branch to combine onto (default: main).
   --changelog file    Changelog file to append (default: CHANGELOG.org).
-  --dry-run           List the PRs that would be combined, then stop.
+  --dry-run           List the packages that would be updated, then stop.
   --no-merge          Create the combined PR but do not merge it.
   --help              Show this help.
 EOF
+}
+
+# Read a unified diff on stdin and emit "name<TAB>from<TAB>to" for every
+# Cargo.lock [[package]] whose version line changed.  Cargo.lock's canonical
+# format keeps `name` and `version` on their own lines inside a [[package]]
+# block, so a changed +version paired with the block's name is an unambiguous
+# "this package moved" signal.  That is the steady thing this tool leans on
+# instead of the PR title, which Dependabot can reword (a commit-message prefix
+# already broke an earlier title parse) and which says nothing for a non-cargo
+# bump.  Used twice: on a PR's diff to learn which packages to update, and on
+# the final diff to report what actually moved.
+parse_lock_bumps() {
+  awk '
+    /^diff --git / { in_lock = ($0 ~ /\/Cargo\.lock b\//) }
+    in_lock && /^[+ ]\[\[package\]\]/ { name = ""; from = "" }
+    in_lock && /^[+ ]name = / {
+      match($0, /"[^"]*"/); name = substr($0, RSTART + 1, RLENGTH - 2)
+    }
+    in_lock && /^-version = / {
+      match($0, /"[^"]*"/); from = substr($0, RSTART + 1, RLENGTH - 2)
+    }
+    in_lock && /^\+version = / {
+      match($0, /"[^"]*"/)
+      if (name != "") {
+        print name "\t" from "\t" substr($0, RSTART + 1, RLENGTH - 2)
+      }
+    }
+  '
 }
 
 REPO=""
@@ -57,11 +102,11 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-# Default the target repo to a github.com remote when --repo is not given, so a
-# repo whose `origin` is a non-GitHub mirror (e.g. Gitea) resolves without
-# hardcoding an owner — gh's own default is `origin`, which would miss the
-# mirror.  Trimming everything up to `github.com` and the trailing `.git` yields
-# owner/name from both the ssh (git@github.com:owner/name.git) and https forms.
+# Default the target repo to the current checkout's github.com remote when
+# --repo is not given, so a repo whose `origin` is a non-GitHub mirror (e.g.
+# Gitea) still resolves without hardcoding an owner.  Trimming everything up to
+# `github.com` and the trailing `.git` yields owner/name from both the ssh
+# (git@github.com:owner/name.git) and https forms.
 if [ -z "$REPO" ]; then
   url=$(git remote --verbose \
     | awk '/github\.com/ && /\(push\)$/ {print $2; exit}')
@@ -72,26 +117,24 @@ if [ -z "$REPO" ]; then
   fi
 fi
 
-repo_args=()
-if [ -n "$REPO" ]; then
-  repo_args=(--repo "$REPO")
+if [ -z "$REPO" ]; then
+  echo "error: no target repository.  Pass --repo owner/name, or run inside" >&2
+  echo "a checkout whose remotes include a github.com URL." >&2
+  exit 1
 fi
 
-# --- Gather the passing Dependabot bump PRs --------------------------------
+repo_args=(--repo "$REPO")
 
-echo "Finding open Dependabot pull requests..."
+# --- Gather the packages the green Dependabot PRs signal --------------------
+
+echo "Finding open Dependabot pull requests in $REPO..."
 # `mapfile -t` reads each line of input into an array element, stripping the
 # trailing newline.  The short flag has no long form.
 mapfile -t rows < <(
   gh pr list "${repo_args[@]}" --state open --author app/dependabot \
     --limit 100 \
-    --json number,title,headRefName,labels \
-    --jq '.[] | [
-      .number,
-      .headRefName,
-      ([.labels[].name] | index("dependabot-hold") != null),
-      .title
-    ] | @tsv'
+    --json number,title \
+    --jq '.[] | [.number, .title] | @tsv'
 )
 
 if [ "${#rows[@]}" -eq 0 ]; then
@@ -100,189 +143,194 @@ if [ "${#rows[@]}" -eq 0 ]; then
 fi
 
 numbers=()
-# `declare -A` declares an associative array (string-keyed map).  The short flag
-# has no long form.
-declare -A head_of crate_of from_of to_of
-skipped_failing=()
-skipped_held=()
+# `declare -A` declares an associative array (string-keyed map), used here as a
+# set of package names to update.  The `=()` marks it set, so counting an empty
+# map (no green PRs) does not trip `set -u`'s unbound-variable check the way a
+# bare `declare -A` does.  The short flag has no long form.
+declare -A want_update=()
+skipped_unproven=()
 
 for row in "${rows[@]}"; do
   # `read -r` reads raw, leaving backslashes literal instead of treating them as
   # escape characters.  The short flag has no long form.
-  IFS=$'\t' read -r number head held title <<<"$row"
-  if [ "$held" = "true" ]; then
-    skipped_held+=("#$number ($title)")
+  IFS=$'\t' read -r number title <<<"$row"
+  # A bump is eligible only if its own build is proven green — it has checks and
+  # every one concluded success.  A bump that is merely behind main still
+  # qualifies (its green build is what counts, not whether it can fast-forward).
+  # Every other state is held with the reason why, so the human sees not just
+  # which bumps were left but why each one was: a failing check, checks still
+  # running, or — the unvalidated case — no checks at all.  (`.conclusion` is a
+  # check run's result and `.state` a status context's; SUCCESS/NEUTRAL/SKIPPED
+  # are the non-failing terminal states; a failure anywhere beats a pending.)
+  status=$(
+    gh pr view "$number" "${repo_args[@]}" --json statusCheckRollup \
+      --jq '(.statusCheckRollup // [])
+            | if length == 0 then "none"
+              elif any((.conclusion // .state // "")
+                       | . == "FAILURE" or . == "ERROR" or . == "TIMED_OUT"
+                         or . == "STARTUP_FAILURE") then "failed"
+              elif all((.conclusion // .state // "")
+                       | . == "SUCCESS" or . == "NEUTRAL" or . == "SKIPPED")
+                then "green"
+              else "pending"
+              end' 2>/dev/null || echo unreadable
+  )
+  if [ "$status" != "green" ]; then
+    case "$status" in
+      failed) reason="a check failed" ;;
+      pending) reason="checks still running" ;;
+      none) reason="no checks have run" ;;
+      *) reason="checks could not be read" ;;
+    esac
+    skipped_unproven+=("#$number ($title) — $reason")
     continue
   fi
-  # A bump is eligible only if its own latest CI is green: `gh pr checks`
-  # exits non-zero when any check is failing or still pending.
-  if ! gh pr checks "$number" "${repo_args[@]}" >/dev/null 2>&1; then
-    skipped_failing+=("#$number ($title)")
+  # Take the PR only as a signal of which packages moved in its Cargo.lock — not
+  # as a diff to apply.  A PR that touches no Cargo.lock (a GitHub Actions bump,
+  # say) signals nothing and is left for a human.
+  mapfile -t names < <(
+    gh pr diff "$number" "${repo_args[@]}" | parse_lock_bumps | cut --fields=1
+  )
+  if [ "${#names[@]}" -eq 0 ]; then
+    skipped_unproven+=("#$number ($title) — no Cargo.lock change to apply")
     continue
   fi
-  # Titles are "Bump <crate> from <old> to <new>"; the crate and versions come
-  # straight off that so nothing has to be re-derived.
-  if [[ "$title" =~ ^Bump\ ([^\ ]+)\ from\ ([^\ ]+)\ to\ ([^\ ]+) ]]; then
-    numbers+=("$number")
-    head_of["$number"]="$head"
-    crate_of["$number"]="${BASH_REMATCH[1]}"
-    from_of["$number"]="${BASH_REMATCH[2]}"
-    to_of["$number"]="${BASH_REMATCH[3]}"
-  else
-    echo "  skip #$number: cannot parse crate/version from: $title" >&2
-    skipped_failing+=("#$number (unparseable: $title)")
-  fi
+  numbers+=("$number")
+  for name in "${names[@]}"; do
+    want_update["$name"]=1
+  done
 done
 
-if [ "${#skipped_held[@]}" -gt 0 ]; then
-  echo "Skipping held bumps (dependabot-hold):"
-  printf '  %s\n' "${skipped_held[@]}"
-fi
-if [ "${#skipped_failing[@]}" -gt 0 ]; then
-  echo "Leaving bumps whose CI is not green for a human:"
-  printf '  %s\n' "${skipped_failing[@]}"
+if [ "${#skipped_unproven[@]}" -gt 0 ]; then
+  echo "Leaving these bumps for a human:"
+  printf '  %s\n' "${skipped_unproven[@]}"
 fi
 
-if [ "${#numbers[@]}" -eq 0 ]; then
-  echo "No passing Dependabot PRs to combine."
+if [ "${#want_update[@]}" -eq 0 ]; then
+  echo "No green Dependabot PRs with a Cargo.lock bump to combine."
   exit 0
 fi
 
-echo "Combining ${#numbers[@]} passing bump(s):"
-for number in "${numbers[@]}"; do
-  echo "  #$number: ${crate_of[$number]} ${from_of[$number]} -> ${to_of[$number]}"
+echo "Updating ${#want_update[@]} package(s) signalled by ${#numbers[@]} PR(s):"
+for name in "${!want_update[@]}"; do
+  echo "  $name"
 done
 
 if [ "$DRY_RUN" = "true" ]; then
-  echo "(--dry-run: stopping before touching anything.)"
+  echo "(--dry-run: would cargo-update the above; cross-constraint bumps hold.)"
   exit 0
 fi
 
-# --- Resolve the GitHub-hosting remote -------------------------------------
+# --- Clone the target repo into the throwaway checkout ----------------------
 
-# `origin` may be a mirror (this repo's origin is Gitea); when the repo is known
-# (passed or auto-detected above), prefer the remote whose URL names it.
-remote="origin"
-if [ -n "$REPO" ]; then
-  # `read -r` reads raw, leaving backslashes literal instead of treating them
-  # as escape characters.  The short flag has no long form.
-  while read -r name url; do
-    case "$url" in
-      *"$REPO"*) remote="$name"; break ;;
-    esac
-  done < <(git remote --verbose | awk '/\(push\)$/ {print $1, $2}')
-fi
-
-main_repo=$(git rev-parse --show-toplevel)
-
-# --- Prepare the throwaway worktree at a fixed path ------------------------
-
-worktree="${TMPDIR:-/tmp}/dependabot-combine"
-worktree="${worktree%/}"
+clone_root="${TMPDIR:-/tmp}/dependabot-combine"
+clone_root="${clone_root%/}"
+# owner/name -> owner-name, so each target repo gets its own inspectable clone.
+clone_dir="$clone_root/${REPO//\//-}"
 combine_branch="dependabot-combine"
 
-if [ -e "$worktree" ]; then
-  echo "error: a worktree from a previous run is still at:" >&2
-  echo "  $worktree" >&2
+if [ -e "$clone_dir" ]; then
+  echo "error: a clone from a previous run is still at:" >&2
+  echo "  $clone_dir" >&2
   echo "It was left behind because that run did not finish cleanly.  Inspect" >&2
   echo "it, then remove it and re-run:" >&2
-  echo "  git -C $main_repo worktree remove --force $worktree" >&2
+  echo "  rm --recursive --force $clone_dir" >&2
   exit 1
 fi
 
-echo "Assembling in throwaway worktree: $worktree"
-git fetch "$remote" "$BASE"
-# `git -C <path>` runs git as if started in <path> (used throughout to act on
-# the worktree without cd-ing); `worktree add -B <branch>` creates or resets
-# the branch.  Neither short flag has a long form.
-git -C "$main_repo" worktree add -B "$combine_branch" "$worktree" "$remote/$BASE"
+echo "Cloning $REPO into throwaway checkout: $clone_dir"
+mkdir --parents "$clone_root"
+gh repo clone "$REPO" "$clone_dir"
+# `git -C <path>` runs git as if started in <path>, used throughout to act on
+# the clone without cd-ing; `checkout -B` create-or-resets the combine branch
+# onto the freshly fetched base.  Neither short flag has a long form.
+git -C "$clone_dir" fetch origin "$BASE"
+git -C "$clone_dir" checkout -B "$combine_branch" "origin/$BASE"
 
-# From here on, any failure leaves the worktree in place (no cleanup trap): the
-# worktree removal at the very end runs only when everything above it
-# succeeded, so a broken run keeps its black box for inspection.
+# From here on, any failure leaves the clone in place (no cleanup trap): the
+# clone removal at the very end runs only when everything above it succeeded, so
+# a broken run keeps its black box for inspection.
 
-# --- Replay each bump's manifest change ------------------------------------
+# --- Bump each signalled package ourselves ---------------------------------
 
-applied=()
-for number in "${numbers[@]}"; do
-  head="${head_of[$number]}"
-  git -C "$worktree" fetch "$remote" "$head"
-  # Replay only the manifest edits (Cargo.toml at any depth); Cargo.lock is
-  # regenerated below from the exact target versions, so its diff is dropped.
-  manifest=$(
-    git -C "$worktree" diff "$remote/$BASE" FETCH_HEAD \
-      -- '*.toml' ':(glob)**/Cargo.toml'
-  )
-  if [ -n "$manifest" ]; then
-    if ! printf '%s\n' "$manifest" | git -C "$worktree" apply --index -; then
-      echo "  conflict replaying #$number's manifest; leaving it out." >&2
-      continue
-    fi
-  fi
-  applied+=("$number")
-done
-
-if [ "${#applied[@]}" -eq 0 ]; then
-  echo "error: no bumps could be replayed cleanly." >&2
-  exit 1
-fi
-
-# --- Reconcile Cargo.lock to Dependabot's chosen versions ------------------
-
-echo "Reconciling Cargo.lock..."
-landed=()
-for number in "${applied[@]}"; do
-  crate="${crate_of[$number]}"
-  to="${to_of[$number]}"
-  # `--precise` pins the exact version Dependabot picked; cargo re-resolves no
-  # newer release.  A bump that will not take (e.g. a constraint mismatch) is
-  # dropped rather than aborting the whole batch.
-  if (cd "$worktree" && cargo update --package "$crate" --precise "$to"); then
-    landed+=("$number")
-  else
-    echo "  cargo update rejected $crate@$to; leaving #$number out." >&2
+# No diff is applied and no version is chased.  `cargo update --package <name>`
+# (no `--precise`) advances the flagged package to the newest release its
+# existing Cargo.toml constraint already allows and rewrites only Cargo.lock; a
+# cross-constraint bump simply does not advance.  Cargo owns the resolution, so
+# overlapping bumps compose correctly.
+echo "Updating the signalled packages with cargo..."
+for name in "${!want_update[@]}"; do
+  if ! (cd "$clone_dir" && cargo update --package "$name"); then
+    echo "  cargo update could not move $name; leaving it out." >&2
   fi
 done
 
-if [ "${#landed[@]}" -eq 0 ]; then
-  echo "error: no bumps survived lockfile reconciliation." >&2
-  exit 1
+# Whatever actually moved is exactly the Cargo.lock diff; a package pinned by a
+# cross-constraint requirement did not advance and simply is not here.
+mapfile -t bumps < <(
+  git -C "$clone_dir" diff -- Cargo.lock ':(glob)**/Cargo.lock' | parse_lock_bumps
+)
+if [ "${#bumps[@]}" -eq 0 ]; then
+  echo "Nothing moved: every signalled package was already current or would"
+  echo "need a manual, cross-constraint bump.  Leaving them for a human."
+  rm --recursive --force "$clone_dir"
+  exit 0
 fi
+
+echo "Landed ${#bumps[@]} bump(s):"
+for bump in "${bumps[@]}"; do
+  IFS=$'\t' read -r name from to <<<"$bump"
+  echo "  $name $from -> $to"
+done
 
 # --- Compose the changelog and commit --------------------------------------
 
-for number in "${landed[@]}"; do
-  changelog-roller insert-item \
-    --input-file "$worktree/$CHANGELOG" \
-    --heading Maintenance \
-    --body "Bump ${crate_of[$number]} from ${from_of[$number]} to ${to_of[$number]}" \
-    --in-place
-done
+# Only append a changelog entry when the target actually carries the file: a
+# repo pointed at with --repo may not use one (or may use a different format),
+# and the bump commit still stands without it.
+if [ -f "$clone_dir/$CHANGELOG" ]; then
+  for bump in "${bumps[@]}"; do
+    IFS=$'\t' read -r name from to <<<"$bump"
+    changelog-roller insert-item \
+      --input-file "$clone_dir/$CHANGELOG" \
+      --heading Maintenance \
+      --body "Bump $name from $from to $to" \
+      --in-place
+  done
+else
+  echo "No $CHANGELOG in $REPO; skipping the changelog entry."
+fi
 
-git -C "$worktree" add --all
+git -C "$clone_dir" add --all
 
-subject="combine ${#landed[@]} Dependabot dependency bumps"
+subject="combine ${#bumps[@]} Dependabot dependency bumps"
 {
   echo "$subject"
   echo
-  for number in "${landed[@]}"; do
-    echo "Bump ${crate_of[$number]} from ${from_of[$number]} to ${to_of[$number]} (#$number)"
+  for bump in "${bumps[@]}"; do
+    IFS=$'\t' read -r name from to <<<"$bump"
+    echo "Bump $name from $from to $to"
   done
-} > "$worktree/.combine-msg"
-git -C "$worktree" commit --file "$worktree/.combine-msg"
-rm --force "$worktree/.combine-msg"
+} > "$clone_dir/.combine-msg"
+git -C "$clone_dir" commit --file "$clone_dir/.combine-msg"
+rm --force "$clone_dir/.combine-msg"
 
 # --- Push, open the PR, and (optionally) merge on green --------------------
 
 echo "Pushing $combine_branch..."
-git -C "$worktree" push --force-with-lease "$remote" "$combine_branch"
+git -C "$clone_dir" push --force-with-lease origin "$combine_branch"
 
 pr_body=$(
-  echo "Combines these passing Dependabot bumps into one PR:"
+  echo "Combines these Dependabot-signalled bumps into one PR:"
   echo
-  for number in "${landed[@]}"; do
-    echo "- #$number: ${crate_of[$number]} ${from_of[$number]} -> ${to_of[$number]}"
+  for bump in "${bumps[@]}"; do
+    IFS=$'\t' read -r name from to <<<"$bump"
+    echo "- $name $from -> $to"
   done
+  echo
+  printf 'Source PRs:'
+  printf ' #%s' "${numbers[@]}"
+  echo
 )
 pr_url=$(
   gh pr create "${repo_args[@]}" \
@@ -294,7 +342,7 @@ pr_number="${pr_url##*/}"
 
 if [ "$NO_MERGE" = "true" ]; then
   echo "(--no-merge: leaving $pr_url for you to review and merge.)"
-  git -C "$main_repo" worktree remove --force "$worktree"
+  rm --recursive --force "$clone_dir"
   exit 0
 fi
 
@@ -310,18 +358,18 @@ done
 if printf '%s\n' "$summary" | grep --quiet --ignore-case --extended-regexp '	fail|	failure'; then
   echo "The combined PR's CI is not green; leaving it open for review:"
   echo "  $pr_url"
-  git -C "$main_repo" worktree remove --force "$worktree"
+  rm --recursive --force "$clone_dir"
   exit 0
 fi
 
 echo "CI is green; merging..."
 gh pr merge "$pr_number" "${repo_args[@]}" --squash --delete-branch
 
-for number in "${landed[@]}"; do
+for number in "${numbers[@]}"; do
   gh pr comment "$number" "${repo_args[@]}" \
     --body "Landed via combined PR #$pr_number." || true
   gh pr close "$number" "${repo_args[@]}" || true
 done
 
-git -C "$main_repo" worktree remove --force "$worktree"
-echo "Merged $pr_url and closed ${#landed[@]} bump PR(s)."
+rm --recursive --force "$clone_dir"
+echo "Merged $pr_url and closed ${#numbers[@]} bump PR(s)."

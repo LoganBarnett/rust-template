@@ -5,6 +5,8 @@ members = [
     "crates/foundation",
     "crates/compliance-lib",
     "crates/compliance-cli",
+    "crates/dependency-bump-lib",
+    "crates/dependency-bump-cli",
     # A build-only regression fixture for the zig-linked build helpers:
     # mkDarwinCrossPackages (C-compiling and framework-linking cross paths) and
     # mkGnuPortablePackages (linking a modern-glibc host shared library); never
@@ -36,6 +38,8 @@ rust-template-foundation-derive = { path = "crates/foundation-derive", version =
 rust-template-foundation = { path = "crates/foundation", version = "0.74.0" }
 # The compliance engine library, consumed by the compliance cli front-end.
 rust-template-compliance-lib = { path = "crates/compliance-lib", version = "0.74.0" }
+# The dependency-bump engine library, consumed by its cli front-end.
+rust-template-dependency-bump-lib = { path = "crates/dependency-bump-lib", version = "0.74.0" }
 
 # External dependencies shared by the compliance crates.  Those crates were
 # dogfooded from the template archetypes, which consume shared deps as
@@ -59,6 +63,10 @@ clap = { version = "4.5", features = ["derive", "env"] }
 # spawn flake.lock files, and serializes the JSON report.  Shared by both
 # compliance crates.
 serde_json = "1.0"
+# Parses TOML documents: the compliance manifest and spawn Cargo.lock files
+# (compliance-lib), and the workspace lockfiles and the hold table
+# (dependency-bump-lib).
+toml = "1.1"
 
 # Project-wide lint policy, enforced via clippy.  Test code is exempted
 # from the panicking-variant bans by clippy.toml's
@@ -119,3 +127,13 @@ redundant_pattern_matching = "warn"
 lto = true
 codegen-units = 1
 strip = true
+
+# Policy for the scheduled dependency-bump flow (the daily `cargo update`
+# that replaces Dependabot; see crates/dependency-bump-lib).  Each hold names
+# a lockfile package the bump must not advance and the reason a human needs
+# before lifting it; every run reports the held set, so a hold cannot rot
+# silently.  Example:
+#   { package = "foo", reason = "waiting on owner/repo#123 to ship in a tag" }
+[workspace.metadata.dependency-bump]
+hold = [
+]

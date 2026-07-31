@@ -1,0 +1,30 @@
+[package]
+name = "rust-template-dependency-bump-lib"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = []
+
+[dependencies]
+# Shared config-staging, logging, and error infrastructure the engine builds on.
+rust-template-foundation = { workspace = true }
+# Structured, level-based diagnostics emitted while the bump runs.
+tracing = { workspace = true }
+# Derives the typed models for the lockfile, the hold table, and the audit
+# report.
+serde = { workspace = true }
+# Semantic, per-operation error types for the engine.
+thiserror = { workspace = true }
+# Parses `cargo audit --json` into the advisory set.
+serde_json = { workspace = true }
+# Parses Cargo.lock snapshots and the workspace manifest's hold table.
+toml = { workspace = true }
+
+[dev-dependencies]
+# Builds throwaway workspace fixtures for the engine tests.
+tempfile = "3"
+
+[lints]
+workspace = true

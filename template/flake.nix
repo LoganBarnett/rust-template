@@ -219,6 +219,12 @@
             # stays current with the template.  Run as
             # `just dependabot-combine`.
             foundation.packages.${system}.dependabot-combine
+            # The daily dependency bumper the scheduled dependency-bump
+            # workflow runs; provided by the rust-template (foundation)
+            # flake rather than copied in, so it stays current with the
+            # template.  Run locally as `just dependency-bump` to bump and
+            # compose changelog entries in the working tree for review.
+            foundation.packages.${system}.dependency-bump
             # ABI baseline check used by the reusable CI workflow's `abi`
             # job.  Compares the workspace's current public API against the
             # previous version on crates.io and reports breaking changes;

@@ -63,3 +63,16 @@ compliance *ARGS:
 # non-issue.  Pass --dry-run or --no-merge to hold back.
 dependabot-combine *args:
   dependabot-combine {{args}}
+
+# Bump every dependency the workspace's constraints allow, with changelog.
+#
+# The working-tree half of the scheduled dependency-bump flow: runs `cargo
+# update` across the workspace, classifies each bump against `cargo audit`,
+# and composes the CHANGELOG entries — then stops.  Nothing is committed or
+# pushed; review the diff and commit yourself.  The scheduled workflow
+# (.github/workflows/dependency-bump.yml) runs the same engine and owns the
+# branch/PR/merge half.  Runs from source (like `just compliance`) so local
+# changes to the crates are exercised directly.  Pass --dry-run true to
+# preview.
+dependency-bump *args:
+  cargo run --quiet --package rust-template-dependency-bump-cli -- {{args}}

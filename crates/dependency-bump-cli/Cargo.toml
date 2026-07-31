@@ -1,0 +1,30 @@
+[package]
+name = "rust-template-dependency-bump-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = []
+
+[[bin]]
+name = "rust-template-dependency-bump-cli"
+path = "src/main.rs"
+
+[dependencies]
+# CLI entry-point macro (foundation_main) and config staging for the
+# front-end.
+rust-template-foundation = { workspace = true, features = ["cli"] }
+# The bump engine this front-end drives.
+rust-template-dependency-bump-lib = { workspace = true }
+# Parses the bumper's command-line arguments and env-var fallbacks.
+clap = { workspace = true }
+# Required in scope by the foundation_main-generated entry point for logging.
+tracing = { workspace = true }
+# Deserializes the staged config file for the MergeConfig-derived Config.
+serde = { workspace = true }
+# Semantic, per-operation error types for the front-end.
+thiserror = { workspace = true }
+
+[lints]
+workspace = true
