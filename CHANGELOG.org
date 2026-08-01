@@ -4,6 +4,8 @@
 * Upcoming
 ** Added
 ** Fixes
+1. The compliance checker's org-mode parsing now runs on the current orgize API,
+   so the daily dependency bump no longer breaks against it.  No action needed.
 ** Breaking
 ** Maintenance
 * v0.75.0

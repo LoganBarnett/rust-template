@@ -2396,8 +2396,38 @@ table:
   Needs network access and forge auth, so it must degrade to a plain hold when
   offline.
 
-Also carried from the Phase 2 dogfood plan: record the June-11 probe outcome
-here (does the approval-gated ~pull_request~ run block the merge when the
-dispatched run's checks are green, and does the approve endpoint work for
-non-fork gated runs?), then trim whichever of the approve/dispatch legs the
-probe shows to be redundant in =.github/workflows/reusable-dependency-bump.yml=.
+Probe outcome (recorded from the first live runs, 2026-07-31):
+
+- The June-11 approval gate is real: opening the bump PR with ~GITHUB_TOKEN~
+  spawned a ~pull_request~ CI run held in an approval-required state.
+- The approve endpoint works for these non-fork gated runs — the flow approved
+  its own gated run and that run then executed as a genuine ~pull_request~ run,
+  attaching the required check names to the head SHA.  Approval requires the
+  repository Actions setting "Allow GitHub Actions to create and approve pull
+  requests", which also gates ~gh pr create~ itself; it is settable via the
+  workflow-permissions REST endpoint with owner auth, so spawn provisioning can
+  script it.  A compliance check for the setting and a spawn-time provisioning
+  step both remain to be added.
+- Follow-up trim now provable: with approval working, the approved
+  ~pull_request~ run supplies the required checks, so the dispatched
+  ~workflow_dispatch~ CI leg is redundant — or vice versa.  Keeping the dispatch
+  leg means the flow works even where the approve setting is off; keeping the
+  approve leg deletes the locate-and-poll machinery.  Decide and trim in
+  =.github/workflows/reusable-dependency-bump.yml=.
+- New blind spot found: the lockfile differ compares ~version~ strings only, so
+  a git-sourced dependency whose rev advances without a version change is bumped
+  invisibly (no report row, no changelog item) and cannot be re-pinned by the
+  hold path (which speaks ~--precise <version>~, not revs).  The first live run
+  broke the build exactly this way via an unpinned git dependency; the remedy
+  was to port the engine to the dependency's current API and ~rev =~-pin it at
+  the same revision org-fmt uses — a manifest-level pin being the correct
+  cargo-native hold for git dependencies.  Either teach the differ/holds to
+  track the lockfile ~source~ rev for git dependencies, or adopt the convention
+  that git dependencies must always carry a ~rev~ pin (a compliance check could
+  enforce the convention).
+- ~cargo audit~ currently degrades to Maintenance-only classification: the
+  RustSec advisory database now carries CVSS 4.0 vectors that the nixpkgs
+  ~cargo-audit~ cannot parse, so it exits with empty output.  The designed
+  degradation handled it.  Re-check after a nixpkgs bump; consider overriding
+  the package version in =nix/lib/mkCiShell.nix= and =nix/dependency-bump.nix=
+  if it lags.

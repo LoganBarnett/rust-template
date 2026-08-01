@@ -1,120 +1,99 @@
-//! Org-mode scanning for the documentation checks, backed by the orgize parser.
+//! Org-mode scanning for the documentation checks, backed by the orgize
+//! parser.
 //!
 //! Heading and section detection go through a real org parser rather than
-//! line-by-line heuristics, so the checks stay correct as documents use more of
-//! org's syntax.  For a mention check, the target section's text is
-//! reconstructed from its inline elements — including link targets and
-//! descriptions — and whitespace-flattened, so a phrase wrapped across lines is
-//! still found.
+//! line-by-line heuristics, so the checks stay correct as documents use more
+//! of org's syntax.  For a mention check, the target scope's text is
+//! reconstructed from the tree's text-carrying tokens — including link paths
+//! and descriptions — and whitespace-flattened, so a phrase wrapped across
+//! lines is still found.
+//!
+//! Built on orgize 0.10's lossless rowan tree: headings nest as real
+//! subtrees, so a section's body — subsections included — is exactly the
+//! heading node's subtree, and no event-range arithmetic is needed (the
+//! pre-0.10 port of this module maintained event index ranges by hand).
 
-use orgize::elements::Element;
-use orgize::{Event, Org};
-use std::ops::Range;
+use orgize::ast::Headline;
+use orgize::rowan::ast::AstNode;
+use orgize::{Org, SyntaxKind, SyntaxNode};
 
 /// True when `path` resolves to a heading.  `path` is a section path: a
-/// sequence of nested heading titles, outermost first.  A top-level section is
-/// a single-element path; `["Upcoming", "Added"]` is the `** Added` subheading
-/// nested under `* Upcoming`.
+/// sequence of nested heading titles, outermost first.  A top-level section
+/// is a single-element path; `["Upcoming", "Added"]` is the `** Added`
+/// subheading nested under `* Upcoming`.
 pub fn section_exists(text: &str, path: &[String]) -> bool {
-  let org = Org::parse(text);
-  let events: Vec<_> = org.iter().collect();
-  locate(&events, path).is_some()
+  scope_node(&Org::parse(text), path).is_some()
 }
 
 /// Whether `needle` appears in `text` (optionally scoped to the section at
-/// `path`) after the relevant text is reconstructed and whitespace-flattened.
+/// `path`) after the relevant text is reconstructed and
+/// whitespace-flattened.
 ///
-/// Returns `Err` with a human reason when a requested `path` does not resolve
-/// — distinct from "the section exists but the phrase is absent".
+/// Returns `Err` with a human reason when a requested `path` does not
+/// resolve — distinct from "the section exists but the phrase is absent".
 pub fn mention_present(
   text: &str,
   path: Option<&[String]>,
   needle: &str,
 ) -> Result<bool, String> {
   let org = Org::parse(text);
-  let haystack = match path {
-    Some(path) => section_text(&org, path)
+  let scope = match path {
+    Some(path) => scope_node(&org, path)
       .ok_or_else(|| format!("section \"{}\" not found", path.join(" > ")))?,
-    None => document_text(&org),
+    None => org.document().syntax().clone(),
   };
-  Ok(flatten_whitespace(&haystack).contains(&flatten_whitespace(needle)))
-}
-
-/// The event range of the body of the heading reached by following `path`:
-/// every event after that heading up to the next heading at its level or
-/// shallower, bounded by the enclosing section.  Each step descends — the next
-/// title must match a heading strictly deeper than its parent and lying within
-/// the parent's body — so a one-element path matches a heading at any level
-/// while a longer path enforces the nesting.  `None` if any step fails.
-fn locate(events: &[Event], path: &[String]) -> Option<Range<usize>> {
-  let mut lo = 0;
-  let mut hi = events.len();
-  let mut parent_level = 0;
-  for title in path {
-    let want = title.trim();
-    let pos = lo
-      + events[lo..hi].iter().position(|event| {
-        matches!(event, Event::Start(Element::Title(t))
-          if t.level > parent_level && t.raw.trim() == want)
-      })?;
-    let Event::Start(Element::Title(heading)) = &events[pos] else {
-      return None;
-    };
-    let level = heading.level;
-    let body_start = pos + 1;
-    hi = events[body_start..hi]
-      .iter()
-      .position(|event| {
-        matches!(event, Event::Start(Element::Title(t)) if t.level <= level)
-      })
-      .map_or(hi, |offset| body_start + offset);
-    lo = body_start;
-    parent_level = level;
-  }
-  Some(lo..hi)
-}
-
-/// Reconstruct the inline text of the section at `path`, including any
-/// subsections (headings deeper than the matched one), or `None` if the path
-/// does not resolve.
-fn section_text(org: &Org, path: &[String]) -> Option<String> {
-  let events: Vec<_> = org.iter().collect();
-  Some(
-    events[locate(&events, path)?]
-      .iter()
-      .flat_map(event_text)
-      .collect::<Vec<_>>()
-      .join(" "),
+  Ok(
+    flatten_whitespace(&scope_text(&scope))
+      .contains(&flatten_whitespace(needle)),
   )
 }
 
-/// Reconstruct the inline text of the whole document.
-fn document_text(org: &Org) -> String {
-  org
+/// The syntax node of the heading reached by following `path`, or the
+/// document node for an empty path.  Each step descends: the next title
+/// must match a heading strictly deeper than its parent, and headings nest
+/// as subtrees, so searching within the parent's node enforces "inside the
+/// parent's body" structurally.  A one-element path matches a heading at
+/// any level; a longer path enforces the nesting.  `None` if any step
+/// fails.
+fn scope_node(org: &Org, path: &[String]) -> Option<SyntaxNode> {
+  path
     .iter()
-    .flat_map(|event| event_text(&event))
+    .try_fold(org.document().syntax().clone(), |scope, title| {
+      // `descendants` includes the scope node itself, but the strictly-
+      // deeper level requirement excludes it from matching again.
+      let parent_level =
+        Headline::cast(scope.clone()).map_or(0, |headline| headline.level());
+      let want = title.trim();
+      scope
+        .descendants()
+        .filter_map(Headline::cast)
+        .find(|headline| {
+          headline.level() > parent_level && headline.title_raw().trim() == want
+        })
+        .map(|headline| headline.syntax().clone())
+    })
+}
+
+/// Reconstruct the searchable text of a subtree from its text-carrying
+/// tokens: plain text runs (which also cover heading titles, verbatim and
+/// code bodies, and link descriptions) plus link path tokens, so a link's
+/// target stays findable.  Markup marker tokens contribute nothing —
+/// matching the pre-0.10 behavior of searching inline values rather than
+/// raw source, so a needle may span a markup boundary.
+fn scope_text(scope: &SyntaxNode) -> String {
+  scope
+    .descendants_with_tokens()
+    .filter_map(|element| element.into_token())
+    .filter(|token| {
+      matches!(token.kind(), SyntaxKind::TEXT | SyntaxKind::LINK_PATH)
+    })
+    .map(|token| token.text().to_string())
     .collect::<Vec<_>>()
     .join(" ")
 }
 
-/// The text an event contributes: a heading's title, an inline text run, or a
-/// link's target and description (two pieces, hence the `Vec`).  Anything that
-/// carries no text yields nothing.
-fn event_text(event: &Event) -> Vec<String> {
-  match event {
-    Event::Start(Element::Title(title)) => vec![title.raw.to_string()],
-    Event::Start(Element::Text { value })
-    | Event::Start(Element::Verbatim { value })
-    | Event::Start(Element::Code { value }) => vec![value.to_string()],
-    Event::Start(Element::Link(link)) => link.desc.as_ref().map_or_else(
-      || vec![link.path.to_string()],
-      |desc| vec![link.path.to_string(), desc.to_string()],
-    ),
-    _ => Vec::new(),
-  }
-}
-
-/// Collapse every run of whitespace (including newlines) into a single space.
+/// Collapse every run of whitespace (including newlines) into a single
+/// space.
 fn flatten_whitespace(text: &str) -> String {
   text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
@@ -217,5 +196,23 @@ See [[https://example.com/docs/compliance.org][=docs/compliance.org=]].
     assert!(
       mention_present(DOC, Some(&path(&["Nonexistent"])), "anything").is_err()
     );
+  }
+
+  #[test]
+  fn mention_spans_a_markup_boundary() {
+    // The needle crosses from a ~code~ run into plain text; marker tokens
+    // must not interpose.  This is the behavior raw-source matching would
+    // lose, kept on purpose across the 0.10 port.
+    let doc = r#"
+* Style
+
+Use the ~tap~ crate for chained logging.
+"#;
+    assert!(mention_present(
+      doc,
+      Some(&path(&["Style"])),
+      "tap crate for chained logging"
+    )
+    .unwrap());
   }
 }
