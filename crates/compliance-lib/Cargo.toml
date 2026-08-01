@@ -26,7 +26,7 @@ toml = { workspace = true }
 # The LoganBarnett/orgize fork is used deliberately: it is ahead of the
 # crates.io release and is what the rest of the ecosystem (org-fmt) pins.  Used
 # only by this crate, so it is a direct dependency rather than a workspace one.
-orgize = { git = "https://github.com/LoganBarnett/orgize.git" }
+orgize = { git = "https://github.com/LoganBarnett/orgize.git", branch = "fix-multiline-bracket-link" }
 # Parses GitHub Actions workflow YAML for the yaml-ast checks, navigating the
 # value tree rather than scraping text.  yaml-rust2 is the maintained
 # pure-Rust parser; its low-level value enum lets us match raw scalar keys.
