@@ -6,6 +6,8 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+* v0.78.0
+** Maintenance
 1. Bump aho-corasick from 1.1.4 to 1.1.5
 * v0.77.0
 ** Maintenance
