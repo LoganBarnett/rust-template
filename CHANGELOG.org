@@ -6,6 +6,7 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+1. Bump aho-corasick from 1.1.4 to 1.1.5
 * v0.77.0
 ** Maintenance
 1. Bump async-trait from 0.1.89 to 0.1.91
