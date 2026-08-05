@@ -6,6 +6,7 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+1. Bump regex-automata from 0.4.16 to 0.4.18
 * v0.78.0
 ** Maintenance
 1. Bump aho-corasick from 1.1.4 to 1.1.5
