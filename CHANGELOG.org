@@ -6,6 +6,8 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+* v0.80.0
+** Maintenance
 1. Bump android_system_properties from 0.1.5 to 0.1.6
 * v0.79.0
 ** Maintenance
