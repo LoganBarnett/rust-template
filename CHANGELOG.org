@@ -6,6 +6,7 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+1. Bump android_system_properties from 0.1.5 to 0.1.6
 * v0.79.0
 ** Maintenance
 1. Bump regex-automata from 0.4.16 to 0.4.18
