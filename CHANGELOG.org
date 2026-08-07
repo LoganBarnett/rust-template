@@ -6,6 +6,8 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+* v0.81.0
+** Maintenance
 1. Bump clap from 4.6.5 to 4.6.6
 2. Bump clap_builder from 4.6.5 to 4.6.6
 3. Bump zerocopy from 0.8.55 to 0.8.56
