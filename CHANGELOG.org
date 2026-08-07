@@ -6,6 +6,10 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+1. Bump clap from 4.6.5 to 4.6.6
+2. Bump clap_builder from 4.6.5 to 4.6.6
+3. Bump zerocopy from 0.8.55 to 0.8.56
+4. Bump zerocopy-derive from 0.8.55 to 0.8.56
 * v0.80.0
 ** Maintenance
 1. Bump android_system_properties from 0.1.5 to 0.1.6
