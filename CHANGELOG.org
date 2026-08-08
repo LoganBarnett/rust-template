@@ -6,6 +6,8 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+* v0.82.0
+** Maintenance
 1. Bump cc from 1.4.0 to 1.4.2
 2. Bump find-msvc-tools from 0.1.9 to 0.1.10
 3. Bump js-sys from 0.3.103 to 0.3.104
