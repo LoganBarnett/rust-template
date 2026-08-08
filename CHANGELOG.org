@@ -6,6 +6,17 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+1. Bump cc from 1.4.0 to 1.4.2
+2. Bump find-msvc-tools from 0.1.9 to 0.1.10
+3. Bump js-sys from 0.3.103 to 0.3.104
+4. Bump thiserror from 2.0.19 to 2.0.20
+5. Bump thiserror-impl from 2.0.19 to 2.0.20
+6. Bump wasm-bindgen from 0.2.126 to 0.2.127
+7. Bump wasm-bindgen-futures from 0.4.76 to 0.4.77
+8. Bump wasm-bindgen-macro from 0.2.126 to 0.2.127
+9. Bump wasm-bindgen-macro-support from 0.2.126 to 0.2.127
+10. Bump wasm-bindgen-shared from 0.2.126 to 0.2.127
+11. Bump web-sys from 0.3.103 to 0.3.104
 * v0.81.0
 ** Maintenance
 1. Bump clap from 4.6.5 to 4.6.6
