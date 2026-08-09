@@ -6,6 +6,8 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+* v0.83.0
+** Maintenance
 1. Bump async-trait from 0.1.91 to 0.1.92
 2. Bump cookie from 0.18.1 to 0.18.2
 * v0.82.0
