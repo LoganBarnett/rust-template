@@ -6,6 +6,17 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+1. Bump futures from 0.3.33 to 0.3.34
+2. Bump futures-channel from 0.3.33 to 0.3.34
+3. Bump futures-core from 0.3.33 to 0.3.34
+4. Bump futures-executor from 0.3.33 to 0.3.34
+5. Bump futures-io from 0.3.33 to 0.3.34
+6. Bump futures-macro from 0.3.33 to 0.3.34
+7. Bump futures-sink from 0.3.33 to 0.3.34
+8. Bump futures-task from 0.3.33 to 0.3.34
+9. Bump futures-util from 0.3.33 to 0.3.34
+10. Bump num-integer from 0.1.46 to 0.1.47
+11. Bump rustls-webpki from 0.103.13 to 0.103.14
 * v0.84.0
 ** Maintenance
 1. Bump serde_with from 3.21.0 to 3.22.0
