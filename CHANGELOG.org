@@ -6,6 +6,8 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+* v0.85.0
+** Maintenance
 1. Bump futures from 0.3.33 to 0.3.34
 2. Bump futures-channel from 0.3.33 to 0.3.34
 3. Bump futures-core from 0.3.33 to 0.3.34
