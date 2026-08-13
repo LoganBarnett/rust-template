@@ -6,6 +6,7 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+1. Bump http-body-util from 0.1.4 to 0.1.5
 * v0.85.0
 ** Maintenance
 1. Bump futures from 0.3.33 to 0.3.34
