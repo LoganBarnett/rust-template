@@ -6,6 +6,20 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+1. Bump icu_collections from 2.2.0 to 2.3.0
+2. Bump icu_locale_core from 2.2.0 to 2.3.0
+3. Bump icu_normalizer from 2.2.0 to 2.3.0
+4. Bump icu_normalizer_data from 2.2.0 to 2.3.0
+5. Bump icu_properties from 2.2.0 to 2.3.0
+6. Bump icu_properties_data from 2.2.0 to 2.3.0
+7. Bump icu_provider from 2.2.0 to 2.3.0
+8. Bump litemap from 0.8.2 to 0.8.3
+9. Bump potential_utf from 0.1.5 to 0.1.6
+10. Bump tinystr from 0.8.3 to 0.8.4
+11. Bump writeable from 0.6.3 to 0.6.4
+12. Bump zerotrie from 0.2.4 to 0.2.5
+13. Bump zerovec from 0.11.6 to 0.11.7
+14. Bump zerovec-derive from 0.11.3 to 0.11.4
 * v0.86.0
 ** Maintenance
 1. Bump http-body-util from 0.1.4 to 0.1.5
