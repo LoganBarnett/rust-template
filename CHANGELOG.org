@@ -6,6 +6,8 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+* v0.88.0
+** Maintenance
 1. Bump cc from 1.4.2 to 1.4.3
 2. Bump find-msvc-tools from 0.1.10 to 0.1.11
 * v0.87.0
