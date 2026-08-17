@@ -16,9 +16,8 @@
 #     baseUrl = "https://my-app.example.com";
 #   };
 #
-# Generates: launchd service, optional health check agent, activation
-# scripts for socket/log directories, newsyslog rotation, user/group
-# with static UID/GID.
+# Generates: launchd service with all of the trimmings (e.g. health checks, the
+# user/group, log rotation)..
 {
   name,
   self,
@@ -46,11 +45,21 @@
     "${cfg.package}/bin/${name}"
     + " ${listenArg}";
 
-  logDir = "/var/log/${name}";
-
   sharedOptions = import ./service-options.nix {
     inherit name self cfg lib pkgs;
   };
+
+  # Shared tail for every log path description.  Each option renders on its
+  # own in the generated docs, so the caveat has to appear in all of them; it
+  # is bound once here rather than copied four times.
+  logPathCaveat = ''
+    Beware using directories that aren't ensured by macOS.  The directories
+    cannot be created by the LaunchDaemon declaration nor by the user it runs
+    under.  The convention of writing to files directly under `/var/log` is
+    quite standard in the ecosystem.  The typical `/var/log/<service-name>` you
+    might expect from a Linux systemd unit will not persist beyond OS cleanup
+    events (restarts, and maybe reboots).
+  '';
 in {
   options.services.${name} =
     sharedOptions
@@ -63,6 +72,26 @@ in {
           set, the server binds its own socket (no launchd socket
           activation) and the host/port options are ignored.  Set to
           null to use TCP instead.
+        '';
+      };
+
+      logPathStdout = lib.mkOption {
+        type = lib.types.path;
+        default = "/var/log/${name}-stdout.log";
+        description = ''
+          File launchd writes the service's captured stdout to.
+
+          ${logPathCaveat}
+        '';
+      };
+
+      logPathStderr = lib.mkOption {
+        type = lib.types.path;
+        default = "/var/log/${name}-stderr.log";
+        description = ''
+          File launchd writes the service's captured stderr to.
+
+          ${logPathCaveat}
         '';
       };
 
@@ -123,6 +152,28 @@ in {
             fails, letting launchd's KeepAlive restart it.
           '';
         };
+
+        logPathStdout = lib.mkOption {
+          type = lib.types.path;
+          default = "/var/log/${name}-healthcheck-stdout.log";
+          description = ''
+            File launchd writes the health-check agent's captured stdout to.
+
+            ${logPathCaveat}
+          '';
+        };
+
+        logPathStderr = lib.mkOption {
+          type = lib.types.path;
+          default = "/var/log/${name}-healthcheck-stderr.log";
+          description = ''
+            File launchd writes the health-check agent's captured stderr to.
+            This is where an unhealthy service that could not be killed accounts
+            for itself.
+
+            ${logPathCaveat}
+          '';
+        };
       };
     };
 
@@ -159,17 +210,6 @@ in {
     users.knownUsers = [cfg.user];
     users.knownGroups = [cfg.group];
 
-    # Create the log directory.  The socket directory is created by the
-    # service itself (see ProgramArguments) to avoid coupling with
-    # activation.  mkdir is qualified to GNU coreutils because BSD mkdir
-    # (/bin/mkdir) lacks --parents — only -p — and global convention is
-    # to use long-form CLI arguments wherever they exist.
-    system.activationScripts.postActivation.text = ''
-      ${pkgs.coreutils}/bin/mkdir --parents ${logDir}
-      chown ${cfg.user}:${cfg.group} ${logDir}
-      chmod 0750 ${logDir}
-    '';
-
     # Rotate launchd-captured logs via newsyslog.  Without this, stdout
     # and stderr grow without bound — launchd does not rotate the files
     # it opens for StandardOutPath / StandardErrorPath.  Flags:
@@ -187,12 +227,12 @@ in {
       lib.concatStringsSep "\n" (
         [
           "# logfilename [owner:group] mode count size when flags"
-          (rotateLine "${logDir}/stdout.log")
-          (rotateLine "${logDir}/stderr.log")
+          (rotateLine cfg.logPathStdout)
+          (rotateLine cfg.logPathStderr)
         ]
         ++ lib.optionals cfg.healthCheck.enable [
-          (rotateLine "${logDir}/healthcheck-stdout.log")
-          (rotateLine "${logDir}/healthcheck-stderr.log")
+          (rotateLine cfg.healthCheck.logPathStdout)
+          (rotateLine cfg.healthCheck.logPathStderr)
         ]
       )
       + "\n";
@@ -243,8 +283,8 @@ in {
             "${envPrefix}_oidc_client_secret_file" = cfg.oidcClientSecretFile;
           }
         );
-        StandardOutPath = lib.mkDefault "${logDir}/stdout.log";
-        StandardErrorPath = lib.mkDefault "${logDir}/stderr.log";
+        StandardOutPath = lib.mkDefault cfg.logPathStdout;
+        StandardErrorPath = lib.mkDefault cfg.logPathStderr;
       };
     };
 
@@ -258,13 +298,16 @@ in {
           ProgramArguments = lib.mkDefault [
             "/bin/sh"
             "-c"
-            ''/usr/bin/curl -sf ${cfg.healthCheck.url} || /bin/kill $(/bin/cat /var/run/${name}/pid) 2>/dev/null''
+            ''
+              /usr/bin/curl --fail --silent ${cfg.healthCheck.url} \
+                || /bin/kill $(/bin/cat /var/run/${name}/pid)
+            ''
           ];
           StartInterval = lib.mkDefault 30;
           RunAtLoad = lib.mkDefault false;
           ProcessType = lib.mkDefault "Background";
-          StandardOutPath = lib.mkDefault "${logDir}/healthcheck-stdout.log";
-          StandardErrorPath = lib.mkDefault "${logDir}/healthcheck-stderr.log";
+          StandardOutPath = lib.mkDefault cfg.healthCheck.logPathStdout;
+          StandardErrorPath = lib.mkDefault cfg.healthCheck.logPathStderr;
         };
       };
   };

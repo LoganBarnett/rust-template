@@ -283,6 +283,13 @@ This additive freedom is distinct from the opt-out below.  Presence checks make
 for the other case — deliberately /violating/ a required rule — which must be
 declared with a reason so the deviation stays honest.
 
+=yaml-path-not-contains= is the one forbidding kind, and it earns its place
+narrowly: it names a /superseded/ value at a pointer a spawn may otherwise set
+freely, so an absent pointer passes and an unrelated value passes.  Reach for it
+only to retire something the template used to emit — never to fence off values a
+spawn is entitled to choose, which is what a presence check on the wanted value
+already does better.
+
 ** A propagated change needs a check
 
 The checker is how a template change reaches repositories that already exist.  A

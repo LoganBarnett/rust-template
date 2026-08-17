@@ -10,6 +10,7 @@ use crate::org;
 use crate::pins;
 use crate::provenance::Provenance;
 use serde::Serialize;
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -252,6 +253,17 @@ pub fn run_check(check: &Check, ctx: &SpawnContext) -> Verdict {
       system.as_deref(),
       suffix.as_deref(),
       name.as_deref(),
+    ),
+    CheckKind::NixModuleOptionDefault {
+      module,
+      option,
+      value,
+    } => nix_module_option_default(
+      ctx.dir,
+      ctx.template_dir,
+      module,
+      option,
+      value,
     ),
   }
 }
@@ -1389,6 +1401,115 @@ fn flake_output_present(
   }
 }
 
+/// Run one of the template's compliance helper expressions (a file under
+/// `nix/compliance/` taking an attrset of string arguments) and return the
+/// string it printed.  `subject` names whatever the caller is asserting about,
+/// for the diagnostics.
+///
+/// Some facts about a spawn can only be reached by evaluating Nix — an option
+/// default means running the module system, the spawn's own nixpkgs and all.
+/// Rather than build such an expression as Rust string concatenation, the
+/// expression lives in a reviewable `.nix` file that can be run by hand from
+/// the shell, and this function is only the plumbing.
+///
+/// nix-instantiate rather than `nix eval`: only the former applies `--argstr`
+/// to a file that evaluates to a function — `nix eval --file` hands back the
+/// uncalled lambda.  Passing parameters as arguments rather than splicing them
+/// into an expression is also what frees callers from the bare-identifier rule
+/// the `nix eval` kinds need (see `require_flake_ident`); there is no
+/// expression for a value to escape into.
+///
+/// A helper that cannot be run at all is an engine `Error`.  One that exits
+/// non-zero, or prints something other than the JSON string it promises, is a
+/// `Fail` against `subject` — the spawn's flake is what usually breaks there.
+fn nix_helper(
+  template_dir: &Path,
+  helper: &str,
+  subject: &str,
+  args: &[(&str, &OsStr)],
+) -> Result<String, Verdict> {
+  let evaluated = Command::new("nix-instantiate")
+    .args([
+      "--eval",
+      "--strict",
+      "--json",
+      "--extra-experimental-features",
+      "nix-command flakes",
+    ])
+    .arg(template_dir.join("nix/compliance").join(helper))
+    .args(args.iter().flat_map(|(name, value)| {
+      [OsStr::new("--argstr"), OsStr::new(name), *value]
+    }))
+    .output()
+    .map_err(|error| Verdict::Error {
+      detail: format!("could not run nix-instantiate for {subject}: {error}"),
+    })?;
+  if !evaluated.status.success() {
+    return Err(Verdict::Fail {
+      detail: format!(
+        "{subject} did not evaluate: {}",
+        String::from_utf8_lossy(&evaluated.stderr).trim()
+      ),
+    });
+  }
+  // The helper prints a JSON string, so parsing it back is what strips the
+  // quoting and any escapes its reason text picked up.
+  let printed = String::from_utf8_lossy(&evaluated.stdout);
+  serde_json::from_str::<String>(printed.trim()).map_err(|error| {
+    Verdict::Error {
+      detail: format!(
+        "{subject} helper returned unreadable output \"{}\": {error}",
+        printed.trim()
+      ),
+    }
+  })
+}
+
+/// Evaluate the spawn's module at `module` and compare the default of the
+/// option at `option` against `expected`.  `module-option-default.nix` does
+/// the reaching-into-the-module part and prints `ok`, `skip: …`, or `fail: …`;
+/// this only classifies that.
+fn nix_module_option_default(
+  dir: &Path,
+  template_dir: &Path,
+  module: &str,
+  option: &str,
+  expected: &str,
+) -> Verdict {
+  nix_helper(
+    template_dir,
+    "module-option-default.nix",
+    module,
+    &[
+      ("spawn", dir.as_os_str()),
+      ("module", OsStr::new(module)),
+      ("option", OsStr::new(option)),
+      ("expected", OsStr::new(expected)),
+    ],
+  )
+  .map_or_else(
+    |verdict| verdict,
+    |reported| module_option_verdict(module, &reported),
+  )
+}
+
+/// Classify what `module-option-default.nix` printed.  Split out from the
+/// subprocess so the mapping is testable on its own.
+fn module_option_verdict(module: &str, reported: &str) -> Verdict {
+  match reported.split_once(": ") {
+    None if reported == "ok" => Verdict::Pass,
+    Some(("skip", reason)) => Verdict::Skip {
+      reason: reason.to_string(),
+    },
+    Some(("fail", detail)) => Verdict::Fail {
+      detail: detail.to_string(),
+    },
+    _ => Verdict::Error {
+      detail: format!("{module} check returned unexpected \"{reported}\""),
+    },
+  }
+}
+
 /// The current host's Nix system double (e.g. `aarch64-darwin`), assembled from
 /// the compile target so no subprocess is needed.  Nix spells macOS `darwin`.
 fn nix_system() -> String {
@@ -1691,6 +1812,36 @@ mod tests {
         &Resolved::absent(),
       ),
       Verdict::Pass
+    ));
+  }
+
+  #[test]
+  fn module_option_verdict_maps_each_helper_outcome() {
+    let module = "darwinModules.server";
+    assert!(matches!(module_option_verdict(module, "ok"), Verdict::Pass));
+    // A spawn with no such module output is not drift — it has nothing to
+    // check — so it skips rather than failing the fleet.
+    assert!(matches!(
+      module_option_verdict(
+        module,
+        "skip: flake exposes no darwinModules.server"
+      ),
+      Verdict::Skip { .. }
+    ));
+    // The helper's reason carries through as the failure detail, so the report
+    // names the actual default rather than just "mismatch".
+    assert!(matches!(
+      module_option_verdict(
+        module,
+        "fail: services.app-server.logPathStdout defaults to \"/x\"",
+      ),
+      Verdict::Fail { detail } if detail.starts_with("services.app-server"),
+    ));
+    // Anything the helper is not documented to print is an engine problem, not
+    // a verdict about the spawn.
+    assert!(matches!(
+      module_option_verdict(module, "who knows"),
+      Verdict::Error { .. }
     ));
   }
 

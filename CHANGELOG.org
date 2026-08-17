@@ -3,8 +3,24 @@
 
 * Upcoming
 ** Added
+1. Four options on the darwin service module name each launchd log file outright
+   — ~logPathStdout~, ~logPathStderr~, ~healthCheck.logPathStdout~, and
+   ~healthCheck.logPathStderr~ — so two instances of one service can be given
+   log files that do not collide.  No action needed.
+2. Compliance gained a ~nix-module-option-default~ check kind, which evaluates a
+   spawn's module and asserts an option's default rather than searching its
+   source for a call.  No action needed.
 ** Fixes
+1. macOS services keep starting after an OS update, which used to remove the
+   =/var/log/<service>/= directory launchd needs and leave the service dead
+   until the next =darwin-rebuild switch=.  See Breaking below for the action
+   this requires.
 ** Breaking
+1. Darwin service logs moved from =/var/log/<service>/= to
+   =/var/log/<service>-stdout.log= and =-stderr.log= (see Fixes).  A module that
+   set ~logDir~ must set ~logPathStdout~ and ~logPathStderr~ instead; the option
+   was never released under that name.  Repoint anything that reads those logs,
+   and delete the stale directory.
 ** Maintenance
 * v0.88.0
 ** Maintenance

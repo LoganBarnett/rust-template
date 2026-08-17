@@ -1486,3 +1486,55 @@ description = "The template-compliance agent emits the COMPLIANCE: PASS verdict 
 kind = "file-contains"
 target = ".claude/agents/template-compliance.md"
 contains = "COMPLIANCE: PASS"
+
+# ---------------------------------------------------------------------------
+# Darwin (launchd) service log paths.
+#
+# launchd cannot create the directory it writes a log into, and macOS discards
+# paths it does not own from /var/log on an OS update.  A service whose
+# StandardOutPath sits in a per-service subdirectory therefore stops starting
+# after an update, silently.  The defaults below name files directly under
+# /var/log, which the OS does maintain.
+#
+# These assert the outcome — the option exists and holds the expected default —
+# by evaluating the module.  Importing the foundation helper is how a spawn gets
+# these defaults, but it is not the only conceivable way, and a spawn is free to
+# override any of them deliberately.  What must not happen silently is drifting
+# off a path the OS keeps.
+# ---------------------------------------------------------------------------
+
+[[check]]
+id = "darwin-service-log-path-stdout"
+description = "The darwin service's stdout log defaults to a file directly under /var/log, which survives an OS update."
+kind = "nix-module-option-default"
+when_crates_contains = "server"
+module = "darwinModules.server"
+option = "logPathStdout"
+value = "/var/log/@service@-stdout.log"
+
+[[check]]
+id = "darwin-service-log-path-stderr"
+description = "The darwin service's stderr log defaults to a file directly under /var/log, which survives an OS update."
+kind = "nix-module-option-default"
+when_crates_contains = "server"
+module = "darwinModules.server"
+option = "logPathStderr"
+value = "/var/log/@service@-stderr.log"
+
+[[check]]
+id = "darwin-healthcheck-log-path-stdout"
+description = "The darwin health-check agent's stdout log defaults to a file directly under /var/log, which survives an OS update."
+kind = "nix-module-option-default"
+when_crates_contains = "server"
+module = "darwinModules.server"
+option = "healthCheck.logPathStdout"
+value = "/var/log/@service@-healthcheck-stdout.log"
+
+[[check]]
+id = "darwin-healthcheck-log-path-stderr"
+description = "The darwin health-check agent's stderr log defaults to a file directly under /var/log, which survives an OS update."
+kind = "nix-module-option-default"
+when_crates_contains = "server"
+module = "darwinModules.server"
+option = "healthCheck.logPathStderr"
+value = "/var/log/@service@-healthcheck-stderr.log"
