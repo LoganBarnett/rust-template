@@ -238,6 +238,22 @@ pub enum CheckKind {
     suffix: Option<String>,
     name: Option<String>,
   },
+  /// Evaluate the module at the flake output `module` (e.g.
+  /// `darwinModules.server`) and confirm the option at `option` — a dotted
+  /// path below `services.<name>` — is declared and defaults to `value`.  An
+  /// `@service@` in `value` stands in for the service name, which varies per
+  /// spawn and is discovered from the module rather than supplied.  This
+  /// asserts the outcome an option is supposed to have, so a spawn is free to
+  /// reach it however it likes — importing the foundation helper is the usual
+  /// way, but the check never looks at how the module was written.  A flake
+  /// exposing no such output skips.  Requires the spawn's foundation input to
+  /// resolve, so tests run it against a spawn localized to the template under
+  /// test.
+  NixModuleOptionDefault {
+    module: String,
+    option: String,
+    value: String,
+  },
 }
 
 /// The TOML shape: every kind-specific field is optional and validated later.
@@ -304,6 +320,10 @@ struct RawCheck {
   recipe: Option<String>,
   #[serde(default)]
   package: Option<String>,
+  #[serde(default)]
+  module: Option<String>,
+  #[serde(default)]
+  option: Option<String>,
 }
 
 /// Require a kind-specific parameter, naming the check and kind on absence.
@@ -423,6 +443,8 @@ impl RawCheck {
       suffix,
       recipe,
       package,
+      module,
+      option,
     } = self;
 
     let resolved = match kind.as_str() {
@@ -613,6 +635,14 @@ impl RawCheck {
           }
         }
       }
+      // Every parameter reaches nix through --argstr rather than string
+      // interpolation, so unlike the kinds above none of them needs the
+      // bare-identifier rule: there is no expression for them to escape into.
+      "nix-module-option-default" => CheckKind::NixModuleOptionDefault {
+        module: require(&id, &kind, "module", module)?,
+        option: require(&id, &kind, "option", option)?,
+        value: require(&id, &kind, "value", value)?,
+      },
       other => {
         return Err(ComplianceError::ManifestInvalid {
           id: id.clone(),
