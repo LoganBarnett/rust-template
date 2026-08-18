@@ -4,6 +4,8 @@
 * Upcoming
 ** Added
 ** Fixes
+1. Fixed review Stop hooks called as background tasks.  Existing spawns pick it
+   up on a compliance sync.
 ** Breaking
 ** Maintenance
 * v0.92.0
