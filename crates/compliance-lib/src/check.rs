@@ -189,6 +189,9 @@ pub fn run_check(check: &Check, ctx: &SpawnContext) -> Verdict {
       contains,
     } => yaml_path(ctx.dir, target, pointer, &PathMatch::NotContains(contains)),
     CheckKind::JustfileRecipe { recipe } => justfile_recipe(ctx.dir, recipe),
+    CheckKind::TemplateSuitePasses { suite, target } => {
+      template_suite_passes(ctx.dir, ctx.template_dir, suite, target)
+    }
     CheckKind::YamlSeqContains {
       target,
       pointer,
@@ -1321,6 +1324,69 @@ fn justfile_recipe(dir: &Path, recipe: &str) -> Verdict {
   }
 }
 
+/// Run the template's test suite at `<template_dir>/<suite>` against the
+/// spawn's copy of `target`, invoked as
+/// `bash <suite> --target <spawn>/<target>`.  A zero exit is a pass.  The
+/// suite is read from the template checkout rather than the spawn, so it is
+/// always the current one and a stale spawn copy of the target is judged
+/// against what the template expects today.  This is the one kind that
+/// executes spawn content during an audit — the target runs under the
+/// suite's fixtures.  Spawns are audited concurrently (see `run`), which is
+/// safe here because the suite keeps its scratch state under a private
+/// `mktemp` directory.
+fn template_suite_passes(
+  dir: &Path,
+  template_dir: &Path,
+  suite: &str,
+  target: &str,
+) -> Verdict {
+  let target_path = dir.join(target);
+  let suite_path = template_dir.join(suite);
+  if !target_path.exists() {
+    Verdict::Skip {
+      reason: format!("{target} not present"),
+    }
+  } else if !suite_path.exists() {
+    // The suite lives in the template checkout, so its absence means the
+    // checker was pointed at the wrong --template-dir, not that the spawn is
+    // out of compliance.
+    Verdict::Error {
+      detail: format!("no suite at {}", suite_path.display()),
+    }
+  } else {
+    match Command::new("bash")
+      .arg(&suite_path)
+      .arg("--target")
+      .arg(&target_path)
+      .output()
+    {
+      Err(error) => Verdict::Error {
+        detail: format!("could not run {suite}: {error}"),
+      },
+      Ok(output) if output.status.success() => Verdict::Pass,
+      Ok(output) => {
+        // The suite names each failing case on its own FAIL: line and closes
+        // with a pass/fail tally; those lines are the useful part of a long
+        // transcript.  A suite that died before printing any falls back to
+        // its stderr.
+        let failures = String::from_utf8_lossy(&output.stdout)
+          .lines()
+          .filter(|line| line.starts_with("FAIL") || line.ends_with("failed"))
+          .collect::<Vec<_>>()
+          .join("; ");
+        let detail = if failures.is_empty() {
+          String::from_utf8_lossy(&output.stderr).trim().to_string()
+        } else {
+          failures
+        };
+        Verdict::Fail {
+          detail: format!("{suite} against {target}: {detail}"),
+        }
+      }
+    }
+  }
+}
+
 /// `nix eval` the flake output attrset `<output>.<system>` (the host double when
 /// `system` is `None`) and confirm it exposes a required attribute: any name
 /// ending with `suffix` (for a per-crate package like `<crate>-x86_64-windows`,
@@ -1867,6 +1933,61 @@ mod tests {
     assert!(matches!(
       justfile_recipe(&dir.join("missing"), "real"),
       Verdict::Skip { .. }
+    ));
+    std::fs::remove_dir_all(&dir).ok();
+  }
+
+  #[test]
+  fn template_suite_passes_judges_the_target_by_behaviour() {
+    // Skip when `jq` is absent (e.g. `cargo test` outside the dev shell): the
+    // hook the suite drives needs it.  In CI it is present, so the assertions
+    // run there.
+    if Command::new("jq").arg("--version").output().is_err() {
+      return;
+    }
+    let template_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let suite = "test-review-stop.sh";
+    let target = ".claude/hooks/review-stop.sh";
+    let dir =
+      std::env::temp_dir().join(format!("cdb-suite-{}", std::process::id()));
+    let hooks = dir.join(".claude/hooks");
+    std::fs::create_dir_all(&hooks).unwrap();
+    // The template's own hook, copied into the spawn, passes its own suite.
+    std::fs::copy(
+      template_dir.join("template").join(target),
+      hooks.join("review-stop.sh"),
+    )
+    .unwrap();
+    assert!(matches!(
+      template_suite_passes(&dir, &template_dir, suite, target),
+      Verdict::Pass
+    ));
+    // A hook that releases unconditionally still "contains" nothing wrong
+    // textually, but fails every case that expects a block — the failing
+    // cases are named in the detail.
+    std::fs::write(
+      hooks.join("review-stop.sh"),
+      "#!/usr/bin/env bash\nexit 0\n",
+    )
+    .unwrap();
+    match template_suite_passes(&dir, &template_dir, suite, target) {
+      Verdict::Fail { detail } => {
+        assert!(
+          detail.contains("code-without-review-blocks"),
+          "detail should name the failing case: {detail}"
+        );
+      }
+      other => panic!("expected Fail, got {other:?}"),
+    }
+    // No target in the spawn skips (file-present covers it); no suite in the
+    // template is the checker's own misconfiguration and errors.
+    assert!(matches!(
+      template_suite_passes(&dir.join("missing"), &template_dir, suite, target),
+      Verdict::Skip { .. }
+    ));
+    assert!(matches!(
+      template_suite_passes(&dir, &dir, suite, target),
+      Verdict::Error { .. }
     ));
     std::fs::remove_dir_all(&dir).ok();
   }
