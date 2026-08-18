@@ -6,6 +6,8 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+1. Bump quinn-proto from 0.11.16 to 0.11.17
+2. Bump zerovec-derive from 0.11.4 to 0.11.5
 * v0.90.0
 ** Added
 1. The review Stop hook now stands aside in plan mode and whenever the working
