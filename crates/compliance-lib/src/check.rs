@@ -110,6 +110,17 @@ pub fn run_check(check: &Check, ctx: &SpawnContext) -> Verdict {
       section,
       contains,
     } => mention_present(ctx.dir, target, section.as_deref(), contains),
+    CheckKind::SymlinkPointsTo { path, points_to } => {
+      symlink_points_to(ctx.dir, path, points_to)
+    }
+    CheckKind::LinePresent { target, line } => {
+      line_present(ctx.dir, target, line)
+    }
+    CheckKind::ParagraphsInOrder {
+      target,
+      section,
+      paragraphs,
+    } => paragraphs_in_order(ctx.dir, target, section.as_deref(), paragraphs),
     CheckKind::PinsAgree => pins_agree(ctx.dir),
     CheckKind::PinsCurrent => pins_current(ctx.dir, ctx.template_head),
     CheckKind::FileAbsent { path } => file_absent(ctx.dir, path),
@@ -283,6 +294,62 @@ fn file_present(dir: &Path, path: &str) -> Verdict {
   }
 }
 
+/// `path` must be a symlink, and it and `points_to` must resolve to the same
+/// file.  Resolution is by canonical path rather than by comparing the link's
+/// literal text, so a relative and an absolute link to the same file are
+/// judged the same, and a dangling link fails because it cannot canonicalize.
+fn symlink_points_to(dir: &Path, path: &str, points_to: &str) -> Verdict {
+  let link = dir.join(path);
+  match std::fs::symlink_metadata(&link) {
+    Ok(metadata) if !metadata.file_type().is_symlink() => Verdict::Fail {
+      detail: format!("{path} is a regular file, not a symlink to {points_to}"),
+    },
+    // Only a NotFound on either side is a verdict about the spawn — a
+    // dangling link, or a missing destination.  Any other resolution failure
+    // (permissions, a symlink loop, a non-directory component) is a fact
+    // about the audit environment, so it surfaces as an error carrying the
+    // OS text rather than a fail that asserts a diagnosis never verified.
+    Ok(_) => match (link.canonicalize(), dir.join(points_to).canonicalize()) {
+      (Ok(resolved), Ok(wanted)) if resolved == wanted => Verdict::Pass,
+      (Ok(resolved), Ok(_)) => Verdict::Fail {
+        detail: format!(
+          "{path} resolves to {} rather than {points_to}",
+          resolved.display()
+        ),
+      },
+      (Err(error), _) if error.kind() == std::io::ErrorKind::NotFound => {
+        Verdict::Fail {
+          detail: format!("{path} is a dangling symlink"),
+        }
+      }
+      (_, Err(error)) if error.kind() == std::io::ErrorKind::NotFound => {
+        Verdict::Fail {
+          detail: format!(
+            "{points_to} not found, so {path} cannot resolve to it"
+          ),
+        }
+      }
+      (Err(error), _) => Verdict::Error {
+        detail: format!("could not resolve {}: {error}", link.display()),
+      },
+      (_, Err(error)) => Verdict::Error {
+        detail: format!(
+          "could not resolve {}: {error}",
+          dir.join(points_to).display()
+        ),
+      },
+    },
+    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+      Verdict::Fail {
+        detail: format!("required symlink missing: {path}"),
+      }
+    }
+    Err(error) => Verdict::Error {
+      detail: format!("could not read {}: {error}", link.display()),
+    },
+  }
+}
+
 fn json_valid(dir: &Path, path: &str) -> Verdict {
   match read_file(&dir.join(path)) {
     FileRead::Found(text) => {
@@ -382,6 +449,82 @@ fn mention_present(
     },
     FileRead::Error(detail) => Verdict::Error { detail },
   }
+}
+
+/// A raw whole-line match: some line of `target` equals `line` exactly.  No
+/// trimming, on purpose — the consumer this exists for (the Claude Code
+/// `@path` importer) honours a line that is exactly `@<file>`, so an indented
+/// or trailing-text variant is a line it never sees.  `str::lines` already
+/// drops a `\r`, so CRLF files are not penalised for their line endings.
+fn line_present(dir: &Path, target: &str, line: &str) -> Verdict {
+  match read_file(&dir.join(target)) {
+    FileRead::Found(text) if text.lines().any(|found| found == line) => {
+      Verdict::Pass
+    }
+    FileRead::Found(_) => Verdict::Fail {
+      detail: format!("no line exactly \"{line}\" in {target}"),
+    },
+    FileRead::Missing => Verdict::Fail {
+      detail: format!("{target} not found"),
+    },
+    FileRead::Error(detail) => Verdict::Error { detail },
+  }
+}
+
+fn paragraphs_in_order(
+  dir: &Path,
+  target: &str,
+  section: Option<&[String]>,
+  paragraphs: &[String],
+) -> Verdict {
+  match read_file(&dir.join(target)) {
+    FileRead::Found(text) => {
+      match org::paragraphs_in_order(&text, section, paragraphs) {
+        Ok(()) => Verdict::Pass,
+        Err(org::ParagraphsMissing::NotFoundInOrder { index }) => {
+          Verdict::Fail {
+            detail: paragraph_missing_detail(
+              target, section, paragraphs, index,
+            ),
+          }
+        }
+        Err(org::ParagraphsMissing::SectionNotFound(name)) => Verdict::Fail {
+          detail: format!("section \"{name}\" not found in {target}"),
+        },
+      }
+    }
+    FileRead::Missing => Verdict::Fail {
+      detail: format!("{target} not found"),
+    },
+    FileRead::Error(detail) => Verdict::Error { detail },
+  }
+}
+
+/// The failure detail for a wanted paragraph that never appeared in order:
+/// which entry is missing, which entry it should have followed, and the scope
+/// it was looked for in.
+fn paragraph_missing_detail(
+  target: &str,
+  section: Option<&[String]>,
+  paragraphs: &[String],
+  index: usize,
+) -> String {
+  format!(
+    "{} not found as a paragraph of its own{} in {}",
+    // `index` names the first unconsumed entry, so it is always in range;
+    // `get` keeps that a fact about the data, not a promise.
+    paragraphs
+      .get(index)
+      .map_or_else(|| format!("entry {index}"), |entry| format!("\"{entry}\"")),
+    index
+      .checked_sub(1)
+      .and_then(|previous| paragraphs.get(previous))
+      .map_or_else(String::new, |previous| format!(" after \"{previous}\"")),
+    section.map_or_else(
+      || target.to_string(),
+      |name| format!("{target} § {}", name.join(" > ")),
+    ),
+  )
 }
 
 fn pins_agree(dir: &Path) -> Verdict {
@@ -2055,5 +2198,80 @@ mod tests {
     syn::visit::visit_item_fn(&mut visitor, run);
     assert!(visitor.methods.contains("with_state"));
     assert!(visitor.methods.contains("listen"));
+  }
+
+  #[test]
+  fn line_present_matches_a_whole_line_and_nothing_looser() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+      dir.path().join("llms.org"),
+      "* Imports\n\n@README.org\n\n  @indented.org\n\n@trailing.org \n\nsee @mentioned.org here\n",
+    )
+    .unwrap();
+    // The exact line passes.
+    assert!(matches!(
+      line_present(dir.path(), "llms.org", "@README.org"),
+      Verdict::Pass
+    ));
+    // Indentation, trailing whitespace, and a mid-line mention are all lines
+    // the importer never honours, so none of them satisfy the check.
+    for looser in ["@indented.org", "@trailing.org", "@mentioned.org"] {
+      assert!(
+        matches!(
+          line_present(dir.path(), "llms.org", looser),
+          Verdict::Fail { .. }
+        ),
+        "{looser} should not match as a whole line"
+      );
+    }
+    assert!(matches!(
+      line_present(dir.path(), "absent.org", "@README.org"),
+      Verdict::Fail { .. }
+    ));
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn symlink_points_to_judges_the_resolved_file() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("llms.org"), "* Imports\n").unwrap();
+    std::fs::write(dir.path().join("other.org"), "* Other\n").unwrap();
+    // The shape every spawn ships: a relative link to llms.org.
+    std::os::unix::fs::symlink("llms.org", dir.path().join("CLAUDE.md"))
+      .unwrap();
+    assert!(matches!(
+      symlink_points_to(dir.path(), "CLAUDE.md", "llms.org"),
+      Verdict::Pass
+    ));
+    // An absolute link to the same file is the same file.
+    std::os::unix::fs::symlink(
+      dir.path().join("llms.org"),
+      dir.path().join("ABSOLUTE.md"),
+    )
+    .unwrap();
+    assert!(matches!(
+      symlink_points_to(dir.path(), "ABSOLUTE.md", "llms.org"),
+      Verdict::Pass
+    ));
+    // A link to a different file, a regular file where the link should be, a
+    // dangling link, and no file at all each fail with their own reason.
+    std::os::unix::fs::symlink("other.org", dir.path().join("ELSEWHERE.md"))
+      .unwrap();
+    std::fs::write(dir.path().join("REGULAR.md"), "hand-written\n").unwrap();
+    std::os::unix::fs::symlink("missing.org", dir.path().join("DANGLING.md"))
+      .unwrap();
+    for (link, expected) in [
+      ("ELSEWHERE.md", "rather than llms.org"),
+      ("REGULAR.md", "regular file"),
+      ("DANGLING.md", "dangling"),
+      ("ABSENT.md", "missing"),
+    ] {
+      match symlink_points_to(dir.path(), link, "llms.org") {
+        Verdict::Fail { detail } => {
+          assert!(detail.contains(expected), "{link}: {detail}");
+        }
+        other => panic!("{link}: expected Fail, got {other:?}"),
+      }
+    }
   }
 }

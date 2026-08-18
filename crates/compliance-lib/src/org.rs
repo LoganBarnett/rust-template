@@ -13,7 +13,7 @@
 //! heading node's subtree, and no event-range arithmetic is needed (the
 //! pre-0.10 port of this module maintained event index ranges by hand).
 
-use orgize::ast::Headline;
+use orgize::ast::{Headline, Paragraph};
 use orgize::rowan::ast::AstNode;
 use orgize::{Org, SyntaxKind, SyntaxNode};
 
@@ -46,6 +46,67 @@ pub fn mention_present(
     flatten_whitespace(&scope_text(&scope))
       .contains(&flatten_whitespace(needle)),
   )
+}
+
+/// Why an ordered-paragraph assertion did not hold.
+#[derive(Debug, PartialEq, Eq)]
+pub enum ParagraphsMissing {
+  /// The requested section path does not resolve — distinct from "the section
+  /// exists but lacks the paragraphs".
+  SectionNotFound(String),
+  /// The entry at `index` (into the requested list) was not found as a
+  /// paragraph of its own after the entries before it.
+  NotFoundInOrder { index: usize },
+}
+
+/// Whether every entry of `wanted` occurs in `text` (optionally scoped to the
+/// section at `path`) as a paragraph of its own — the paragraph's whole text,
+/// whitespace-flattened, equals the entry — with those paragraphs appearing
+/// in the given relative order.  Other paragraphs may sit anywhere around
+/// them: the entries are an ordered subsequence of the scope's paragraphs, not
+/// its exact contents.
+///
+/// A paragraph is matched by its whole text, so two candidate lines with no
+/// blank line between them form one paragraph and satisfy neither entry.
+/// Indentation is not judged here — a paragraph's text is trimmed — because
+/// that is a line-level property, and `line-present` is the kind that asserts
+/// it.
+pub fn paragraphs_in_order(
+  text: &str,
+  path: Option<&[String]>,
+  wanted: &[String],
+) -> Result<(), ParagraphsMissing> {
+  let org = Org::parse(text);
+  let scope = match path {
+    Some(path) => scope_node(&org, path)
+      .ok_or_else(|| ParagraphsMissing::SectionNotFound(path.join(" > ")))?,
+    None => org.document().syntax().clone(),
+  };
+  let flattened: Vec<String> = wanted
+    .iter()
+    .map(|entry| flatten_whitespace(entry))
+    .collect();
+  // Walk the scope's paragraphs in document order, consuming the wanted list
+  // from the front each time a paragraph's whole text equals the next entry.
+  let consumed = scope
+    .descendants()
+    .filter_map(Paragraph::cast)
+    .map(|paragraph| flatten_whitespace(&paragraph.syntax().text().to_string()))
+    .fold(0, |next, paragraph_text| {
+      if flattened
+        .get(next)
+        .is_some_and(|entry| *entry == paragraph_text)
+      {
+        next + 1
+      } else {
+        next
+      }
+    });
+  if consumed == flattened.len() {
+    Ok(())
+  } else {
+    Err(ParagraphsMissing::NotFoundInOrder { index: consumed })
+  }
 }
 
 /// The syntax node of the heading reached by following `path`, or the
@@ -214,5 +275,165 @@ Use the ~tap~ crate for chained logging.
       "tap crate for chained logging"
     )
     .unwrap());
+  }
+
+  /// The shape the template emits: each import a paragraph of its own, in
+  /// the required order, inside a dedicated section.
+  const IMPORTS_DOC: &str = r#"
+* Imports
+
+@README.org
+
+@CONTRIBUTING.org
+
+* Working with imports
+
+Prose about the imports, which mentions @README.org in passing.
+"#;
+
+  #[test]
+  fn paragraphs_found_in_order_pass() {
+    assert_eq!(
+      paragraphs_in_order(
+        IMPORTS_DOC,
+        Some(&path(&["Imports"])),
+        &path(&["@README.org", "@CONTRIBUTING.org"])
+      ),
+      Ok(())
+    );
+  }
+
+  #[test]
+  fn paragraphs_out_of_order_fail_naming_the_entry() {
+    // Both paragraphs exist; CONTRIBUTING is consumed first, then README is
+    // sought after it and is not there.  The reported index is README's.
+    assert_eq!(
+      paragraphs_in_order(
+        IMPORTS_DOC,
+        Some(&path(&["Imports"])),
+        &path(&["@CONTRIBUTING.org", "@README.org"])
+      ),
+      Err(ParagraphsMissing::NotFoundInOrder { index: 1 })
+    );
+  }
+
+  #[test]
+  fn adjacent_lines_form_one_paragraph_and_satisfy_neither_entry() {
+    // What org-fmt produces when the blank line between imports is missing:
+    // one paragraph whose text is both lines, equal to neither entry.
+    let doc = r#"
+* Imports
+
+@README.org
+@CONTRIBUTING.org
+"#;
+    assert_eq!(
+      paragraphs_in_order(
+        doc,
+        Some(&path(&["Imports"])),
+        &path(&["@README.org", "@CONTRIBUTING.org"])
+      ),
+      Err(ParagraphsMissing::NotFoundInOrder { index: 0 })
+    );
+  }
+
+  #[test]
+  fn other_paragraphs_around_the_entries_are_allowed() {
+    // A spawn's own imports before, between, and after the required two.
+    let doc = r#"
+* Imports
+
+@docs/architecture.org
+
+@README.org
+
+@docs/glossary.org
+
+@CONTRIBUTING.org
+
+@docs/runbook.org
+"#;
+    assert_eq!(
+      paragraphs_in_order(
+        doc,
+        Some(&path(&["Imports"])),
+        &path(&["@README.org", "@CONTRIBUTING.org"])
+      ),
+      Ok(())
+    );
+  }
+
+  #[test]
+  fn paragraphs_in_a_sibling_section_do_not_count() {
+    // The imports are well-formed paragraphs, but they sit under a sibling
+    // heading, and the Imports scope does not reach a sibling.
+    let doc = r#"
+* Imports
+
+Nothing here yet.
+
+* Elsewhere
+
+@README.org
+
+@CONTRIBUTING.org
+"#;
+    assert_eq!(
+      paragraphs_in_order(
+        doc,
+        Some(&path(&["Imports"])),
+        &path(&["@README.org", "@CONTRIBUTING.org"])
+      ),
+      Err(ParagraphsMissing::NotFoundInOrder { index: 0 })
+    );
+  }
+
+  #[test]
+  fn a_mention_inside_prose_is_not_a_paragraph_of_its_own() {
+    // Whole-paragraph equality: the passing mention in the prose section
+    // must not satisfy an unscoped search either.
+    let doc = r#"
+* Notes
+
+Please read @README.org before anything else.
+"#;
+    assert_eq!(
+      paragraphs_in_order(doc, None, &path(&["@README.org"])),
+      Err(ParagraphsMissing::NotFoundInOrder { index: 0 })
+    );
+  }
+
+  #[test]
+  fn paragraphs_missing_section_is_distinct_from_missing_paragraphs() {
+    assert_eq!(
+      paragraphs_in_order(
+        IMPORTS_DOC,
+        Some(&path(&["Nonexistent"])),
+        &path(&["@README.org"])
+      ),
+      Err(ParagraphsMissing::SectionNotFound("Nonexistent".to_string()))
+    );
+  }
+
+  #[test]
+  fn indentation_is_not_this_kinds_concern() {
+    // An indented import is still a paragraph of its own here; whether the
+    // line is exactly `@README.org` is line-present's assertion, kept
+    // separate on purpose.
+    let doc = r#"
+* Imports
+
+  @README.org
+
+@CONTRIBUTING.org
+"#;
+    assert_eq!(
+      paragraphs_in_order(
+        doc,
+        Some(&path(&["Imports"])),
+        &path(&["@README.org", "@CONTRIBUTING.org"])
+      ),
+      Ok(())
+    );
   }
 }

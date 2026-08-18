@@ -228,6 +228,6 @@ if ! (cd "$OUTPUT" && treefmt) > /dev/null 2>&1; then
 fi
 
 echo "Done.  Next steps:"
-echo "  cd $OUTPUT"
-echo "  git init && git add . && git commit -m 'Initial commit'"
+echo "  pushd $OUTPUT"
+echo "  git init && git add . && git commit --message 'Initial commit'"
 echo "  direnv allow   # if using nix + direnv"
