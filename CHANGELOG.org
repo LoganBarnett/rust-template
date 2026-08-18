@@ -4,10 +4,12 @@
 * Upcoming
 ** Added
 ** Fixes
-1. Fixed review Stop hooks called as background tasks.  Existing spawns pick it
-   up on a compliance sync.
 ** Breaking
 ** Maintenance
+* v0.93.0
+** Fixes
+1. Fixed review Stop hooks called as background tasks.  Existing spawns pick it
+   up on a compliance sync.
 * v0.92.0
 ** Added
 1. Claude Code is now forced to consume required documentation, and should now
