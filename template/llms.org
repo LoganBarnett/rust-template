@@ -1,13 +1,65 @@
 #+title:     LLMs
 #+language:  en
 
-* Read CONTRIBUTING.org before contributing
+* Imports
+
+@README.org
+
+@CONTRIBUTING.org
+
+* Working with imports
+
+The =Imports= section collects this project's Claude Code /imports/, which are
+not org links.  Claude Code inlines each named file into the session context
+before the first turn, so those documents are already read: there is no separate
+step to perform, and no judgment call to make about whether a given document is
+relevant enough to open.  The section is a heading of its own so that compliance
+can assert the list against a named scope rather than against a position in the
+file.
 
 This file covers how to write code.  ~CONTRIBUTING.org~ covers how to land a
 change: changelog entries, commit messages, dependency comments, and the other
-conventions every pull request must follow.  Read it before making a change, not
-after a compliance check rejects one — the conventions are enforced, and
-rediscovering them from a failed check wastes a round trip.
+conventions every pull request must follow.  Those conventions are enforced, so
+rediscovering them from a failed compliance check wastes a round trip.
+~README.org~ covers what this project is for; a change that contradicts it is
+wrong even when it compiles.
+
+** Rules for editing the import list
+
+Do not replace an import with an ~[[file:...][=name=]]~ org link.  A link is an invitation the
+agent may decline; an import is not.  Links remain correct for supporting
+material — the imports are reserved for documents that every change in this
+project must be measured against.
+
+Some mechanics worth knowing before adding an entry:
+
+- Paths resolve relative to the file doing the importing, and imports recurse,
+  so an imported document brings in its own imports too.
+- A file reached by more than one path is inlined once, so a redundant entry
+  costs nothing.
+- Position is irrelevant to the mechanism.  Claude Code honors an import
+  wherever it sits, and the imported text reaches the session before this file
+  is read at all, so there is no rule about the section coming first — the
+  heading carries the meaning, not the placement.
+- An import is a line that is exactly ~@~ followed by the path — nothing before
+  it, nothing after it.  The runner matches whole lines, not org syntax, so
+  anything else — however valid as org-mode — is not an import to it: an
+  indented path, a path with trailing text, a path inside a sentence.  The
+  converse hazard is a line that merely /begins/ with ~@~, such as a CSS at-rule
+  in an example: the runner cannot tell it from an import, even inside a
+  ~#+begin_src~ block, which is why the CSS examples in ~CONTRIBUTING.org~ guard
+  their at-rules with a leading empty comment.  To write an import path in prose
+  without importing it, keep it inside a sentence or wrap it in org verbatim
+  markers.
+- Each import is a paragraph of its own: a blank line before it and a blank line
+  after it.  Two imports on adjacent lines are one org paragraph — that is how
+  ~org-fmt~ reads them, and how the compliance check reads them — so the blank
+  line between them is not optional.
+- Order is meaningful, because the order the documents arrive in is the order
+  they are read.  ~README.org~ comes first — what the project /is/ frames
+  everything after it — and ~CONTRIBUTING.org~ second.  A project may add its
+  own imports before, between, or after those two; the two keep their relative
+  order.
 
 * Server crate: role and scope
 

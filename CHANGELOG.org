@@ -3,8 +3,23 @@
 
 * Upcoming
 ** Added
+1. Claude Code is now forced to consume required documentation, and should now
+   self-review much more accurately according to LLM instruction and
+   contributing guidelines.  Existing spawns pick this up on their next
+   compliance sync, which now flags a project without the imports.
+2. Additional compliance checks added to ensure previously established parts of
+   the template (such as ~CLAUDE.md~ symlinking to ~llms.org~) actually hold.
 ** Fixes
 ** Breaking
+1. Two compliance check ids were renamed with the section they assert:
+   ~llms-read-contributing-section~ became ~llms-imports-section~, and
+   ~llms-read-contributing-covers-landing~ became ~llms-imports-covers-landing~.
+   An id the manifest does not recognize is silently inert, so a project that
+   opted out of either under ~compliance-ignores~ in its ~rust-template.json~
+   must update the id there or it will start failing a check it had deliberately
+   declined.
+2. Projects that deviated deeply from the template will need to add exemptions
+   in ~rust-template.json~ or conform, with a strong preference to the latter.
 ** Maintenance
 * v0.91.0
 ** Maintenance

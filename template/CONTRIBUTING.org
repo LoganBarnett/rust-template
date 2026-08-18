@@ -225,6 +225,14 @@ Provide light-mode values in ~:root~ and override them inside ~@media
 (prefers-color-scheme: dark)~.  Never create separate selectors per colour
 scheme — the variables handle the switch.
 
+The at-rules in the examples below are prefixed with an empty CSS comment
+(~/**/~).  That is an artifact of this file, not of the style: ~llms.org~
+imports ~CONTRIBUTING.org~ into the assistant's context, and the importer reads
+a line that begins with ~@~ as an import path — even inside a source block.  The
+comment puts a non-~@~ character at the start of the line so a stray ~media~
+file cannot get pulled into every session.  Write the at-rule bare in real
+stylesheets.
+
 Good:
 
 #+begin_src css :results none :exports code
@@ -232,7 +240,7 @@ Good:
   --color-bg: #ffffff;
 }
 
-@media (prefers-color-scheme: dark) {
+/**/@media (prefers-color-scheme: dark) {
   :root {
     --color-bg: #111111;
   }
@@ -250,7 +258,7 @@ body {
   background: #ffffff;
 }
 
-@media (prefers-color-scheme: dark) {
+/**/@media (prefers-color-scheme: dark) {
   body {
     background: #111111;
   }

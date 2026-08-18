@@ -15,6 +15,31 @@
 
 # ── Required files ───────────────────────────────────────────────────
 
+# The next two back the import mechanism, whose failures are all silent.
+# CLAUDE.md is the entry point Claude Code discovers, and llms.org — the
+# document every llms-* check below asserts — reaches the assistant only
+# through it.  A missing CLAUDE.md, a dangling link, a link at some other file,
+# or a hand-written CLAUDE.md all disable the imports while llms.org itself
+# still passes every content check.  So the link is asserted as a link: it must
+# be a symlink resolving to llms.org.  With the chain proven here, nothing
+# else needs to read llms.org through CLAUDE.md — every content check targets
+# llms.org directly.  Likewise an import whose path does not resolve is
+# dropped rather than reported, so a spawn that lost its README would keep
+# passing while the agent quietly stopped receiving it.
+
+[[check]]
+id = "claude-md-symlinks-to-llms"
+description = "CLAUDE.md is a symlink to llms.org, so the entry point the assistant discovers is the document the llms-* checks assert."
+kind = "symlink-points-to"
+path = "CLAUDE.md"
+points_to = "llms.org"
+
+[[check]]
+id = "required-file-readme"
+description = "The project keeps a README.org, which llms.org imports."
+kind = "file-present"
+path = "README.org"
+
 [[check]]
 id = "required-file-changelog"
 description = "The project keeps a CHANGELOG.org."
@@ -250,20 +275,121 @@ target = "llms.org"
 section = ["Capturing plans"]
 contains = "in the same change set that does the work"
 
-[[check]]
-id = "llms-read-contributing-section"
-description = "llms.org carries the \"Read CONTRIBUTING.org before contributing\" section directing the agent to the contribution conventions."
-kind = "section-exists"
-target = "llms.org"
-section = ["Read CONTRIBUTING.org before contributing"]
+# The "Imports" heading is a dedicated container for the Claude Code @path
+# import lines, which is what makes the list assertable against a named scope
+# rather than a position in the file.  No rule about where the section sits is
+# needed — position is irrelevant to the mechanism, since an import is honored
+# wherever it appears.
 
 [[check]]
-id = "llms-read-contributing-covers-landing"
-description = "The Read CONTRIBUTING.org section states that CONTRIBUTING.org covers how to land a change."
+id = "llms-imports-section"
+description = "llms.org carries the \"Imports\" section holding the documents every change is measured against."
+kind = "section-exists"
+target = "llms.org"
+section = ["Imports"]
+
+# The next two assert the import lines themselves, not prose describing them.
+# A link or a "read this first" sentence is an invitation the agent may
+# decline; an import puts the document in context before the first turn, which
+# is the whole convention.
+#
+# They are deliberately not org-aware.  The importer matches whole lines — a
+# line that is exactly `@<file>` — and anything looser, however valid as org,
+# is not an import to it.  So this is one of the rare places where the AST is
+# the wrong tool: a mention-present would pass an indented path, a path with
+# trailing text, or a path inside a sentence, all of which the importer never
+# sees.  line-present asserts the raw line instead.  Placement and order are
+# the org-level questions, and llms-imports-ordered below asks those.
+
+[[check]]
+id = "llms-imports-readme"
+description = "llms.org has a line that is exactly `@README.org`, the form the importer matches, so the agent carries README.org from the first turn."
+kind = "line-present"
+target = "llms.org"
+line = "@README.org"
+
+[[check]]
+id = "llms-imports-contributing"
+description = "llms.org has a line that is exactly `@CONTRIBUTING.org`, the form the importer matches, so the agent carries CONTRIBUTING.org from the first turn."
+kind = "line-present"
+target = "llms.org"
+line = "@CONTRIBUTING.org"
+
+# The org-level half.  Each import must be a paragraph of its own — a blank
+# line before and after — because two imports on adjacent lines are one org
+# paragraph, which is how org-fmt reads them and reflows them.  And the order
+# is part of the convention: README.org (what the project is) frames
+# everything after it, so it precedes CONTRIBUTING.org (how to land a change).
+# The entries are an ordered subsequence of the section's paragraphs, not its
+# exact contents, so a project may add its own imports around them.
+
+[[check]]
+id = "llms-imports-ordered"
+description = "The Imports section carries `@README.org` and then `@CONTRIBUTING.org`, each as a paragraph of its own, in that order."
+kind = "paragraphs-in-order"
+target = "llms.org"
+section = ["Imports"]
+paragraphs = ["@README.org", "@CONTRIBUTING.org"]
+
+# Each imported document's authority is pinned, not just its import line.  An
+# import that arrives with no stated standing is one the agent can read and
+# still disregard, which is the failure the imports exist to prevent.
+
+[[check]]
+id = "llms-imports-covers-landing"
+description = "The Working with imports section states that CONTRIBUTING.org covers how to land a change."
 kind = "mention-present"
 target = "llms.org"
-section = ["Read CONTRIBUTING.org before contributing"]
+section = ["Working with imports"]
 contains = "covers how to land a change"
+
+[[check]]
+id = "llms-imports-readme-authority"
+description = "The Working with imports section states that a change contradicting README.org is wrong even when it compiles."
+kind = "mention-present"
+target = "llms.org"
+section = ["Working with imports"]
+contains = "wrong even when it compiles"
+
+[[check]]
+id = "llms-imports-editing-rules-section"
+description = "llms.org carries the rules for editing the import list."
+kind = "section-exists"
+target = "llms.org"
+section = ["Working with imports", "Rules for editing the import list"]
+
+# The heading alone is not the convention, so the rule it carries is asserted
+# as a phrase.  A spawn that keeps the heading and guts the body would
+# otherwise pass while losing the rule.
+
+[[check]]
+id = "llms-imports-no-link-downgrade"
+description = "The editing rules state that an import must not be downgraded to an org link."
+kind = "mention-present"
+target = "llms.org"
+section = ["Working with imports", "Rules for editing the import list"]
+contains = "invitation the agent may decline"
+
+# The two shape rules llms-imports-ordered enforces — own paragraph, and
+# relative order — are also stated where the agent will read them, so a
+# failing check is a rule it has already seen rather than one it must
+# reverse-engineer from the failure.  One phrase check per rule.
+
+[[check]]
+id = "llms-imports-own-paragraph-rule"
+description = "The editing rules state that each import is a paragraph of its own, with a blank line before and after."
+kind = "mention-present"
+target = "llms.org"
+section = ["Working with imports", "Rules for editing the import list"]
+contains = "Each import is a paragraph of its own"
+
+[[check]]
+id = "llms-imports-order-rule"
+description = "The editing rules state that README.org and CONTRIBUTING.org keep their relative order in the import list."
+kind = "mention-present"
+target = "llms.org"
+section = ["Working with imports", "Rules for editing the import list"]
+contains = "the two keep their relative order"
 
 # ── Foundation pin agreement ─────────────────────────────────────────
 
@@ -1275,6 +1401,46 @@ description = "CONTRIBUTING.org documents CSS conventions."
 kind = "section-exists"
 target = "CONTRIBUTING.org"
 section = ["CSS"]
+
+# Paired with the llms-imports-* checks above: those push a spawn to import
+# CONTRIBUTING.org into the assistant's context, and the importer reads a line
+# that begins with `@` as an import path — which is what makes an unguarded
+# at-rule at the start of a line in this file's CSS examples resolve as one.  A
+# spawn must gain the guard along with the imports, not after them.
+
+# Both examples are asserted separately, distinguished by the selector after
+# the at-rule.  A single check on the guard prefix would pass a file that
+# guarded one example and left the other bare, and one unguarded at-rule is
+# enough to reintroduce the hazard.
+
+[[check]]
+id = "contributing-css-dark-mode-good-example-guarded"
+description = "The good light/dark CSS example guards its at-rule with a leading empty comment so the assistant's importer does not read the line-initial @ as an import path."
+kind = "mention-present"
+target = "CONTRIBUTING.org"
+section = ["CSS", "Light and dark mode"]
+contains = "/**/@media (prefers-color-scheme: dark) { :root {"
+
+[[check]]
+id = "contributing-css-dark-mode-bad-example-guarded"
+description = "The bad light/dark CSS example guards its at-rule too, since the importer does not care that the example is the discouraged one."
+kind = "mention-present"
+target = "CONTRIBUTING.org"
+section = ["CSS", "Light and dark mode"]
+contains = "/**/@media (prefers-color-scheme: dark) { body {"
+
+# The guard is meaningless without the paragraph that names it as an artifact
+# of this file rather than a style rule.  A spawn that keeps the guard and
+# drops the explanation would teach readers to write `/**/@media` in real
+# stylesheets, so the closing instruction is asserted alongside the guard.
+
+[[check]]
+id = "contributing-css-dark-mode-guard-explained"
+description = "CONTRIBUTING.org explains the /**/ at-rule guard as an import-path artifact and tells readers to write the at-rule bare in real stylesheets."
+kind = "mention-present"
+target = "CONTRIBUTING.org"
+section = ["CSS", "Light and dark mode"]
+contains = "Write the at-rule bare in real stylesheets"
 
 [[check]]
 id = "contributing-systemd-secrets-section"

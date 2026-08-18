@@ -65,9 +65,7 @@
         inherit self pkgs craneLib crates commonArgs;
       };
       # On Linux each binary also gets a statically-linked `<name>-musl`
-      # variant; on other systems mkMuslPackages returns an empty set.  It
-      # threads the same commonArgs, so a project's native dependencies (such as
-      # alsa) reach the musl build as they do the native one.
+      # variant.
       muslPackages = foundation.lib.mkMuslPackages {
         inherit self pkgs system crates crane commonArgs;
       };
@@ -268,17 +266,7 @@
         };
         # Minimal shell for the reusable CI workflow: the Rust toolchain
         # plus the release CLIs the `nix develop .#ci` jobs invoke.  It
-        # omits the interactive dev shell's extras (the Elm toolchain, the
-        # treefmt formatter stack, just), so it is cheaper to realize; the
-        # Elm frontend is a package-build input under `nix build`, not
-        # something a devShell provides.  Its baseline comes from
-        # foundation's mkCiShell: the same `rust` toolchain the dev shell
-        # uses (so CI compiles and lints with the project's pinned
-        # toolchain), changelog-roller (the `changelog` and `abi` jobs,
-        # the publish flow, and dependabot-automerge all shell out to it),
-        # and cargo-semver-checks (the `abi` job's crates.io ABI gate).
-        # Override any of those or add release tooling via the helper's
-        # arguments; see mkCiShell in foundation for the full contract.
+        # omits the interactive dev shell's extras, so it is cheaper to realize.
         ci = foundation.lib.mkCiShell {
           inherit pkgs system;
           toolchain = rust;

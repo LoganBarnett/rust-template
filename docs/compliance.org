@@ -221,6 +221,19 @@ value checks on the settings that actually matter, not a pattern to copy.  If
 content genuinely must match the template exactly, justify why in the change —
 that case is rare, if it arises at all.
 
+Match the check to the /consumer/ of the content, not to the file's syntax.  The
+org and Rust kinds read a parsed tree because the readers of those files —
+people, the assistant, =rustc= — read structure, so a phrase wrapped across
+lines or a fn behind an alias still counts.  When the consumer is line-oriented
+that is the wrong lens: the Claude Code =@path= importer honours a line that is
+exactly =@<file>= and nothing looser, so the import lines in =llms.org= are
+asserted with =line-present=, a raw whole-line match that an org-aware phrase
+check would wrongly pass for an indented or mid-sentence path.  The structural
+half of that convention — each import a paragraph of its own, in a fixed
+relative order — is a genuine org question and gets the org kind,
+=paragraphs-in-order=.  Both stay presence checks: a spawn may add its own
+imports around the required ones.
+
 A file whose contract is /behavioural/ rather than textual, and that already
 ships a test suite — the review Stop hook is the case today — is checked by
 running that suite: =template-suite-passes= runs the template's /current/ copy

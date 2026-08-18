@@ -44,6 +44,13 @@ pub struct Check {
 pub enum CheckKind {
   /// A required file exists at `path`.
   FilePresent { path: String },
+  /// `path` is a symlink that resolves to the same file as `points_to` (both
+  /// relative to the spawn root; a dangling link fails).  Exists for the
+  /// entry-point chain: `CLAUDE.md` is what the assistant discovers and
+  /// `llms.org` is the document the checks assert, so proving the link joins
+  /// them lets every content check target `llms.org` directly instead of
+  /// reading it through the link.
+  SymlinkPointsTo { path: String, points_to: String },
   /// The file at `path` exists and parses as JSON.
   JsonValid { path: String },
   /// The file at `target` exists and contains `contains` as a substring.
@@ -67,6 +74,25 @@ pub enum CheckKind {
     target: String,
     section: Option<Vec<String>>,
     contains: String,
+  },
+  /// `target` has a line that is exactly `line` — no indentation, no trailing
+  /// text, no whitespace trimming.  Deliberately not an org-aware check: it
+  /// exists for content whose consumer is line-oriented, such as the Claude
+  /// Code `@path` importer, which honours a line that is exactly `@<file>` and
+  /// nothing else.  A phrase check would pass text that consumer never sees.
+  LinePresent { target: String, line: String },
+  /// `target` (an org document) carries each entry of `paragraphs` as a
+  /// paragraph of its own — the paragraph's whole text, whitespace-flattened,
+  /// equals the entry — and those paragraphs appear in the given relative
+  /// order.  Other paragraphs may sit before, between, or after them; the
+  /// entries are an ordered subsequence, not the section's exact contents.
+  /// When `section` is set the search is scoped to the body of the section at
+  /// that path.  Two candidate lines with no blank line between them form one
+  /// paragraph and so satisfy neither entry.
+  ParagraphsInOrder {
+    target: String,
+    section: Option<Vec<String>>,
+    paragraphs: Vec<String>,
   },
   /// The foundation revision pinned in `Cargo.lock` equals the one pinned in
   /// `flake.lock` (the two dependency edges agree with each other).
@@ -339,6 +365,12 @@ struct RawCheck {
   option: Option<String>,
   #[serde(default)]
   suite: Option<String>,
+  #[serde(default)]
+  line: Option<String>,
+  #[serde(default)]
+  paragraphs: Option<Vec<String>>,
+  #[serde(default)]
+  points_to: Option<String>,
 }
 
 /// Require a kind-specific parameter, naming the check and kind on absence.
@@ -367,7 +399,8 @@ fn require_u32(
   })
 }
 
-/// Require a non-empty section-path parameter (a list of heading titles).
+/// Require a non-empty list parameter — a section path (heading titles,
+/// outermost first) or any other ordered list a kind takes.
 fn require_path(
   id: &str,
   kind: &str,
@@ -461,11 +494,18 @@ impl RawCheck {
       module,
       option,
       suite,
+      line,
+      paragraphs,
+      points_to,
     } = self;
 
     let resolved = match kind.as_str() {
       "file-present" => CheckKind::FilePresent {
         path: require(&id, &kind, "path", path)?,
+      },
+      "symlink-points-to" => CheckKind::SymlinkPointsTo {
+        path: require(&id, &kind, "path", path)?,
+        points_to: require(&id, &kind, "points_to", points_to)?,
       },
       "json-valid" => CheckKind::JsonValid {
         path: require(&id, &kind, "path", path)?,
@@ -486,6 +526,15 @@ impl RawCheck {
         target: require(&id, &kind, "target", target)?,
         section: optional_path(&id, &kind, "section", section)?,
         contains: require(&id, &kind, "contains", contains)?,
+      },
+      "line-present" => CheckKind::LinePresent {
+        target: require(&id, &kind, "target", target)?,
+        line: require(&id, &kind, "line", line)?,
+      },
+      "paragraphs-in-order" => CheckKind::ParagraphsInOrder {
+        target: require(&id, &kind, "target", target)?,
+        section: optional_path(&id, &kind, "section", section)?,
+        paragraphs: require_path(&id, &kind, "paragraphs", paragraphs)?,
       },
       "pins-agree" => CheckKind::PinsAgree,
       "pins-current" => CheckKind::PinsCurrent,
