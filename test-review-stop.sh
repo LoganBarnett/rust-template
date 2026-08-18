@@ -15,9 +15,11 @@
 #
 # Each case feeds a crafted transcript and file list, then asserts whether the
 # hook releases (no stdout) or blocks (a {"decision":"block"} JSON document).
-# The load-bearing case is "Agent" tool detection: a harness that records the
-# review subagent under the name "Agent" rather than "Task" must still satisfy
-# the gate.  A regression there silently wedged a real session.
+# The load-bearing cases are the delivery shapes: a harness that records the
+# review subagent under the name "Agent" rather than "Task", a background
+# review whose verdict arrives as a task-notification, and a background review
+# the assistant waited on with TaskOutput must all satisfy the gate.  A
+# regression in each of those silently wedged a real session.
 #
 # Usage: test-review-stop.sh [--target PATH]
 #
@@ -333,6 +335,90 @@ cat > "$tx_clippy_reinjection" <<'EOF'
 {"type":"user","message":{"content":[{"type":"text","text":"clippy reported problems on the Rust changes this turn. Resolve every warning before ending the turn."}]}}
 EOF
 
+# The fifth delivery: the assistant launched the review in the background and
+# then waited on it with a blocking TaskOutput call.  The verdict comes back as
+# TaskOutput's own tool_result — a string wrapping the report in <output> tags,
+# whose tool_use_id matches no review call — and, because the wait consumed the
+# completion, no task-notification is ever written.  Taken from a real
+# transcript, where a gate reading only the shapes above reported "the review
+# has not run" three turns in a row over two genuine passes.  The TaskOutput
+# call is tied back to the review by its task_id, which is the agentId the
+# launch metadata reported.
+tx_taskoutput_pass="$TMPBASE/tx-taskoutput-pass.jsonl"
+cat > "$tx_taskoutput_pass" <<'EOF'
+{"type":"user","message":{"content":"please change the code"}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","id":"rev1","input":{"subagent_type":"template-compliance"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"rev1","content":[{"type":"text","text":"Async agent launched successfully. (This tool result is internal metadata.)\nagentId: abc123 (internal ID - do not mention to user.)"}]}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"TaskOutput","id":"out1","input":{"task_id":"abc123","block":true,"timeout":600000}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"out1","content":"<retrieval_status>success</retrieval_status>\n\n<task_id>abc123</task_id>\n\n<task_type>local_agent</task_type>\n\n<status>completed</status>\n\n<output>\nNo findings.\n\nCOMPLIANCE: PASS\n</output>"}]}}
+EOF
+
+# The same wait, but the review found something.
+tx_taskoutput_findings="$TMPBASE/tx-taskoutput-findings.jsonl"
+cat > "$tx_taskoutput_findings" <<'EOF'
+{"type":"user","message":{"content":"please change the code"}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","id":"rev1","input":{"subagent_type":"template-compliance"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"rev1","content":[{"type":"text","text":"Async agent launched successfully.\nagentId: abc123"}]}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"TaskOutput","id":"out1","input":{"task_id":"abc123","block":true,"timeout":600000}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"out1","content":"<retrieval_status>success</retrieval_status>\n\n<task_id>abc123</task_id>\n\n<task_type>local_agent</task_type>\n\n<status>completed</status>\n\n<output>\ncheck.rs:12 uses let mut\n\nCOMPLIANCE: FINDINGS\n</output>"}]}}
+EOF
+
+# A TaskOutput wait on some other background agent — not the review — whose
+# output happens to quote the verdict marker.  Only the launch metadata sits
+# behind the review itself, so the gate must still say the review has not run:
+# the TaskOutput channel is admitted by the task_id join, not by its text.
+tx_taskoutput_other_agent="$TMPBASE/tx-taskoutput-other-agent.jsonl"
+cat > "$tx_taskoutput_other_agent" <<'EOF'
+{"type":"user","message":{"content":"please change the code"}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","id":"rev1","input":{"subagent_type":"template-compliance"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"rev1","content":[{"type":"text","text":"Async agent launched successfully.\nagentId: abc123"}]}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","id":"exp1","input":{"subagent_type":"Explore"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"exp1","content":[{"type":"text","text":"Async agent launched successfully.\nagentId: zzz999"}]}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"TaskOutput","id":"out1","input":{"task_id":"zzz999","block":true,"timeout":600000}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"out1","content":"<retrieval_status>success</retrieval_status>\n\n<task_id>zzz999</task_id>\n\n<task_type>local_agent</task_type>\n\n<status>completed</status>\n\n<output>\nThe hook releases when it reads COMPLIANCE: PASS from the reviewer.\n</output>"}]}}
+EOF
+
+# The launch metadata text without an agentId line; the id is recorded only in
+# the toolUseResult field beside the message, which the harness writes on the
+# same entry.  The join must read it from there.
+tx_taskoutput_sibling_id="$TMPBASE/tx-taskoutput-sibling-id.jsonl"
+cat > "$tx_taskoutput_sibling_id" <<'EOF'
+{"type":"user","message":{"content":"please change the code"}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","id":"rev1","input":{"subagent_type":"template-compliance"}}]}}
+{"type":"user","toolUseResult":{"isAsync":true,"status":"async_launched","agentId":"abc123"},"message":{"content":[{"type":"tool_result","tool_use_id":"rev1","content":[{"type":"text","text":"Async agent launched successfully."}]}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"TaskOutput","id":"out1","input":{"task_id":"abc123","block":true,"timeout":600000}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"out1","content":"<retrieval_status>success</retrieval_status>\n\n<task_id>abc123</task_id>\n\n<status>completed</status>\n\n<output>\nNo findings.\n\nCOMPLIANCE: PASS\n</output>"}]}}
+EOF
+
+# Findings retrieved through TaskOutput, then a second review run in the
+# foreground whose own tool_result passes.  The pass is later in the
+# transcript, so it is the verdict that counts — across channels, not merely
+# within one.
+tx_taskoutput_findings_then_pass="$TMPBASE/tx-taskoutput-findings-then-pass.jsonl"
+cat > "$tx_taskoutput_findings_then_pass" <<'EOF'
+{"type":"user","message":{"content":"please change the code"}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","id":"rev1","input":{"subagent_type":"template-compliance"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"rev1","content":[{"type":"text","text":"Async agent launched successfully.\nagentId: abc123"}]}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"TaskOutput","id":"out1","input":{"task_id":"abc123","block":true,"timeout":600000}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"out1","content":"<retrieval_status>success</retrieval_status>\n\n<task_id>abc123</task_id>\n\n<status>completed</status>\n\n<output>\ncheck.rs:12 uses let mut\n\nCOMPLIANCE: FINDINGS\n</output>"}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","id":"rev2","input":{"subagent_type":"template-compliance"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"rev2","content":[{"type":"text","text":"COMPLIANCE: PASS"}]}]}}
+EOF
+
+# The mirror image across the two older channels: a queued notification that
+# passed, then a foreground review that found something.  The findings are
+# later, so they are the verdict.  A gate that gathers verdicts channel by
+# channel rather than in transcript order sees the pass last and releases.
+tx_notification_pass_then_findings="$TMPBASE/tx-notification-pass-then-findings.jsonl"
+cat > "$tx_notification_pass_then_findings" <<'EOF'
+{"type":"user","message":{"content":"please change the code"}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","id":"rev1","input":{"subagent_type":"template-compliance"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"rev1","content":"Async agent launched successfully.\nagentId: abc123"}]}}
+{"type":"attachment","attachment":{"type":"queued_command","prompt":"<task-notification>\n<result>No findings.\n\nCOMPLIANCE: PASS</result>\n</task-notification>"}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","id":"rev2","input":{"subagent_type":"template-compliance"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"rev2","content":[{"type":"text","text":"COMPLIANCE: FINDINGS\nsomething is off"}]}]}}
+EOF
+
 # ── Cases ────────────────────────────────────────────────────────────
 
 # Prose-only changes never trigger a review.
@@ -543,6 +629,54 @@ test_clippy_max_rounds_releases() {
     assert_releases
 }
 
+# A background review the assistant waited on with a blocking TaskOutput call:
+# the verdict arrives as TaskOutput's own tool_result, and no notification is
+# ever written because the wait consumed the completion.  The gate must read
+# it, or a real pass looks like a review that never ran.
+test_taskoutput_review_pass_releases() {
+    run_hook "taskoutput-pass" "$tx_taskoutput_pass" "$files_code"
+    assert_releases
+}
+
+# The same channel carries findings through, and the block names them.
+test_taskoutput_review_findings_blocks() {
+    run_hook "taskoutput-findings" "$tx_taskoutput_findings" "$files_code"
+    assert_blocks "reported findings" || return 1
+    assert_blocks "uses let mut"
+}
+
+# A TaskOutput result is a verdict only when it waited on the review agent.
+# Any other agent's output — even one that quotes "COMPLIANCE: PASS" — leaves
+# the gate exactly where it was.
+test_taskoutput_other_agent_is_not_a_verdict() {
+    run_hook "taskoutput-other" "$tx_taskoutput_other_agent" "$files_code"
+    assert_blocks "has not run"
+}
+
+# The agent id may be recorded only in the launch entry's toolUseResult
+# sibling rather than in the result text; the join must find it there too.
+test_taskoutput_sibling_agent_id_releases() {
+    run_hook "taskoutput-sibling" "$tx_taskoutput_sibling_id" "$files_code"
+    assert_releases
+}
+
+# Findings retrieved through TaskOutput, then a foreground re-run that passes:
+# the later verdict wins even though the two arrived on different channels.
+test_taskoutput_findings_then_pass_releases() {
+    run_hook "taskoutput-then-pass" "$tx_taskoutput_findings_then_pass" \
+        "$files_code"
+    assert_releases
+}
+
+# The mirror image: a notification pass followed by a foreground review that
+# found something must block.  A gate that ranks verdicts by channel rather
+# than by position releases here on the stale pass.
+test_notification_pass_then_findings_blocks() {
+    run_hook "notification-then-findings" \
+        "$tx_notification_pass_then_findings" "$files_code"
+    assert_blocks "reported findings"
+}
+
 run_test "prose-only-releases" test_prose_only_releases
 run_test "no-changes-releases" test_no_changes_releases
 run_test "code-without-review-blocks" test_code_without_review_blocks
@@ -578,6 +712,18 @@ run_test "max-rounds-releases" test_max_rounds_releases
 run_test "clippy-failure-blocks" test_clippy_failure_blocks
 run_test "clippy-skipped-for-non-rust" test_clippy_skipped_for_non_rust
 run_test "clippy-max-rounds-releases" test_clippy_max_rounds_releases
+run_test "taskoutput-review-pass-releases" \
+    test_taskoutput_review_pass_releases
+run_test "taskoutput-review-findings-blocks" \
+    test_taskoutput_review_findings_blocks
+run_test "taskoutput-other-agent-is-not-a-verdict" \
+    test_taskoutput_other_agent_is_not_a_verdict
+run_test "taskoutput-sibling-agent-id-releases" \
+    test_taskoutput_sibling_agent_id_releases
+run_test "taskoutput-findings-then-pass-releases" \
+    test_taskoutput_findings_then_pass_releases
+run_test "notification-pass-then-findings-blocks" \
+    test_notification_pass_then_findings_blocks
 
 echo ""
 echo "$PASS passed, $FAIL failed"

@@ -253,8 +253,10 @@ last_prompt_idx="${last_prompt_idx:--1}"
 #    machine-readable COMPLIANCE: line the subagent emits is read from it.
 #
 #    Where subagents run in the background, that tool_result holds only launch
-#    metadata and the verdict arrives later as a task-notification carrying no
-#    tool_use_id to match on.  How that notification is recorded depends on
+#    metadata and the verdict arrives later on one of two other channels.
+#
+#    Left to finish on its own, the subagent posts a task-notification carrying
+#    no tool_use_id to match on.  How that notification is recorded depends on
 #    what was in flight when it landed: with a tool call running it rides
 #    inside the next user turn, but with nothing running it is queued and
 #    recorded as a queued_command attachment plus the queue-operation
@@ -262,6 +264,22 @@ last_prompt_idx="${last_prompt_idx:--1}"
 #    those shapes are collected, and only texts that actually carry a
 #    COMPLIANCE: line count as verdicts — which also keeps the launch metadata
 #    from being mistaken for a report of findings.
+#
+#    Waited on instead — a blocking TaskOutput call — the report comes back as
+#    TaskOutput's own tool_result, whose id matches no review call, and the
+#    wait consumes the completion so no notification is ever written.  That
+#    call is tied back to the review through its task_id, which is the agentId
+#    the launch metadata reported (in the result text, or in the toolUseResult
+#    field the harness writes beside it); its result is then matched by id
+#    exactly as the review call's own is.  The join is what admits it — a
+#    TaskOutput on any other agent is not a verdict however its text reads.
+#
+#    Verdicts are gathered in one pass over the turn, in transcript order,
+#    rather than channel by channel: the most recent verdict is the one that
+#    counts, and it may not have arrived the same way as the one before it —
+#    findings read through TaskOutput and then a foreground re-run that passes,
+#    or a queued pass followed by a foreground review that finds something.
+#    Grouping by channel would rank the two by channel instead of by time.
 #
 #    The hook_authored filter is load-bearing for one specific shape: a block
 #    reason quotes the findings text it is reporting, so a re-injected block
@@ -290,30 +308,47 @@ review="$(jq --slurp --raw-input --argjson skip "$last_prompt_idx" '
                   and (.name == "Task" or .name == "Agent")
                   and (.input.subagent_type == "template-compliance"))
          | .id ]) as $ids
+    # The agent ids those launches reported.  A foreground review reports
+    # none, and neither source is guaranteed present on a background one, so
+    # both are read and an absent one simply yields nothing.
     | ([ $all[]
          | select(.type == "user")
+         | . as $e
          | .message.content[]?
-         | select(.type == "tool_result")
-         | . as $r
-         | ($r.tool_use_id) as $tid
-         | select(($ids | index($tid)) != null)
-         | ($r.content | message_text) ]) as $results
+         | select(.type == "tool_result"
+                  and (.tool_use_id | IN($ids[])))
+         | ( ($e.toolUseResult.agentId? // empty)
+           , ((.content | message_text)
+              | capture("agentId:\\s*(?<id>[A-Za-z0-9_-]+)")
+              | .id) ) ]) as $agent_ids
+    | ([ $all[]
+         | select(.type == "assistant")
+         | .message.content[]?
+         | select(.type == "tool_use"
+                  and .name == "TaskOutput"
+                  and (.input.task_id | IN($agent_ids[])))
+         | .id ]) as $output_ids
+    | ($ids + $output_ids) as $verdict_ids
     # Only an entry the harness or the human wrote can deliver a verdict —
     # never the assistant, whose prose quotes "COMPLIANCE: PASS" whenever it
-    # discusses this gate.  The admitted types are the ones a real transcript
-    # records a background notification under (see the step comment above);
-    # they are named rather than taken as "anything but assistant" because a
-    # compaction summary is assistant-written under yet another type.
+    # discusses this gate.  A tool_result is admitted by id, so it needs no
+    # further filter.  The notification carriers are the types a real
+    # transcript records a background notification under (see the step comment
+    # above); they are named rather than taken as "anything but assistant"
+    # because a compaction summary is assistant-written under yet another type.
     | ([ $all[]
-         | select((.type == "user"
-                   or .type == "queue-operation"
-                   or (.type == "attachment"
-                       and .attachment.type == "queued_command"))
-                  and (hook_authored | not))
-         | tostring
-         | select(test("<task-notification>")) ])
-      as $notifications
-    | ([ ($results + $notifications)[]
+         | ( ( select(.type == "user")
+               | .message.content[]?
+               | select(.type == "tool_result"
+                        and (.tool_use_id | IN($verdict_ids[])))
+               | (.content | message_text) )
+           , ( select((.type == "user"
+                       or .type == "queue-operation"
+                       or (.type == "attachment"
+                           and .attachment.type == "queued_command"))
+                      and (hook_authored | not))
+               | tostring
+               | select(test("<task-notification>")) ) )
          | select(test("COMPLIANCE:")) ]) as $verdicts
     | if ($verdicts | length) == 0 then {verdict: "none", text: ""}
       elif ($verdicts[-1] | test("COMPLIANCE:\\s*PASS")) then
