@@ -146,6 +146,19 @@ pub enum CheckKind {
   /// search this queries just's own parser, so a mention in a comment does not
   /// satisfy it — only a real recipe definition does.
   JustfileRecipe { recipe: String },
+  /// The test suite shipped at `<template_dir>/<suite>` passes when run
+  /// against the spawn's copy of `target`: it is invoked as
+  /// `bash <suite> --target <spawn>/<target>` and passes iff it exits zero.
+  /// This checks what the file *does* rather than what its text says, so an
+  /// equivalent rewrite stays compliant while a stale copy that the suite has
+  /// since grown past is flagged.  The suite is always the template's current
+  /// one — a copy in the spawn, were one emitted, is never read — and it is
+  /// the one kind that executes spawn content during an audit: the spawn's
+  /// file runs under the suite's fixtures.  Skips when the spawn lacks the
+  /// target (a `file-present` check covers that); errors when the template
+  /// lacks the suite, since that is a misconfigured `--template-dir` rather
+  /// than a spawn defect.
+  TemplateSuitePasses { suite: String, target: String },
   /// `target` parses as YAML and the sequence at `pointer` contains a scalar
   /// equal to `value`.
   YamlSeqContains {
@@ -324,6 +337,8 @@ struct RawCheck {
   module: Option<String>,
   #[serde(default)]
   option: Option<String>,
+  #[serde(default)]
+  suite: Option<String>,
 }
 
 /// Require a kind-specific parameter, naming the check and kind on absence.
@@ -445,6 +460,7 @@ impl RawCheck {
       package,
       module,
       option,
+      suite,
     } = self;
 
     let resolved = match kind.as_str() {
@@ -535,6 +551,10 @@ impl RawCheck {
       },
       "justfile-recipe" => CheckKind::JustfileRecipe {
         recipe: require(&id, &kind, "recipe", recipe)?,
+      },
+      "template-suite-passes" => CheckKind::TemplateSuitePasses {
+        suite: require(&id, &kind, "suite", suite)?,
+        target: require(&id, &kind, "target", target)?,
       },
       "yaml-seq-contains" => CheckKind::YamlSeqContains {
         target: require(&id, &kind, "target", target)?,
@@ -702,6 +722,47 @@ mod tests {
       }
       other => panic!("wrong kind: {other:?}"),
     }
+  }
+
+  #[test]
+  fn validates_a_template_suite_passes_check() {
+    let toml = r#"
+            [[check]]
+            id = "x"
+            description = "d"
+            kind = "template-suite-passes"
+            suite = "test-review-stop.sh"
+            target = ".claude/hooks/review-stop.sh"
+        "#;
+    let raw: RawManifest = toml::from_str(toml).unwrap();
+    let check = raw.check.into_iter().next().unwrap().validate().unwrap();
+    match check.kind {
+      CheckKind::TemplateSuitePasses { suite, target } => {
+        assert_eq!(suite, "test-review-stop.sh");
+        assert_eq!(target, ".claude/hooks/review-stop.sh");
+      }
+      other => panic!("wrong kind: {other:?}"),
+    }
+  }
+
+  #[test]
+  fn template_suite_passes_requires_both_parameters() {
+    let toml = r#"
+            [[check]]
+            id = "x"
+            description = "d"
+            kind = "template-suite-passes"
+            suite = "test-review-stop.sh"
+        "#;
+    let raw: RawManifest = toml::from_str(toml).unwrap();
+    let error = raw
+      .check
+      .into_iter()
+      .next()
+      .unwrap()
+      .validate()
+      .unwrap_err();
+    assert!(matches!(error, ComplianceError::ManifestInvalid { .. }));
   }
 
   #[test]

@@ -7,7 +7,9 @@
 # any check by listing its id under `compliance-ignores` in its
 # rust-template.json.
 #
-# Paths in `target` / `path` are relative to a spawn's project root.  See
+# Paths in `target` / `path` are relative to a spawn's project root; `suite`
+# (template-suite-passes) is relative to the template checkout, since that
+# kind runs the template's own suite against the spawn.  See
 # crates/compliance-lib for the kinds and docs/compliance.org for how this
 # checker fits the broader compliance process.
 
@@ -1427,8 +1429,10 @@ package = "cargo-semver-checks"
 # Every spawned project ships a deterministic review gate: a Stop hook
 # that blocks a turn from ending while un-reviewed code/config changes
 # exist, until the template-compliance subagent reports COMPLIANCE: PASS.
-# These checks assert the gate is present and that the hook and the agent
-# still agree on the COMPLIANCE: marker that wires them together.
+# These checks assert the gate is present, that the hook still behaves the
+# way the template's own hook test suite expects (a stale or drifted hook
+# is flagged by what it does, not by what its text contains), and that the
+# agent still emits the COMPLIANCE: marker that wires the two together.
 
 [[check]]
 id = "review-gate-settings"
@@ -1460,19 +1464,16 @@ description = "The project ships the review-stop.sh Stop hook."
 kind = "file-present"
 path = ".claude/hooks/review-stop.sh"
 
+# The suite is the template's current test-review-stop.sh, run from the
+# template checkout against the spawn's copy of the hook — never a copy of
+# the suite in the spawn, so a spawn cannot pass by carrying a stale suite
+# alongside a stale hook.
 [[check]]
-id = "review-gate-hook-reads-marker"
-description = "The review-stop.sh hook gates on the COMPLIANCE: marker."
-kind = "file-contains"
+id = "review-gate-hook-passes-suite"
+description = "The review-stop.sh hook passes the template's current hook test suite, so a stale or drifted gate is flagged by behaviour rather than source text."
+kind = "template-suite-passes"
+suite = "test-review-stop.sh"
 target = ".claude/hooks/review-stop.sh"
-contains = "COMPLIANCE:"
-
-[[check]]
-id = "review-gate-hook-matches-agent-tool"
-description = "The review-stop.sh hook detects the review whether the subagent tool is recorded as Task or Agent."
-kind = "file-contains"
-target = ".claude/hooks/review-stop.sh"
-contains = 'or .name == "Agent"'
 
 [[check]]
 id = "review-gate-agent"

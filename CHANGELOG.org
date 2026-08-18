@@ -3,7 +3,18 @@
 
 * Upcoming
 ** Added
+1. The review Stop hook now stands aside in plan mode and whenever the working
+   tree's code and config content is unchanged since it last released, so
+   read-only and discussion turns no longer demand a fresh review.  Existing
+   spawns pick this up on their next compliance sync.
+2. Compliance now runs the template's hook test suite against each spawn's
+   =review-stop.sh= (=review-gate-hook-passes-suite=), replacing the checks that
+   grepped the hook's source, so a stale or drifted gate is flagged by what it
+   does.  A spawn it flags syncs the hook from the template; no other action.
 ** Fixes
+1. The review Stop hook no longer spins without bound once a review has passed.
+   Existing spawns pick the fix up on their next compliance sync, which now
+   flags a stale hook.
 ** Breaking
 ** Maintenance
 * v0.89.0

@@ -60,66 +60,6 @@ A target repo may have more crates than the template (workers, etc.).  Extra
 crates are not non-compliant; they simply do not have a direct template
 counterpart. Apply the general [[*Cross-role compliance items]] to them.
 
-* Compliance items reference
-
-The tables below enumerate known compliance items for orientation and code
-review. They are *not* the compliance checklist — the process in
-[[*Compliance process]] is.  A static list in this document will drift behind the
-template as it evolves, and feature-by-feature auditing is too easy to miss
-things.  Use the tables to recognise what kind of infrastructure belongs where;
-rely on the actual template output to decide what a given project is missing.
-
-Items marked *required* must be present in every compliant crate of that role.
-Items marked *conditional* apply only when the target crate uses the related
-feature.
-
-** Cross-role compliance items
-
-These apply to every crate regardless of role.
-
-| Item | Required | Description |
-|------+----------+-------------|
-| Workspace metadata inheritance | Required | =Cargo.toml= uses =.workspace = true= for =version=, =edition=, =authors=, =license=, =repository=. |
-| Semantic error types | Required | Errors are defined with =thiserror=.  Variants name the operation, not just the underlying OS error. |
-| Staged configuration | Required (binaries) | Configuration flows =CliRaw= → =ConfigFileRaw= → =Config=.  =Config= is fully validated before use. |
-| =config.rs= module | Required (binaries) | Configuration logic lives in its own file, not in =main.rs=. |
-| =logging.rs= module | Required (binaries) | Logging initialization lives in its own file and delegates to the lib crate's logging infrastructure. |
-| Integration tests | Required | At least one integration test under =crates/<name>/tests/=. |
-| =rustfmt.toml= | Required (workspace) | The workspace =rustfmt.toml= is present and unmodified. |
-| Pre-commit hook | Required (workspace) | =.cargo-husky/= is present and enforces =treefmt= before commits. |
-| Nix dev shell | Required (workspace) | =flake.nix= is present with a working =devShells.default=. |
-| Template provenance | Required (workspace) | =rust-template.json= is present at the project root and committed.  Contains a =template_sync_hashes= list of template commit hashes, one per sync event (emission or forward port), oldest first.  The last entry is the base for the next diff-based compliance run.  Projects predating this file may start with an empty list; see [[*Compliance process]] for how the process branches on sync state. |
-
-** =lib= crate compliance items
-
-| Item | Required | Description |
-|------+----------+-------------|
-| Logging infrastructure | Required | =crates/lib/src/logging.rs= (or equivalent) exports =LogLevel=, =LogFormat=, and an =init_logging= function.  Binary crates delegate to this. |
-| No =main.rs= | Required | The lib crate must not contain a =main.rs=. |
-
-** =server= crate compliance items
-
-| Item | Required | Description |
-|------+----------+-------------|
-| =/healthz= endpoint | Required | =GET /healthz= returns ={"status":"healthy"}= (or equivalent JSON).  Must be part of the =base_router=, not mixed into application routes. |
-| =/metrics= endpoint | Required | =GET /metrics= returns Prometheus text-format metrics via the =prometheus= crate. |
-| OpenAPI / Scalar UI | Required | =/scalar= and =/api-docs/openapi.json= are served via =aide= (with =schemars= for schema generation).  The OpenAPI document is built from =aide=-annotated routes and covers at minimum the health and metrics paths. |
-| =AppState= with Prometheus registry | Required | An =AppState= struct holds an =Arc<Registry>= and at minimum an =http_requests_total= counter.  State is passed through Axum's =with_state=. |
-| =web_base= module | Required | Health, metrics, OpenAPI setup, and =AppState= live in a =web_base= module (lib crate or inline module), separate from application routes and from =main.rs=. |
-| =TraceLayer= | Required | =tower_http::trace::TraceLayer::new_for_http()= is applied to the router. |
-| Graceful shutdown | Required | The server calls =.with_graceful_shutdown(shutdown_signal())= where =shutdown_signal= awaits both SIGINT and SIGTERM. |
-| =tokio-listener= binding | Required | The listener is created via =tokio_listener::Listener::bind= and served via =tokio_listener::axum07::serve=.  This enables Unix domain socket and systemd socket-activation support. |
-| Systemd notifications | Required | =systemd::notify_ready()= and =systemd::spawn_watchdog()= are called after the listener binds, before the server starts serving. |
-| Single combined =listen= address | Required | The bind address is a single =--listen= argument parsed into a =tokio_listener::ListenerAddress= (default =127.0.0.1:3000=), accepting =host:port= for TCP, a filesystem path for a Unix socket, or =sd-listen= for systemd socket activation — not separate host and port arguments. |
-| Embedded frontend | Required | The compiled frontend is embedded into the server binary rather than served from a directory alongside it.  A =rust_embed= =Frontend= type lives in =frontend.rs= (deriving =RustEmbed=) and is installed with =Server::spa::<Frontend>()=; a =build.rs= resolves the asset directory into =RUST_TEMPLATE_FRONTEND_DIR=, and the workspace =rust-embed= dependency enables =interpolate-folder-path= so the =#[folder]= attribute can expand it.  A genuinely headless server with no frontend opts out via =compliance-ignores=. |
-
-** =cli= crate compliance items
-
-| Item | Required | Description |
-|------+----------+-------------|
-| Clap for argument parsing | Required | =CliRaw= derives =clap::Parser=. |
-| Exits after work | Required | The binary returns from =main= (or calls =process::exit=) after completing its task.  It does not run an event loop. |
-
 * Compliance process
 
 Compliance work has two processes, selected by the derived repo's sync state.
@@ -244,9 +184,12 @@ the absence of stale =rust-template= literals, the documented sections in
 =llms.org= and =CONTRIBUTING.org=, and the foundation pin agreement: the
 revisions pinned in =Cargo.lock= and =flake.lock= must agree with each other
 (=foundation-pins-agree=) and with the template =HEAD=
-(=foundation-pins-current=).  Rust facts are read from the parsed syntax tree,
-and YAML / JSON / TOML facts from the parsed value tree, narrowing to a
-substring match only at the leaf.
+(=foundation-pins-current=), and the code-review gate: its files are present and
+the Stop hook passes the template's own hook test suite
+(=review-gate-hook-passes-suite=), so a stale hook is caught by behaviour rather
+than by its text.  Rust facts are read from the parsed syntax tree, and YAML /
+JSON / TOML facts from the parsed value tree, narrowing to a substring match
+only at the leaf.
 
 It is the first step of both processes above (see
 [[*Run the structural checker first]]), but does not replace them.  The checker
@@ -277,6 +220,18 @@ an existing byte-match (=rustfmt.toml= today) as a candidate to refine into
 value checks on the settings that actually matter, not a pattern to copy.  If
 content genuinely must match the template exactly, justify why in the change —
 that case is rare, if it arises at all.
+
+A file whose contract is /behavioural/ rather than textual, and that already
+ships a test suite — the review Stop hook is the case today — is checked by
+running that suite: =template-suite-passes= runs the template's /current/ copy
+of the suite, read from the template checkout rather than from the spawn,
+against the spawn's copy of the file, and passes on a zero exit.  That judges
+what the file does rather than what it says: an equivalent rewrite stays
+compliant, while a stale copy the suite has since grown past is flagged with the
+failing cases named.  It is the one kind that executes spawn content during an
+audit (the spawn's file runs under the suite's fixtures) and it needs the
+suite's tools — =bash=, =jq=, =git= — on the auditing host, so reserve it for
+files that already carry a suite rather than writing a suite to get a check.
 
 This additive freedom is distinct from the opt-out below.  Presence checks make
 /deviation by addition/ free and need no declaration; =compliance-ignores= is
