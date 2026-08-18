@@ -3,6 +3,11 @@
 
 * Upcoming
 ** Added
+** Fixes
+** Breaking
+** Maintenance
+* v0.89.0
+** Added
 1. Four options on the darwin service module name each launchd log file outright
    — ~logPathStdout~, ~logPathStderr~, ~healthCheck.logPathStdout~, and
    ~healthCheck.logPathStderr~ — so two instances of one service can be given
@@ -21,7 +26,6 @@
    set ~logDir~ must set ~logPathStdout~ and ~logPathStderr~ instead; the option
    was never released under that name.  Repoint anything that reads those logs,
    and delete the stale directory.
-** Maintenance
 * v0.88.0
 ** Maintenance
 1. Bump cc from 1.4.2 to 1.4.3
