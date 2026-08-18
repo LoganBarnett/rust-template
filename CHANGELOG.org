@@ -3,6 +3,11 @@
 
 * Upcoming
 ** Added
+** Fixes
+** Breaking
+** Maintenance
+* v0.90.0
+** Added
 1. The review Stop hook now stands aside in plan mode and whenever the working
    tree's code and config content is unchanged since it last released, so
    read-only and discussion turns no longer demand a fresh review.  Existing
@@ -15,8 +20,6 @@
 1. The review Stop hook no longer spins without bound once a review has passed.
    Existing spawns pick the fix up on their next compliance sync, which now
    flags a stale hook.
-** Breaking
-** Maintenance
 * v0.89.0
 ** Added
 1. Four options on the darwin service module name each launchd log file outright
