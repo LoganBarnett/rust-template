@@ -6,6 +6,9 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+1. Bump ref-cast from 1.0.26 to 1.0.27
+2. Bump ref-cast-impl from 1.0.26 to 1.0.27
+3. Bump yaml-rust2 from 0.11.0 to 0.11.1
 * v0.93.0
 ** Fixes
 1. Fixed review Stop hooks called as background tasks.  Existing spawns pick it
