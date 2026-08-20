@@ -7,6 +7,7 @@ members = [
     "crates/compliance-cli",
     "crates/dependency-bump-lib",
     "crates/dependency-bump-cli",
+    "crates/review-stop",
     # A build-only regression fixture for the zig-linked build helpers:
     # mkDarwinCrossPackages (C-compiling and framework-linking cross paths) and
     # mkGnuPortablePackages (linking a modern-glibc host shared library); never

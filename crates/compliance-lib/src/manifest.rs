@@ -780,15 +780,15 @@ mod tests {
             id = "x"
             description = "d"
             kind = "template-suite-passes"
-            suite = "test-review-stop.sh"
-            target = ".claude/hooks/review-stop.sh"
+            suite = "test-widget.sh"
+            target = "widget.conf"
         "#;
     let raw: RawManifest = toml::from_str(toml).unwrap();
     let check = raw.check.into_iter().next().unwrap().validate().unwrap();
     match check.kind {
       CheckKind::TemplateSuitePasses { suite, target } => {
-        assert_eq!(suite, "test-review-stop.sh");
-        assert_eq!(target, ".claude/hooks/review-stop.sh");
+        assert_eq!(suite, "test-widget.sh");
+        assert_eq!(target, "widget.conf");
       }
       other => panic!("wrong kind: {other:?}"),
     }
@@ -801,7 +801,7 @@ mod tests {
             id = "x"
             description = "d"
             kind = "template-suite-passes"
-            suite = "test-review-stop.sh"
+            suite = "test-widget.sh"
         "#;
     let raw: RawManifest = toml::from_str(toml).unwrap();
     let error = raw

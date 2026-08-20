@@ -98,7 +98,7 @@ actually run anything.
 
 No file lists in documentation.
 
-** Comments
+** Authoring Comments and Documentation
 
 *** Formatting and punctuation
 
@@ -109,6 +109,44 @@ punctuation.
 
 Only comment non-obvious intent, invariants, tradeoffs, or historical
 constraints; no restating of control flow.
+
+These rules apply to comments and documentation roughly the same.
+
+**** Anti Pattern: Historical / Tombstone Verbiage
+
+Historical verbiage are such as "We used to do X, but now we do Y".  We should
+only provide such prose in the _surprising_ case.  These would be better thought
+of as "One would typically reach for X, but it fails because of Y, so instead we
+do Z".  This is the only case in which we use historical prose that refers to
+prior code that no longer exists.
+
+The easy test for this is "If you would have gotten this right on the first
+pass, would this have still needed this prose?".  If the answer is no, then do
+not leave historical prose.
+
+**** Anti Pattern: Obvious Intent
+
+Commenting intent that is obvious "This assigns foo to bar" or "This
+run_workflow function runs the workflow" are simple anti patterns.  We only
+comment on code that needs to be called out.  Assume the reader knows how to
+write software.  If the code is self documenting, obvious code should never need
+comments.
+
+The only exception is special documentation comments on the headers of things
+like functions, which then later get aggregated by a tool or auto-complete
+systems.  Even then, these comments should only refer to abstract outcomes and
+not implementation detail unless there is something specifically important about
+that implementation.  Stating what algorithm a sort uses is fine.  Stating in
+the doc comment that you used a ~loop~ over a combinator is not appropriate.
+
+**** Anti Pattern: Inventory
+
+Taking inventory in prose ("this does X, Y, and Z") just means you now have
+extra places to account for a change.  The moment you stop doing Y, all prose
+that takes inventory must be updated.  Same goes if you add a W activity.  The
+simple answer is to not write this prose at all.  If you find yourself writing
+these remarks, they are virtually always wrong, and instead an even briefer
+summary must be written instead, or the comment must be removed entirely.
 
 ** Version Control
 *** Commit Messages

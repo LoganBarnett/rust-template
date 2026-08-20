@@ -184,12 +184,13 @@ the absence of stale =rust-template= literals, the documented sections in
 =llms.org= and =CONTRIBUTING.org=, and the foundation pin agreement: the
 revisions pinned in =Cargo.lock= and =flake.lock= must agree with each other
 (=foundation-pins-agree=) and with the template =HEAD=
-(=foundation-pins-current=), and the code-review gate: its files are present and
-the Stop hook passes the template's own hook test suite
-(=review-gate-hook-passes-suite=), so a stale hook is caught by behaviour rather
-than by its text.  Rust facts are read from the parsed syntax tree, and YAML /
-JSON / TOML facts from the parsed value tree, narrowing to a substring match
-only at the leaf.
+(=foundation-pins-current=), and the code-review gate: its files are present,
+the Stop hook execs the gate binary the foundation flake provides
+(=review-gate-hook-delegates-to-binary=) rather than carrying a copy of the
+gate, and the dev shell supplies that binary (=dev-shell-provides-review-stop=),
+so a hook fix reaches the spawn on a foundation bump instead of a file sync.
+Rust facts are read from the parsed syntax tree, and YAML / JSON / TOML facts
+from the parsed value tree, narrowing to a substring match only at the leaf.
 
 It is the first step of both processes above (see
 [[*Run the structural checker first]]), but does not replace them.  The checker
@@ -235,16 +236,16 @@ relative order — is a genuine org question and gets the org kind,
 imports around the required ones.
 
 A file whose contract is /behavioural/ rather than textual, and that already
-ships a test suite — the review Stop hook is the case today — is checked by
-running that suite: =template-suite-passes= runs the template's /current/ copy
-of the suite, read from the template checkout rather than from the spawn,
-against the spawn's copy of the file, and passes on a zero exit.  That judges
-what the file does rather than what it says: an equivalent rewrite stays
-compliant, while a stale copy the suite has since grown past is flagged with the
-failing cases named.  It is the one kind that executes spawn content during an
-audit (the spawn's file runs under the suite's fixtures) and it needs the
-suite's tools — =bash=, =jq=, =git= — on the auditing host, so reserve it for
-files that already carry a suite rather than writing a suite to get a check.
+ships a test suite, can be checked by running that suite:
+=template-suite-passes= runs the template's /current/ copy of the suite, read
+from the template checkout rather than from the spawn, against the spawn's copy
+of the file, and passes on a zero exit.  That judges what the file does rather
+than what it says: an equivalent rewrite stays compliant, while a stale copy the
+suite has since grown past is flagged with the failing cases named.  It is the
+one kind that executes spawn content during an audit (the spawn's file runs
+under the suite's fixtures) and it needs the suite's tools on the auditing host,
+so reserve it for files that already carry a suite rather than writing a suite
+to get a check.
 
 This additive freedom is distinct from the opt-out below.  Presence checks make
 /deviation by addition/ free and need no declaration; =compliance-ignores= is

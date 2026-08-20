@@ -1,0 +1,39 @@
+[package]
+name = "rust-template-review-stop"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = []
+
+[[bin]]
+name = "rust-template-review-stop"
+path = "src/main.rs"
+
+[dependencies]
+# CLI entry-point macro (foundation_main) and config staging for the gate.
+rust-template-foundation = { workspace = true, features = ["cli"] }
+# Parses the gate's command-line arguments and env-var test seams.
+clap = { workspace = true }
+# Diagnostics on stderr, keeping stdout for the Stop-hook decision document.
+tracing = { workspace = true }
+# Deserializes the staged config file and the Stop hook's stdin document.
+serde = { workspace = true }
+# Parses the hook input and the session transcript (JSONL), and serialises the
+# block decision Claude Code reads back from stdout.
+serde_json = { workspace = true }
+# Semantic, per-operation error types for the gate.
+thiserror = { workspace = true }
+# Enables method chaining and reduces superfluous local variables that only
+# exist to name intermediate results.  Prefer .tap() over temporary variables
+# when it improves readability.
+tap = { workspace = true }
+
+[dev-dependencies]
+# Scratch directories holding the per-test transcript, file-list, and state
+# files the gate integration tests drive the binary with.
+tempfile = "3"
+
+[lints]
+workspace = true

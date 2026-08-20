@@ -34,16 +34,13 @@ test-formatters:
 ci-test:
   ./ci-test.sh
 
-# Code-review Stop hook unit test.
+# Code-review Stop hook gate tests.
 #
-# Drives template/.claude/hooks/review-stop.sh through every release and
-# block branch with crafted transcripts and a faked working-tree file
-# list, guarding in particular the "Agent"-named subagent detection whose
-# regression once wedged a real session.  Arguments pass through: `just
-# test-review-stop --target <path>` runs the same suite against another
-# copy of the hook, which is how the compliance checker judges a spawn's.
+# Runs the review-stop crate's tests: the black-box suite drives the gate
+# binary through every release and block branch with crafted transcripts
+# and a faked working-tree file list.
 test-review-stop *args:
-  ./test-review-stop.sh {{args}}
+  cargo test --package rust-template-review-stop {{args}}
 
 # Audit every registered spawn against the compliance manifest.
 #

@@ -2082,41 +2082,44 @@ mod tests {
 
   #[test]
   fn template_suite_passes_judges_the_target_by_behaviour() {
-    // Skip when `jq` is absent (e.g. `cargo test` outside the dev shell): the
-    // hook the suite drives needs it.  In CI it is present, so the assertions
-    // run there.
-    if Command::new("jq").arg("--version").output().is_err() {
-      return;
-    }
-    let template_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let suite = "test-review-stop.sh";
-    let target = ".claude/hooks/review-stop.sh";
-    let dir =
+    // A synthetic suite standing in for whatever behavioural suite a template
+    // ships: it takes the target under test as `--target` and passes when the
+    // target says the word.  Both trees live under one scratch directory —
+    // the "template" holds the suite, the "spawn" holds the target.
+    let root =
       std::env::temp_dir().join(format!("cdb-suite-{}", std::process::id()));
-    let hooks = dir.join(".claude/hooks");
-    std::fs::create_dir_all(&hooks).unwrap();
-    // The template's own hook, copied into the spawn, passes its own suite.
-    std::fs::copy(
-      template_dir.join("template").join(target),
-      hooks.join("review-stop.sh"),
+    let template_dir = root.join("template");
+    let dir = root.join("spawn");
+    let suite = "test-widget.sh";
+    let target = "widget.conf";
+    std::fs::create_dir_all(&template_dir).unwrap();
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+      template_dir.join(suite),
+      "#!/usr/bin/env bash\n\
+       # A minimal behavioural suite: --target names the file under test.\n\
+       [[ \"$1\" == \"--target\" ]] || exit 2\n\
+       if grep --quiet compliant \"$2\"; then\n\
+         echo \"PASS: says-compliant\"\n\
+       else\n\
+         echo \"FAIL: says-compliant\"\n\
+         echo \"0 passed, 1 failed\"\n\
+         exit 1\n\
+       fi\n",
     )
     .unwrap();
+    std::fs::write(dir.join(target), "compliant\n").unwrap();
     assert!(matches!(
       template_suite_passes(&dir, &template_dir, suite, target),
       Verdict::Pass
     ));
-    // A hook that releases unconditionally still "contains" nothing wrong
-    // textually, but fails every case that expects a block — the failing
-    // cases are named in the detail.
-    std::fs::write(
-      hooks.join("review-stop.sh"),
-      "#!/usr/bin/env bash\nexit 0\n",
-    )
-    .unwrap();
+    // The failing case is named in the detail rather than buried in the
+    // suite's transcript.
+    std::fs::write(dir.join(target), "drifted\n").unwrap();
     match template_suite_passes(&dir, &template_dir, suite, target) {
       Verdict::Fail { detail } => {
         assert!(
-          detail.contains("code-without-review-blocks"),
+          detail.contains("says-compliant"),
           "detail should name the failing case: {detail}"
         );
       }
@@ -2132,7 +2135,7 @@ mod tests {
       template_suite_passes(&dir, &dir, suite, target),
       Verdict::Error { .. }
     ));
-    std::fs::remove_dir_all(&dir).ok();
+    std::fs::remove_dir_all(&root).ok();
   }
 
   #[test]

@@ -1357,6 +1357,36 @@ kind = "section-exists"
 target = "llms.org"
 section = ["Verification"]
 
+# The comment and documentation conventions, with the anti-patterns named as
+# their own subsections so each stays assertable as the section grows.
+[[check]]
+id = "llms-authoring-comments-section"
+description = "llms.org carries the \"Authoring Comments and Documentation\" section under the general code guidelines."
+kind = "section-exists"
+target = "llms.org"
+section = ["General code guidelines", "Authoring Comments and Documentation"]
+
+[[check]]
+id = "llms-comments-anti-pattern-historical"
+description = "The comment conventions name the historical / tombstone verbiage anti-pattern."
+kind = "section-exists"
+target = "llms.org"
+section = ["General code guidelines", "Authoring Comments and Documentation", "Content", "Anti Pattern: Historical / Tombstone Verbiage"]
+
+[[check]]
+id = "llms-comments-anti-pattern-obvious-intent"
+description = "The comment conventions name the obvious-intent anti-pattern."
+kind = "section-exists"
+target = "llms.org"
+section = ["General code guidelines", "Authoring Comments and Documentation", "Content", "Anti Pattern: Obvious Intent"]
+
+[[check]]
+id = "llms-comments-anti-pattern-inventory"
+description = "The comment conventions name the inventory anti-pattern."
+kind = "section-exists"
+target = "llms.org"
+section = ["General code guidelines", "Authoring Comments and Documentation", "Content", "Anti Pattern: Inventory"]
+
 # ---------------------------------------------------------------------------
 # CONTRIBUTING.org: file plus major headings a spawn must keep.
 # ---------------------------------------------------------------------------
@@ -1592,13 +1622,8 @@ kind = "dev-shell-package"
 package = "cargo-semver-checks"
 
 # ── Code-review gate (.claude) ───────────────────────────────────────
-# Every spawned project ships a deterministic review gate: a Stop hook
-# that blocks a turn from ending while un-reviewed code/config changes
-# exist, until the template-compliance subagent reports COMPLIANCE: PASS.
-# These checks assert the gate is present, that the hook still behaves the
-# way the template's own hook test suite expects (a stale or drifted hook
-# is flagged by what it does, not by what its text contains), and that the
-# agent still emits the COMPLIANCE: marker that wires the two together.
+# We emit some Claude settings to help ensure our LLM and contributing
+# guidelines are obeyed.
 
 [[check]]
 id = "review-gate-settings"
@@ -1624,22 +1649,32 @@ kind = "file-contains"
 target = ".claude/settings.json"
 contains = '"autoMemoryEnabled": false'
 
+###
+# Review Gate.
+#
+# The review gate is for LLM coding agents (as of 2026-08-19, only tested
+# against Claude Code) to perform a review once a conversation turn is
+# complete.  Helps prevent guessing and high confidence "I did it right" kind of
+# assertions.
+###
 [[check]]
 id = "review-gate-hook"
 description = "The project ships the review-stop.sh Stop hook."
 kind = "file-present"
 path = ".claude/hooks/review-stop.sh"
 
-# The suite is the template's current test-review-stop.sh, run from the
-# template checkout against the spawn's copy of the hook — never a copy of
-# the suite in the spawn, so a spawn cannot pass by carrying a stale suite
-# alongside a stale hook.
 [[check]]
-id = "review-gate-hook-passes-suite"
-description = "The review-stop.sh hook passes the template's current hook test suite, so a stale or drifted gate is flagged by behaviour rather than source text."
-kind = "template-suite-passes"
-suite = "test-review-stop.sh"
+id = "review-gate-hook-delegates-to-binary"
+description = "Call the review-stop binary."
+kind = "file-contains"
 target = ".claude/hooks/review-stop.sh"
+contains = "rust-template-review-stop"
+
+[[check]]
+id = "dev-shell-provides-review-stop"
+description = "Make the review-stop binary available through the devShell."
+kind = "dev-shell-package"
+package = "rust-template-review-stop"
 
 [[check]]
 id = "review-gate-agent"
@@ -1653,6 +1688,32 @@ description = "The template-compliance agent emits the COMPLIANCE: PASS verdict 
 kind = "file-contains"
 target = ".claude/agents/template-compliance.md"
 contains = "COMPLIANCE: PASS"
+
+[[check]]
+id = "review-gate-agent-reviews-documentation"
+description = "The template-compliance agent reviews every changed file, documentation included, rather than carving prose out of its scope."
+kind = "file-contains"
+target = ".claude/agents/template-compliance.md"
+contains = "Everything else is in scope."
+
+[[check]]
+id = "contributing-review-stop-section"
+description = "CONTRIBUTING.org carries the \"Code-review Stop hook\" section explaining the gate binary and its PATH requirement."
+kind = "section-exists"
+target = "CONTRIBUTING.org"
+section = ["Code-review Stop hook"]
+
+[[check]]
+id = "contributing-review-stop-names-binary"
+description = "The Code-review Stop hook section names the rust-template-review-stop binary the hook execs."
+kind = "mention-present"
+target = "CONTRIBUTING.org"
+section = ["Code-review Stop hook"]
+contains = "rust-template-review-stop"
+
+###
+# End Review Gate section.
+###
 
 # ---------------------------------------------------------------------------
 # Darwin (launchd) service log paths.

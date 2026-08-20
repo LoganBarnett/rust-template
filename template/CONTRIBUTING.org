@@ -299,6 +299,41 @@ automatically discovers credentials at runtime without extra configuration.
 
 See [[file:docs/systemd.org][docs/systemd.org]] for the full pattern and how to add new secrets.
 
+* Code-review Stop hook
+
+Claude Code sessions in this project run a deterministic code-review gate: the
+Stop hook at =.claude/hooks/review-stop.sh= blocks a turn from ending while
+un-reviewed changes sit in the working tree, first until the workspace passes
+the clippy gate CI enforces (for Rust changes), then until the
+=template-compliance= subagent has run and reported =COMPLIANCE: PASS=.  Plan
+mode, being read-only, never triggers it.
+
+The gate itself is the =rust-template-review-stop= binary; the hook script only
+execs it.  The binary comes from the template repository's flake — the
+=foundation= input — through this project's dev shell, so inside =nix develop=
+(or with direnv) it is already on =PATH=, and a fix to the gate reaches this
+project on a =foundation= bump rather than a file sync.  Its behaviour and tests
+live in that repository's =review-stop= crate; do not fork the logic into the
+hook script — a hook that stops delegating to the binary is flagged by
+compliance.
+
+*Running an LLM coding agent outside the Nix dev shell* — Claude Code today, and
+any other agent that honours the same hook — requires you to put
+=rust-template-review-stop= on =PATH= yourself.  The hook does not fetch or
+build it, and how it gets there is not something this project can dictate.  Two
+routes that work: the template repository's GitHub releases carry a binary for
+every mainstream target, and cargo can build the same version the flake pins:
+
+#+begin_src sh :results none :exports code
+cargo install --git https://github.com/LoganBarnett/rust-template.git \
+  --tag v<version> rust-template-review-stop
+#+end_src
+
+Whichever route, keep it at the same version as the =foundation= input so the
+gate and the reviewer agent stay in step.  When the binary is missing, the exec
+fails and Claude Code reports the hook error on every Stop rather than silently
+skipping the gate — the loud failure is deliberate.
+
 * Logging levels
 
 - ~error!~ — errors that prevent normal operation.

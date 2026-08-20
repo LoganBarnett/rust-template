@@ -7,6 +7,7 @@
     "compliance-cli": { "release-binary": true },
     "dependency-bump-lib": { "release-binary": false },
     "dependency-bump-cli": { "release-binary": true },
-    "cross-fixture": { "release-binary": false }
+    "cross-fixture": { "release-binary": false },
+    "review-stop": { "release-binary": true }
   }
 }
