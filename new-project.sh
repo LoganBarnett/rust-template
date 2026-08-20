@@ -109,6 +109,17 @@ grep -rl "${PROJECT_NAME_UNDERSCORE}_foundation" "$OUTPUT" 2>/dev/null | while I
     sed_inplace "s/${PROJECT_NAME_UNDERSCORE}_foundation/rust_template_foundation/g" "$f"
 done || true
 
+# Restore the review-stop gate binary name mangled by the global substitution.
+# Like the foundation crate, the binary the emitted Stop hook execs is
+# rust-template's own artifact — spawns pull it from the foundation flake
+# rather than build their own — so it keeps its real name in every spawn.
+# (`read -r` takes each path raw, without backslash processing; the builtin
+# has no long-form spelling of the flag.)
+grep --recursive --files-with-matches "${PROJECT_NAME}-review-stop" "$OUTPUT" 2>/dev/null \
+  | while IFS= read -r f; do
+    sed_inplace "s/${PROJECT_NAME}-review-stop/rust-template-review-stop/g" "$f"
+done || true
+
 # Restore rust-template.json manifest references mangled by the global
 # substitution.  Unlike other rust-template names, the manifest keeps its
 # literal filename in every spawn (the reusable release workflow reads a fixed

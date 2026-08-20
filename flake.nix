@@ -43,10 +43,8 @@
     # input pre-bound.  Consumed both by this repo's own `.#ci` devShell
     # below and, via `foundation.lib.mkCiShell`, by every spawned project.
     mkCiShell = import ./nix/lib/mkCiShell.nix {inherit changelog-roller org-fmt;};
-    # Binary crates this repo ships as release artifacts.  Mirrors the
-    # release-binary = true entries in rust-template.json: compliance-cli and
-    # dependency-bump-cli are the binaries; the foundation crates and the
-    # *-lib crates are libraries.
+    # Binary crates this repo ships as release artifacts; mirrors the
+    # release-binary = true entries in rust-template.json.
     crates = {
       compliance-cli = {
         name = "rust-template-compliance-cli";
@@ -55,6 +53,13 @@
       dependency-bump-cli = {
         name = "rust-template-dependency-bump-cli";
         binary = "rust-template-dependency-bump-cli";
+      };
+      # The code-review Stop hook's gate.  Spawns pull it into their dev shell
+      # as foundation.packages.<system>.review-stop; the emitted hook script
+      # only execs it.
+      review-stop = {
+        name = "rust-template-review-stop";
+        binary = "rust-template-review-stop";
       };
     };
     # A build-only regression fixture guarding the zig-linked build paths the
@@ -150,6 +155,13 @@
       # package output so `just dependency-bump` works here the same way it
       # does in a spawn.
       self.packages.${system}.dependency-bump
+      # The code-review Stop hook's gate, likewise taken from this flake's own
+      # package output: this repo's .claude/ symlinks to the emitted hook, which
+      # execs the binary from PATH, so the dev shell must carry it exactly as a
+      # spawn's does.  The gate a live session runs is the one this shell was
+      # built with; `direnv reload` (or re-entering `nix develop`) picks up
+      # crate changes, while `cargo test` exercises the working tree directly.
+      self.packages.${system}.review-stop
     ];
   in {
     devShells = forAllSystems (system: {
@@ -171,13 +183,14 @@
       };
     });
 
-    # The repo builds its own binaries (currently just compliance-cli) so it
-    # can release them through the same machinery spawned projects use.  On
-    # Linux each binary also gets a statically-linked `<name>-musl` variant, and
-    # the x86_64-linux build cross-compiles macOS `<key>-<arch>-darwin` variants
-    # via zig.  compliance-cli is libSystem-only, so no `appleSdk` is passed and
-    # its cross build stays licence-free.  The cross-fixture is built separately
-    # with the Apple SDK to guard framework linking — see fixtureCrates.
+    # The repo builds its own binaries (the `crates` attrset above) so it can
+    # release them through the same machinery spawned projects use.  On Linux
+    # each binary also gets a statically-linked `<name>-musl` variant, and the
+    # x86_64-linux build cross-compiles macOS `<key>-<arch>-darwin` variants
+    # via zig.  Every one of them is libSystem-only, so no `appleSdk` is passed
+    # and their cross builds stay licence-free.  The cross-fixture is built
+    # separately with the Apple SDK to guard framework linking — see
+    # fixtureCrates.
     packages = forAllSystems (
       system: let
         cratePackages = (rustPackagesFor system).packages;

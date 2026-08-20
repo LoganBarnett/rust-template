@@ -204,11 +204,11 @@ fn minimal_spawn_yields_expected_outcomes_without_engine_errors() {
     outcome(spawn, "foundation-pins-current"),
     Verdict::Skip { .. }
   ));
-  // No hook in the stub, so the behavioural suite check skips rather than
-  // running (or erroring); the file-present check is what reports the gap.
+  // No hook in the stub, so the check that the hook delegates to the gate
+  // binary reports the missing file as a plain failure, never an error.
   assert!(matches!(
-    outcome(spawn, "review-gate-hook-passes-suite"),
-    Verdict::Skip { .. }
+    outcome(spawn, "review-gate-hook-delegates-to-binary"),
+    Verdict::Fail { .. }
   ));
 }
 
