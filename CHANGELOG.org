@@ -3,6 +3,11 @@
 
 * Upcoming
 ** Added
+** Fixes
+** Breaking
+** Maintenance
+* v0.96.0
+** Added
 1. The review Stop hook's gate is now the =rust-template-review-stop= binary
    from the foundation flake.  Existing spawns pick it up on their next
    compliance sync.
@@ -10,13 +15,11 @@
    and the review gate now covers documentation: the reviewer reads prose and
    the Stop hook triggers on any changed file, not only code and config.
    Existing spawns pick this up on their next compliance sync.
-** Fixes
 ** Breaking
 1. The compliance check id =review-gate-hook-passes-suite= is gone (replaced by
    =review-gate-hook-delegates-to-binary= and =dev-shell-provides-review-stop=).
    A project listing the old id under =compliance-ignores= in its
    =rust-template.json= must update it.
-** Maintenance
 * v0.95.0
 ** Maintenance
 1. Bump zerovec from 0.11.7 to 0.11.8
