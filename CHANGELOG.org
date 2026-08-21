@@ -6,6 +6,9 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+1. Bump either from 1.17.0 to 1.18.0
+2. Bump icu_provider from 2.3.0 to 2.3.1
+3. Bump zerovec-derive from 0.11.5 to 0.11.6
 * v0.96.0
 ** Added
 1. The review Stop hook's gate is now the =rust-template-review-stop= binary
