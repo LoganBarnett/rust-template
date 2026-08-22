@@ -6,6 +6,8 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+1. Bump cc from 1.4.3 to 1.4.4
+2. Bump rustls-webpki from 0.103.14 to 0.103.15
 * v0.97.0
 ** Maintenance
 1. Bump either from 1.17.0 to 1.18.0
