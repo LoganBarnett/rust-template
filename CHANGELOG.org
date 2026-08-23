@@ -6,6 +6,7 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+1. Bump log from 0.4.33 to 0.4.34
 * v0.98.0
 ** Maintenance
 1. Bump cc from 1.4.3 to 1.4.4
