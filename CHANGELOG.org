@@ -6,6 +6,8 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+1. Bump yaml-rust2 from 0.11.1 to 0.12.0
+   (https://github.com/LoganBarnett/rust-template/pull/103)
 * v0.100.0
 ** Maintenance
 1. Bump syn from 3.0.3 to 3.0.4
