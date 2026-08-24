@@ -31,7 +31,7 @@ orgize = { git = "https://github.com/LoganBarnett/orgize.git", branch = "fix-mul
 # Parses GitHub Actions workflow YAML for the yaml-ast checks, navigating the
 # value tree rather than scraping text.  yaml-rust2 is the maintained
 # pure-Rust parser; its low-level value enum lets us match raw scalar keys.
-yaml-rust2 = "0.11"
+yaml-rust2 = "0.12"
 # Parses spawn Rust sources into an AST for the rust-ast checks, so they assert
 # on resolved items/attributes/idents rather than scraping source text (the
 # macro-expanded identifiers never appear pre-expansion).  `visit` powers the
