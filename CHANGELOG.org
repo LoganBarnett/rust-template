@@ -6,6 +6,8 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+1. Bump combine from 4.6.7 to 4.6.8
+2. Bump rand from 0.8.7 to 0.8.8
 * v0.101.0
 ** Maintenance
 1. Bump yaml-rust2 from 0.11.1 to 0.12.0
