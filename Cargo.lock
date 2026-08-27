@@ -2625,7 +2625,7 @@ dependencies = [
  "rust-template-foundation",
  "serde",
  "serde_json",
- "syn 2.0.119",
+ "syn 3.0.4",
  "tap",
  "tempfile",
  "thiserror 2.0.20",
@@ -2709,7 +2709,7 @@ version = "0.102.0"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.119",
+ "syn 3.0.4",
 ]
 
 [[package]]
