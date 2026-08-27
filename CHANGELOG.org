@@ -6,6 +6,8 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+1. Bump syn from 2.0.119 to 3.0.4
+   (https://github.com/LoganBarnett/rust-template/pull/106)
 * v0.102.0
 ** Maintenance
 1. Bump combine from 4.6.7 to 4.6.8
