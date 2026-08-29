@@ -5,7 +5,14 @@ use rust_template_foundation::config::{
 };
 use serde::Deserialize;
 use std::path::PathBuf;
+use std::sync::Mutex;
 use tempfile::TempDir;
+
+/// `XDG_CONFIG_HOME` is process-global state and the harness runs tests on
+/// parallel threads, so every test that mutates it serializes on this lock.
+/// Without it, one test's `set_var` or `remove_var` can land between
+/// another's `set_var` and its lookup, and discovery flakes to `None`.
+static XDG_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(Debug, Deserialize, PartialEq)]
 struct SimpleConfig {
@@ -66,6 +73,9 @@ fn find_config_file_explicit_path_even_if_missing() {
 
 #[test]
 fn find_config_file_xdg_discovery() {
+  let _guard = XDG_LOCK
+    .lock()
+    .unwrap_or_else(std::sync::PoisonError::into_inner);
   let dir = TempDir::new().unwrap();
   let app_dir = dir.path().join("test-app");
   std::fs::create_dir_all(&app_dir).unwrap();
@@ -82,6 +92,9 @@ fn find_config_file_xdg_discovery() {
 
 #[test]
 fn find_config_file_none_when_nothing_exists() {
+  let _guard = XDG_LOCK
+    .lock()
+    .unwrap_or_else(std::sync::PoisonError::into_inner);
   // Point XDG somewhere empty so the lookup can't pick up real config.
   let dir = TempDir::new().unwrap();
   std::env::set_var("XDG_CONFIG_HOME", dir.path());

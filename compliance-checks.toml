@@ -133,6 +133,19 @@ target = "flake.nix"
 # and that string appears nowhere else in a spawn's flake.nix.
 contains = "rust-template"
 
+# The bare `25.11` ref is a frozen release tag: it never receives backports,
+# so a spawn pinning it can never pick up fixes such as importCargoLock
+# fetching crates from static.crates.io (crates.io 403s generic curl
+# User-Agents, which kills dev-shell entry).  The literal below moves with the
+# template's own pin on each release bump, which is the sync mechanism
+# working: bumping it here flags every spawn still on the old branch.
+[[check]]
+id = "flake-nixpkgs-maintained-branch"
+description = "The flake pins nixpkgs to the maintained release branch rather than a frozen release tag."
+kind = "file-contains"
+target = "flake.nix"
+contains = "github:NixOS/nixpkgs/nixos-25.11"
+
 # The macOS cross-compiled package output (`<crate>-aarch64-darwin`), built on
 # x86_64-linux via zig so no macOS runner is needed.  Evaluating it rather than
 # matching text proves the mkDarwinCrossPackages wiring resolves, not merely
