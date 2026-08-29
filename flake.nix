@@ -4,12 +4,17 @@
 {
   description = "A Rust repository template.";
   inputs = {
-    # LLM: Do NOT change this URL unless explicitly directed. This is the
-    # correct format for nixpkgs stable (25.11 is correct, not nixos-25.11).
-    nixpkgs.url = "github:NixOS/nixpkgs/25.11";
+    # LLM: Do NOT change this URL unless explicitly directed.  The bare
+    # `25.11` ref is a frozen release tag that never receives backports;
+    # `nixos-25.11` is the maintained release branch.  The branch is required
+    # here because `importCargoLock`'s fix to fetch crates from
+    # static.crates.io (crates.io now 403s generic curl User-Agents) exists
+    # only as a backport.
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
     rust-overlay.url = "github:oxalica/rust-overlay";
     crane.url = "github:ipetkov/crane";
     changelog-roller.url = "github:LoganBarnett/changelog-roller";
+    changelog-roller.inputs.nixpkgs.follows = "nixpkgs";
     org-fmt.url = "github:LoganBarnett/org-fmt";
     org-fmt.inputs.nixpkgs.follows = "nixpkgs";
     org-fmt.inputs.rust-overlay.follows = "rust-overlay";

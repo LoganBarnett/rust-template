@@ -4,6 +4,8 @@
 * Upcoming
 ** Added
 ** Fixes
+1. Fix build issues reporting =toml-edit= with a 403.  All rust-template spawns
+   will need this update in order to build going forward.
 ** Breaking
 ** Maintenance
 * v0.104.0
