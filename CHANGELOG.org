@@ -6,6 +6,7 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+1. Bump hermit-abi from 0.5.2 to 0.5.3
 * v0.104.0
 ** Maintenance
 1. Bump indexmap from 2.14.0 to 2.14.1
