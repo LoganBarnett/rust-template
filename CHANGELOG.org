@@ -6,6 +6,8 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+* v0.105.0
+** Maintenance
 1. Bump hermit-abi from 0.5.2 to 0.5.3
 * v0.104.0
 ** Maintenance
