@@ -4,6 +4,9 @@
 * Upcoming
 ** Added
 ** Fixes
+1. The CI changelog check's =changelog-roller= tool builds again under the
+   crates.io download policy, completing the 403 fixes from v0.106.0.  Existing
+   spawns need the same =changelog-roller= input bump in their own lock.
 ** Breaking
 ** Maintenance
 * v0.106.0
