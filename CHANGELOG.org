@@ -6,6 +6,8 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+* v0.109.0
+** Maintenance
 1. Bump smallvec from 1.15.2 to 1.16.0
 * v0.108.0
 ** Maintenance
