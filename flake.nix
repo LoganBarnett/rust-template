@@ -160,12 +160,8 @@
       # package output so `just dependency-bump` works here the same way it
       # does in a spawn.
       self.packages.${system}.dependency-bump
-      # The code-review Stop hook's gate, likewise taken from this flake's own
-      # package output: this repo's .claude/ symlinks to the emitted hook, which
-      # execs the binary from PATH, so the dev shell must carry it exactly as a
-      # spawn's does.  The gate a live session runs is the one this shell was
-      # built with; `direnv reload` (or re-entering `nix develop`) picks up
-      # crate changes, while `cargo test` exercises the working tree directly.
+      # The code-review Stop hook's gate, taken from this flake's own package
+      # output.
       self.packages.${system}.review-stop
     ];
   in {

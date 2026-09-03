@@ -236,7 +236,7 @@
             # compose changelog entries in the working tree for review.
             foundation.packages.${system}.dependency-bump
             # Blocks a Claude Code turn from ending on un-reviewed changes
-            # until the template-compliance review passes.
+            # until the compliance review it runs itself passes.
             foundation.packages.${system}.review-stop
             # ABI baseline check used by the reusable CI workflow's `abi`
             # job.  Compares the workspace's current public API against the

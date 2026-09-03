@@ -1690,24 +1690,22 @@ kind = "dev-shell-package"
 package = "rust-template-review-stop"
 
 [[check]]
-id = "review-gate-agent"
-description = "The project ships the template-compliance review subagent."
-kind = "file-present"
+id = "review-gate-hook-timeout"
+description = "The Stop hook entry in .claude/settings.json carries the 900-second timeout the in-hook review needs; Claude Code's default would kill the review mid-run and end the turn unreviewed."
+kind = "json-path-equals"
+target = ".claude/settings.json"
+pointer = "hooks.Stop.0.hooks.0.timeout"
+value = "900"
+
+# The gate now runs the review itself, so the old template-compliance subagent
+# is gone.  A spawn that still carries its definition would keep prompting the
+# agent to invoke a subagent the gate no longer reads, so its removal is
+# enforced rather than merely emitted.
+[[check]]
+id = "review-gate-agent-retired"
+description = "The retired template-compliance subagent definition is absent; the gate runs the review itself, so a spawn must not keep the stale agent."
+kind = "file-absent"
 path = ".claude/agents/template-compliance.md"
-
-[[check]]
-id = "review-gate-agent-emits-marker"
-description = "The template-compliance agent emits the COMPLIANCE: PASS verdict the hook reads."
-kind = "file-contains"
-target = ".claude/agents/template-compliance.md"
-contains = "COMPLIANCE: PASS"
-
-[[check]]
-id = "review-gate-agent-reviews-documentation"
-description = "The template-compliance agent reviews every changed file, documentation included, rather than carving prose out of its scope."
-kind = "file-contains"
-target = ".claude/agents/template-compliance.md"
-contains = "Everything else is in scope."
 
 [[check]]
 id = "contributing-review-stop-section"
@@ -1723,6 +1721,18 @@ kind = "mention-present"
 target = "CONTRIBUTING.org"
 section = ["Code-review Stop hook"]
 contains = "rust-template-review-stop"
+
+# A load-bearing phrase from the rewritten section: only the
+# gate-runs-the-review-itself wording carries the manual --review command.  A
+# spawn whose stale copy still describes the old subagent flow lacks it and is
+# flagged.
+[[check]]
+id = "contributing-review-stop-runs-review-itself"
+description = "The Code-review Stop hook section documents the manual review command, proving it describes the gate that runs the review itself rather than the retired subagent flow."
+kind = "mention-present"
+target = "CONTRIBUTING.org"
+section = ["Code-review Stop hook"]
+contains = "rust-template-review-stop --review true"
 
 ###
 # End Review Gate section.

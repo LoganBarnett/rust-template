@@ -18,9 +18,10 @@ rust-template-foundation = { workspace = true, features = ["cli"] }
 clap = { workspace = true }
 # Diagnostics on stderr, keeping stdout for the Stop-hook decision document.
 tracing = { workspace = true }
-# Deserializes the staged config file and the Stop hook's stdin document.
+# Handles serialization/deserialization for data exchange (inputs and outputs
+# both of this program).
 serde = { workspace = true }
-# Parses the hook input and the session transcript (JSONL), and serialises the
+# Parses the hook input and the reviewer's JSON envelope, and serialises the
 # block decision Claude Code reads back from stdout.
 serde_json = { workspace = true }
 # Semantic, per-operation error types for the gate.
@@ -29,10 +30,8 @@ thiserror = { workspace = true }
 # exist to name intermediate results.  Prefer .tap() over temporary variables
 # when it improves readability.
 tap = { workspace = true }
-
-[dev-dependencies]
-# Scratch directories holding the per-test transcript, file-list, and state
-# files the gate integration tests drive the binary with.
+# For both prompts (we have to point the agent at a file on disk, even if the
+# prompt is stored in the binary), and for tests.
 tempfile = "3"
 
 [lints]

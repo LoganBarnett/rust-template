@@ -1,4 +1,4 @@
-use crate::error::AppError;
+use crate::error::{AppError, GitFailure};
 use std::collections::HashMap;
 use std::io::Write;
 use std::path::Path;
@@ -35,6 +35,7 @@ pub fn of(files: &[String]) -> Result<String, AppError> {
         )
       })
       .collect::<String>(),
+    AppError::Fingerprint,
   )
   .map(|hashed| hashed.lines().next().unwrap_or_default().to_string())
 }
@@ -54,6 +55,7 @@ fn blob_hashes(paths: &[&str]) -> Result<Vec<String>, AppError> {
           .chain(chunk.iter().copied())
           .collect::<Vec<_>>(),
         "",
+        AppError::Fingerprint,
       )
       .map(|output| output.lines().map(str::to_string).collect::<Vec<_>>())
     })
@@ -72,7 +74,14 @@ fn blob_hashes(paths: &[&str]) -> Result<Vec<String>, AppError> {
 }
 
 /// Run `git hash-object <args>` with `input` on stdin and return its stdout.
-fn git_hash_object(args: &[&str], input: &str) -> Result<String, AppError> {
+/// The caller supplies `on_fail` so each hashing operation names itself rather
+/// than borrowing a generic "hash-object failed" message.
+fn git_hash_object(
+  args: &[&str],
+  input: &str,
+  on_fail: impl Fn(GitFailure) -> AppError,
+) -> Result<String, AppError> {
+  let io = |source| on_fail(GitFailure::Io(source));
   let mut child = Command::new("git")
     .arg("hash-object")
     .args(args)
@@ -80,7 +89,7 @@ fn git_hash_object(args: &[&str], input: &str) -> Result<String, AppError> {
     .stdout(Stdio::piped())
     .stderr(Stdio::piped())
     .spawn()
-    .map_err(|source| AppError::FingerprintHash { source })?;
+    .map_err(io)?;
   // The pipe is dropped at the end of this block so git sees end-of-input;
   // `take` leaves the child without a handle to it, and a child spawned with a
   // piped stdin always has one to take.
@@ -88,15 +97,20 @@ fn git_hash_object(args: &[&str], input: &str) -> Result<String, AppError> {
     .stdin
     .take()
     .map_or(Ok(()), |mut stdin| stdin.write_all(input.as_bytes()))
-    .map_err(|source| AppError::FingerprintHash { source })?;
-  let output = child
-    .wait_with_output()
-    .map_err(|source| AppError::FingerprintHash { source })?;
+    .map_err(io)?;
+  let output = child.wait_with_output().map_err(io)?;
   if output.status.success() {
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
   } else {
-    Err(AppError::FingerprintHashFailed {
-      stderr: String::from_utf8_lossy(&output.stderr).trim().to_string(),
-    })
+    Err(on_fail(GitFailure::Exit(
+      String::from_utf8_lossy(&output.stderr).trim().to_string(),
+    )))
   }
+}
+
+/// The blob hash of arbitrary text, for keys that are not files: the verdict
+/// cache directory is named by the hash of the repository's path.
+pub fn of_text(text: &str) -> Result<String, AppError> {
+  git_hash_object(&["--stdin"], text, AppError::CacheKey)
+    .map(|hashed| hashed.lines().next().unwrap_or_default().to_string())
 }
