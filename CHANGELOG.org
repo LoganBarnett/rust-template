@@ -3,13 +3,17 @@
 
 * Upcoming
 ** Added
+** Fixes
+** Breaking
+** Maintenance
+* v0.111.0
+** Added
 1. The review Stop hook now runs the compliance review itself against the
    conventions committed at =HEAD= and releases the turn only on a clean
    verdict.  Existing spawns pick this up on their next compliance sync.
 2. The gate can be run by hand with =rust-template-review-stop --review true=,
    which prints the findings for the current tree and exits non-zero when there
    are any.  No action needed.
-** Fixes
 ** Breaking
 1. The =template-compliance= agent is gone: delete
    =.claude/agents/template-compliance.md= from the spawn (the new
@@ -18,7 +22,6 @@
    =review-gate-agent-reviews-documentation= ids from any =compliance-ignores=.
 2. The Stop hook entry in =.claude/settings.json= needs a =timeout= of 900
    seconds, and the hook needs =claude= on =PATH=.
-** Maintenance
 * v0.110.0
 ** Maintenance
 1. Bump mio from 1.2.2 to 1.2.3
