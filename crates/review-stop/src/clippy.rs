@@ -1,23 +1,9 @@
 use crate::config::Config;
 use crate::decision;
 use crate::error::AppError;
-use crate::state::{SessionState, MAX_ROUNDS};
-use std::path::Path;
+use crate::path_lookup::on_path;
 use std::process::{Command, Stdio};
-use tracing::{debug, warn};
-
-/// How the clippy gate left the turn.
-pub enum ClippyOutcome {
-  /// The workspace is clean; the review gate decides.
-  Clean,
-  /// Warnings remain and the turn is blocked with them.
-  Block(String),
-  /// Warnings remain but the round cap is spent; the review gate decides.
-  Released,
-  /// No toolchain is reachable; the gate steps aside rather than wedge a
-  /// machine that cannot run it.
-  Skipped,
-}
+use tracing::debug;
 
 /// A command as a program and its arguments — the seam is a shell string run
 /// through `bash -c`, the real invocations are argument vectors.  (`bash -c`
@@ -37,13 +23,14 @@ const CLIPPY_ARGS: [&str; 7] = [
   "warnings",
 ];
 
-/// Deterministic clippy gate for Rust changes.
-pub fn gate(
-  config: &Config,
-  session: &SessionState,
-) -> Result<ClippyOutcome, AppError> {
+/// Deterministic clippy gate for Rust changes: the block reason when the
+/// workspace does not pass, `None` when it does.  With no toolchain reachable
+/// the gate fails closed — it cannot vouch for the Rust changes, so it errors
+/// rather than let them reach the review unchecked; the caller turns that into
+/// a block the turn cannot end through.
+pub fn block_reason(config: &Config) -> Result<Option<String>, AppError> {
   command(config)
-    .map_or(Ok(ClippyOutcome::Skipped), |command| run(&command, session))
+    .map_or_else(|| Err(AppError::ClippyUnavailable), |command| run(&command))
 }
 
 fn command(config: &Config) -> Option<ClippyCommand> {
@@ -71,45 +58,23 @@ fn command(config: &Config) -> Option<ClippyCommand> {
     })
 }
 
-/// Whether `program` resolves on the current PATH, as `command -v` would
-/// answer it.
-fn on_path(program: &str) -> bool {
-  std::env::var_os("PATH").is_some_and(|path| {
-    std::env::split_paths(&path)
-      .any(|dir| Path::new(&dir).join(program).is_file())
-  })
-}
-
-fn run(
-  command: &ClippyCommand,
-  session: &SessionState,
-) -> Result<ClippyOutcome, AppError> {
+fn run(command: &ClippyCommand) -> Result<Option<String>, AppError> {
   debug!(program = command.program, "running the clippy gate");
-  let output = Command::new(command.program)
+  Command::new(command.program)
     .args(&command.args)
     .stdin(Stdio::null())
     .output()
     .map_err(|source| AppError::ClippyInvocation {
       command: format!("{} {}", command.program, command.args.join(" ")),
       source,
-    })?;
-  // Bound consecutive clippy blocks so a warning the assistant genuinely
-  // cannot clear (e.g. pre-existing in a drifted repo) does not wedge the
-  // session — the same escape valve MAX_ROUNDS gives the review gate.
-  let count = session.clippy_rounds()? + 1;
-  if output.status.success() {
-    session.clear_clippy_rounds()?;
-    Ok(ClippyOutcome::Clean)
-  } else if count > MAX_ROUNDS {
-    warn!("releasing after {MAX_ROUNDS} unresolved clippy rounds");
-    session.clear_clippy_rounds()?;
-    Ok(ClippyOutcome::Released)
-  } else {
-    session.write_clippy_rounds(count)?;
-    Ok(ClippyOutcome::Block(decision::clippy_reason(&format!(
-      "{}{}",
-      String::from_utf8_lossy(&output.stdout),
-      String::from_utf8_lossy(&output.stderr)
-    ))))
-  }
+    })
+    .map(|output| {
+      (!output.status.success()).then(|| {
+        decision::clippy_reason(&format!(
+          "{}{}",
+          String::from_utf8_lossy(&output.stdout),
+          String::from_utf8_lossy(&output.stderr)
+        ))
+      })
+    })
 }

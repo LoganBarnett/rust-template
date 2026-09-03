@@ -1,1 +1,0 @@
-../../template/.claude/agents/template-compliance.md

@@ -303,19 +303,20 @@ See [[file:docs/systemd.org][docs/systemd.org]] for the full pattern and how to 
 
 Claude Code sessions in this project run a deterministic code-review gate: the
 Stop hook at =.claude/hooks/review-stop.sh= blocks a turn from ending while
-un-reviewed changes sit in the working tree, first until the workspace passes
-the clippy gate CI enforces (for Rust changes), then until the
-=template-compliance= subagent has run and reported =COMPLIANCE: PASS=.  Plan
-mode, being read-only, never triggers it.
+un-reviewed changes sit in the working tree.  Optimizations are in place to
+ensure the gate doesn't run wastefully (no values changed, plan mode, etc.).
+The gate is designed to be something the main coding agent cannot bypass or
+weasel its way out of - It placates the review agent, or it has to put in
+another turn.
 
-The gate itself is the =rust-template-review-stop= binary; the hook script only
-execs it.  The binary comes from the template repository's flake — the
-=foundation= input — through this project's dev shell, so inside =nix develop=
-(or with direnv) it is already on =PATH=, and a fix to the gate reaches this
-project on a =foundation= bump rather than a file sync.  Its behaviour and tests
-live in that repository's =review-stop= crate; do not fork the logic into the
-hook script — a hook that stops delegating to the binary is flagged by
-compliance.
+To run the review by hand, without gating:
+
+#+begin_src sh :results none :exports code
+rust-template-review-stop --review true
+#+end_src
+
+It prints the findings for the current tree and exits non-zero when there are
+any.
 
 *Running an LLM coding agent outside the Nix dev shell* — Claude Code today, and
 any other agent that honours the same hook — requires you to put
@@ -328,11 +329,6 @@ every mainstream target, and cargo can build the same version the flake pins:
 cargo install --git https://github.com/LoganBarnett/rust-template.git \
   --tag v<version> rust-template-review-stop
 #+end_src
-
-Whichever route, keep it at the same version as the =foundation= input so the
-gate and the reviewer agent stay in step.  When the binary is missing, the exec
-fails and Claude Code reports the hook error on every Stop rather than silently
-skipping the gate — the loud failure is deliberate.
 
 * Logging levels
 

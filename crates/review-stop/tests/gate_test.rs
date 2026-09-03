@@ -1,30 +1,26 @@
 //! Black-box tests for the code-review Stop hook's gate.
 //!
-//! The gate inspects the git working tree and the session transcript, runs a
-//! clippy gate when Rust files changed, then either releases the turn or emits
-//! a block decision.  Every input is injectable, so the cases drive every
-//! branch deterministically without a real working tree, a real compile, or a
-//! live Claude session.  The gate keeps its per-session state under `TMPDIR`,
-//! which is pointed at a scratch directory per test, so cases that span several
-//! Stops share state only with themselves.
-//!
-//! Each case feeds a crafted transcript and file list, then asserts whether
-//! the gate releases (no stdout) or blocks (a `{"decision":"block"}` JSON
-//! document).  The load-bearing cases are the delivery shapes a real harness
-//! hands a verdict back on.
+//! The gate lists the working tree's changes, runs a clippy gate when Rust
+//! files changed, then runs the reviewer and either releases the turn or emits
+//! a block decision.  Every input is injectable through a seam, so the cases
+//! drive every branch without a real compile or a real reviewer; the reviewer
+//! seam prints the JSON envelope `claude --print --output-format json` would.
+//! The verdict cache lives under `TMPDIR`, pointed at a scratch directory per
+//! case, so cases that span several Stops share state only with themselves.
 //!
 //! The binary is invoked from this crate's directory, inside the repository,
-//! so its git work-tree probe succeeds the way it does in a real session; the
-//! fixture seams replace every other git read it would make.
+//! so its git probes succeed the way they do in a real session; the cases
+//! about what the packet carries build their own repositories instead.
 
 // clippy's in-test heuristic does not cover free helper fns in an integration
 // test binary, so the exemption is stated at file level.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+use std::ffi::OsString;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Command, Output, Stdio};
 use tempfile::TempDir;
 
 /// The gate binary under test, resolved by cargo for this crate's tests.
@@ -36,252 +32,38 @@ const GATE: &str = env!("CARGO_BIN_EXE_rust-template-review-stop");
 // files also arm the clippy gate.
 const FILES_PROSE: &str = "README.org\ndocs/notes.txt\n";
 const FILES_CODE: &str = "src/main.rs\n";
-// The same change plus one more file: a different working tree from
-// FILES_CODE, so the fingerprint the gate stores on release no longer matches.
+// The same change plus one more file: a different tree from FILES_CODE, so a
+// verdict cached for that one does not apply.
 const FILES_CODE_TWO: &str = "src/main.rs\nsrc/lib.rs\n";
 // A change that is not Rust: gated for review, but the clippy gate must leave
 // it alone.
 const FILES_CODE_NONRUST: &str = "flake.nix\n";
 const FILES_NONE: &str = "";
 
-// A transcript with a single user prompt and no review.
-const TX_NOREVIEW: &str = r#"{"type":"user","message":{"content":"please change the code"}}
-"#;
+/// The clippy seam's default: passes without compiling.
+const CLIPPY_PASSES: &str = "true";
+const CLIPPY_FAILS: &str = "echo 'warning: unused variable `x`' >&2; false";
 
-// A passing review recorded under the "Agent" tool name.
-const TX_AGENT_PASS: &str = r#"{"type":"user","message":{"content":"please change the code"}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","id":"rev1","input":{"subagent_type":"template-compliance"}}]}}
-{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"rev1","content":[{"type":"text","text":"COMPLIANCE: PASS"}]}]}}
-"#;
-
-// The same passing review recorded under the stock "Task" tool name.
-const TX_TASK_PASS: &str = r#"{"type":"user","message":{"content":"please change the code"}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Task","id":"rev1","input":{"subagent_type":"template-compliance"}}]}}
-{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"rev1","content":[{"type":"text","text":"COMPLIANCE: PASS"}]}]}}
-"#;
-
-// A review that reported findings rather than passing.
-const TX_FINDINGS: &str = r#"{"type":"user","message":{"content":"please change the code"}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","id":"rev1","input":{"subagent_type":"template-compliance"}}]}}
-{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"rev1","content":[{"type":"text","text":"COMPLIANCE: FINDINGS\nsomething is off"}]}]}}
-"#;
-
-// A passing review that predates a newer user prompt, so it must not count
-// toward the current turn.
-const TX_STALE_REVIEW: &str = r#"{"type":"user","message":{"content":"first prompt"}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","id":"rev1","input":{"subagent_type":"template-compliance"}}]}}
-{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"rev1","content":[{"type":"text","text":"COMPLIANCE: PASS"}]}]}}
-{"type":"user","message":{"content":"second prompt with fresh changes"}}
-"#;
-
-// A background subagent: the tool_result for the spawn holds only launch
-// metadata, and the verdict arrives later as a completion notification.  Two
-// details are taken from a real transcript rather than guessed, because both
-// defeat a naive reader: the notification is a tool_result whose text sits in
-// .content rather than .text, and it is attached to whichever unrelated tool
-// call happened to be in flight, so its tool_use_id does not identify the
-// review.  The launch metadata deliberately carries no COMPLIANCE line, so a
-// gate that read it as the report would mistake a launch for a verdict.
-const TX_BACKGROUND_PASS: &str = r#"{"type":"user","message":{"content":"please change the code"}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","id":"rev1","input":{"subagent_type":"template-compliance"}}]}}
-{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"rev1","content":"Async agent launched successfully.\nagentId: abc123"}]}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","id":"wait1","input":{"command":"sleep"}}]}}
-{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"wait1","content":"waited\n\n<task-notification>\n<status>completed</status>\n<result>No findings.\n\nCOMPLIANCE: PASS</result>\n</task-notification>"}]}}
-"#;
-
-// The same delivery path, but the background review found something.
-const TX_BACKGROUND_FINDINGS: &str = r#"{"type":"user","message":{"content":"please change the code"}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","id":"rev1","input":{"subagent_type":"template-compliance"}}]}}
-{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"rev1","content":"Async agent launched successfully.\nagentId: abc123"}]}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","id":"wait1","input":{"command":"sleep"}}]}}
-{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"wait1","content":"waited\n\n<task-notification>\n<result>check.rs:12 uses let mut\n\nCOMPLIANCE: FINDINGS</result>\n</task-notification>"}]}}
-"#;
-
-// The notification delivered as a text block rather than a tool_result, which
-// is how it reads when no tool call is in flight to carry it.
-const TX_BACKGROUND_PASS_TEXT: &str = r#"{"type":"user","message":{"content":"please change the code"}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","id":"rev1","input":{"subagent_type":"template-compliance"}}]}}
-{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"rev1","content":"Async agent launched successfully.\nagentId: abc123"}]}}
-{"type":"user","message":{"content":[{"type":"text","text":"<task-notification>\n<result>No findings.\n\nCOMPLIANCE: PASS</result>\n</task-notification>"}]}}
-"#;
-
-// In practice the most common delivery: the notification text lands in a
-// `toolUseResult` field beside `.message` rather than inside the content array
-// at all.  Taken from a real transcript — a reader that walks the content
-// blocks finds nothing here.
-const TX_BACKGROUND_PASS_SIBLING: &str = r#"{"type":"user","message":{"content":"please change the code"}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","id":"rev1","input":{"subagent_type":"template-compliance"}}]}}
-{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"rev1","content":"Async agent launched successfully.\nagentId: abc123"}]}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","id":"wait1","input":{"command":"sleep"}}]}}
-{"type":"user","toolUseResult":{"stdout":"waited\n\n<task-notification>\n<result>No findings.\n\nCOMPLIANCE: PASS</result>\n</task-notification>"},"message":{"content":[{"type":"tool_result","tool_use_id":"wait1","content":"waited"}]}}
-"#;
-
-// The delivery a session sees whenever no tool call is in flight when the
-// review finishes: the notification is queued, and the transcript records the
-// queue bookkeeping (queue-operation enqueue/remove) and the queued_command
-// attachment that hands it to the model — none of them a user turn.  Taken
-// from a real transcript; a reader admitting only user turns never sees the
-// verdict here.
-const TX_QUEUED_PASS: &str = r#"{"type":"user","message":{"content":"please change the code"}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","id":"rev1","input":{"subagent_type":"template-compliance"}}]}}
-{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"rev1","content":"Async agent launched successfully.\nagentId: abc123"}]}}
-{"type":"queue-operation","operation":"enqueue","content":"<task-notification>\n<status>completed</status>\n<result>No findings.\n\nCOMPLIANCE: PASS</result>\n</task-notification>"}
-{"type":"queue-operation","operation":"remove","content":"<task-notification>\n<status>completed</status>\n<result>No findings.\n\nCOMPLIANCE: PASS</result>\n</task-notification>"}
-{"type":"attachment","attachment":{"type":"queued_command","prompt":"<task-notification>\n<status>completed</status>\n<result>No findings.\n\nCOMPLIANCE: PASS</result>\n</task-notification>"}}
-"#;
-
-// The same queued delivery carrying findings, then a later queued PASS after
-// they were addressed: the most recent verdict is the one that counts, in this
-// shape as in the others.
-const TX_QUEUED_FINDINGS_THEN_PASS: &str = r#"{"type":"user","message":{"content":"please change the code"}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","id":"rev1","input":{"subagent_type":"template-compliance"}}]}}
-{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"rev1","content":"Async agent launched successfully.\nagentId: abc123"}]}}
-{"type":"attachment","attachment":{"type":"queued_command","prompt":"<task-notification>\n<result>check.rs:12 uses let mut\n\nCOMPLIANCE: FINDINGS</result>\n</task-notification>"}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","id":"rev2","input":{"subagent_type":"template-compliance"}}]}}
-{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"rev2","content":"Async agent launched successfully.\nagentId: def456"}]}}
-{"type":"attachment","attachment":{"type":"queued_command","prompt":"<task-notification>\n<result>No findings.\n\nCOMPLIANCE: PASS</result>\n</task-notification>"}}
-"#;
-
-// Queued findings with nothing after them keep the gate closed.
-const TX_QUEUED_FINDINGS: &str = r#"{"type":"user","message":{"content":"please change the code"}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","id":"rev1","input":{"subagent_type":"template-compliance"}}]}}
-{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"rev1","content":"Async agent launched successfully.\nagentId: abc123"}]}}
-{"type":"queue-operation","operation":"enqueue","content":"<task-notification>\n<result>check.rs:12 uses let mut\n\nCOMPLIANCE: FINDINGS</result>\n</task-notification>"}
-{"type":"attachment","attachment":{"type":"queued_command","prompt":"<task-notification>\n<result>check.rs:12 uses let mut\n\nCOMPLIANCE: FINDINGS</result>\n</task-notification>"}}
-"#;
-
-// The assistant discussing this gate is not a verdict.  Its prose quotes
-// "COMPLIANCE: PASS" whenever it explains the rule, and a notification tag
-// when it explains the delivery — so reading assistant turns back would let
-// the assistant release the gate by talking about it.
-const TX_ASSISTANT_PROSE: &str = r#"{"type":"user","message":{"content":"please change the code"}}
-{"type":"assistant","message":{"content":[{"type":"text","text":"The gate wants a <task-notification> carrying COMPLIANCE: PASS before it will release."}]}}
-"#;
-
-// This gate's own block reason, re-injected as a user turn after a passing
-// review.  It must not read as a fresh prompt (which would hide the review)
-// and must not be mistaken for a verdict, even though it quotes the words
-// "COMPLIANCE: PASS".
-const TX_HOOK_REINJECTION: &str = r#"{"type":"user","message":{"content":"please change the code"}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","id":"rev1","input":{"subagent_type":"template-compliance"}}]}}
-{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"rev1","content":[{"type":"text","text":"COMPLIANCE: PASS"}]}]}}
-{"type":"user","message":{"content":[{"type":"text","text":"Code or config files changed this turn, but the template-compliance review has not run.  This gate releases only when the review reports COMPLIANCE: PASS."}]}}
-"#;
-
-// A findings block quotes the report it is complaining about, so when it
-// comes back as a user turn it carries both a task-notification tag and — from
-// the gate's own closing sentence — the words "COMPLIANCE: PASS".  Nothing
-// behind it passed, so the gate must still block: this is the shape that would
-// release on the strength of the gate's own prose if block text were admitted
-// as a verdict.
-const TX_HOOK_REINJECTION_ONLY: &str = r#"{"type":"user","message":{"content":"please change the code"}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","id":"rev1","input":{"subagent_type":"template-compliance"}}]}}
-{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"rev1","content":[{"type":"text","text":"Async agent launched successfully.\nagentId: abc123"}]}]}}
-{"type":"user","message":{"content":[{"type":"text","text":"The template-compliance review reported findings that are not yet resolved:\n\n<task-notification>\n<result>check.rs:12 uses let mut\n\nCOMPLIANCE: FINDINGS</result>\n</task-notification>\n\nAddress every finding, then re-run the template-compliance subagent.  This gate releases only when the review reports COMPLIANCE: PASS."}]}}
-"#;
-
-// The clippy block reason takes the same round trip as the compliance one, and
-// both filters carry a separate marker for it.  A passing review sits behind
-// it, so the gate releases — unless the clippy marker is dropped, in which
-// case the re-injected block reads as a fresh prompt and hides that review.
-const TX_CLIPPY_REINJECTION: &str = r#"{"type":"user","message":{"content":"please change the code"}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","id":"rev1","input":{"subagent_type":"template-compliance"}}]}}
-{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"rev1","content":[{"type":"text","text":"COMPLIANCE: PASS"}]}]}}
-{"type":"user","message":{"content":[{"type":"text","text":"clippy reported problems on the Rust changes this turn. Resolve every warning before ending the turn."}]}}
-"#;
-
-// The assistant launched the review in the background and then waited on it
-// with a blocking TaskOutput call.  The verdict comes back as TaskOutput's own
-// tool_result — a string wrapping the report in <output> tags, whose
-// tool_use_id matches no review call — and, because the wait consumed the
-// completion, no task-notification is ever written.  Taken from a real
-// transcript; a gate reading only the shapes above sees no verdict here.  The
-// TaskOutput call is tied back to the review by its task_id, which is the
-// agentId the launch metadata reported.
-const TX_TASKOUTPUT_PASS: &str = r#"{"type":"user","message":{"content":"please change the code"}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","id":"rev1","input":{"subagent_type":"template-compliance"}}]}}
-{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"rev1","content":[{"type":"text","text":"Async agent launched successfully. (This tool result is internal metadata.)\nagentId: abc123 (internal ID - do not mention to user.)"}]}]}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"TaskOutput","id":"out1","input":{"task_id":"abc123","block":true,"timeout":600000}}]}}
-{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"out1","content":"<retrieval_status>success</retrieval_status>\n\n<task_id>abc123</task_id>\n\n<task_type>local_agent</task_type>\n\n<status>completed</status>\n\n<output>\nNo findings.\n\nCOMPLIANCE: PASS\n</output>"}]}}
-"#;
-
-// The same wait, but the review found something.
-const TX_TASKOUTPUT_FINDINGS: &str = r#"{"type":"user","message":{"content":"please change the code"}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","id":"rev1","input":{"subagent_type":"template-compliance"}}]}}
-{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"rev1","content":[{"type":"text","text":"Async agent launched successfully.\nagentId: abc123"}]}]}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"TaskOutput","id":"out1","input":{"task_id":"abc123","block":true,"timeout":600000}}]}}
-{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"out1","content":"<retrieval_status>success</retrieval_status>\n\n<task_id>abc123</task_id>\n\n<task_type>local_agent</task_type>\n\n<status>completed</status>\n\n<output>\ncheck.rs:12 uses let mut\n\nCOMPLIANCE: FINDINGS\n</output>"}]}}
-"#;
-
-// A TaskOutput wait on some other background agent — not the review — whose
-// output happens to quote the verdict marker.  Only the launch metadata sits
-// behind the review itself, so the gate must still say the review has not
-// run: the TaskOutput channel is admitted by the task_id join, not by its
-// text.
-const TX_TASKOUTPUT_OTHER_AGENT: &str = r#"{"type":"user","message":{"content":"please change the code"}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","id":"rev1","input":{"subagent_type":"template-compliance"}}]}}
-{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"rev1","content":[{"type":"text","text":"Async agent launched successfully.\nagentId: abc123"}]}]}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","id":"exp1","input":{"subagent_type":"Explore"}}]}}
-{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"exp1","content":[{"type":"text","text":"Async agent launched successfully.\nagentId: zzz999"}]}]}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"TaskOutput","id":"out1","input":{"task_id":"zzz999","block":true,"timeout":600000}}]}}
-{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"out1","content":"<retrieval_status>success</retrieval_status>\n\n<task_id>zzz999</task_id>\n\n<task_type>local_agent</task_type>\n\n<status>completed</status>\n\n<output>\nThe hook releases when it reads COMPLIANCE: PASS from the reviewer.\n</output>"}]}}
-"#;
-
-// The launch metadata text without an agentId line; the id is recorded only
-// in the toolUseResult field beside the message, which the harness writes on
-// the same entry.  The join must read it from there.
-const TX_TASKOUTPUT_SIBLING_ID: &str = r#"{"type":"user","message":{"content":"please change the code"}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","id":"rev1","input":{"subagent_type":"template-compliance"}}]}}
-{"type":"user","toolUseResult":{"isAsync":true,"status":"async_launched","agentId":"abc123"},"message":{"content":[{"type":"tool_result","tool_use_id":"rev1","content":[{"type":"text","text":"Async agent launched successfully."}]}]}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"TaskOutput","id":"out1","input":{"task_id":"abc123","block":true,"timeout":600000}}]}}
-{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"out1","content":"<retrieval_status>success</retrieval_status>\n\n<task_id>abc123</task_id>\n\n<status>completed</status>\n\n<output>\nNo findings.\n\nCOMPLIANCE: PASS\n</output>"}]}}
-"#;
-
-// Findings retrieved through TaskOutput, then a second review run in the
-// foreground whose own tool_result passes.  The pass is later in the
-// transcript, so it is the verdict that counts — across channels, not merely
-// within one.
-const TX_TASKOUTPUT_FINDINGS_THEN_PASS: &str = r#"{"type":"user","message":{"content":"please change the code"}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","id":"rev1","input":{"subagent_type":"template-compliance"}}]}}
-{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"rev1","content":[{"type":"text","text":"Async agent launched successfully.\nagentId: abc123"}]}]}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"TaskOutput","id":"out1","input":{"task_id":"abc123","block":true,"timeout":600000}}]}}
-{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"out1","content":"<retrieval_status>success</retrieval_status>\n\n<task_id>abc123</task_id>\n\n<status>completed</status>\n\n<output>\ncheck.rs:12 uses let mut\n\nCOMPLIANCE: FINDINGS\n</output>"}]}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","id":"rev2","input":{"subagent_type":"template-compliance"}}]}}
-{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"rev2","content":[{"type":"text","text":"COMPLIANCE: PASS"}]}]}}
-"#;
-
-// The mirror image across the two older channels: a queued notification that
-// passed, then a foreground review that found something.  The findings are
-// later, so they are the verdict.  A gate that gathers verdicts channel by
-// channel rather than in transcript order sees the pass last and releases.
-const TX_NOTIFICATION_PASS_THEN_FINDINGS: &str = r#"{"type":"user","message":{"content":"please change the code"}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","id":"rev1","input":{"subagent_type":"template-compliance"}}]}}
-{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"rev1","content":"Async agent launched successfully.\nagentId: abc123"}]}}
-{"type":"attachment","attachment":{"type":"queued_command","prompt":"<task-notification>\n<result>No findings.\n\nCOMPLIANCE: PASS</result>\n</task-notification>"}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","id":"rev2","input":{"subagent_type":"template-compliance"}}]}}
-{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"rev2","content":[{"type":"text","text":"COMPLIANCE: FINDINGS\nsomething is off"}]}]}}
-"#;
+/// The envelope a clean review produces.
+const VERDICT_PASS: &str = r#"{"type":"result","subtype":"success","is_error":false,"result":"{\"findings\":[]}","structured_output":{"findings":[]}}"#;
+/// One finding, with every field the block reason renders.
+const VERDICT_FINDINGS: &str = r#"{"type":"result","subtype":"success","is_error":false,"structured_output":{"findings":[{"path":"src/main.rs","line":3,"convention":"comments are complete sentences","document":"llms.org","fix":"end the comment with a period"}]}}"#;
+/// An envelope that names an error rather than a verdict.
+const VERDICT_ERROR: &str = r#"{"type":"result","subtype":"error","is_error":true,"result":"rate limited"}"#;
 
 // ── Harness ──────────────────────────────────────────────────────────
 
 /// One synthetic session: a scratch directory holding its fixtures and, as
-/// `TMPDIR`, the gate's per-session state, so the round caps and the
-/// unchanged-tree release are isolated from every other test.
+/// `TMPDIR`, the gate's verdict cache.  `HOME` points there too, so the
+/// packet never picks up the developer's real global instructions.
 struct Session {
   scratch: TempDir,
-  id: &'static str,
 }
 
-/// The seam's default: a clippy command that passes without compiling.  Cases
-/// that exercise the clippy gate override it with a failing command.  Without
-/// this, the Rust fixtures would shell out to real clippy on every run.
-const CLIPPY_PASSES: &str = "true";
-
 impl Session {
-  fn new(id: &'static str) -> Self {
+  fn new() -> Self {
     Self {
       scratch: TempDir::new().unwrap(),
-      id,
     }
   }
 
@@ -291,51 +73,79 @@ impl Session {
     path
   }
 
-  fn transcript(&self, contents: &str) -> PathBuf {
-    self.fixture("transcript.jsonl", contents)
-  }
-
   fn files(&self, contents: &str) -> PathBuf {
     self.fixture("files", contents)
   }
 
-  /// Invoke the gate and return its stdout.  The permission mode is sent only
-  /// when a case names one; left out, the field is omitted altogether, which
-  /// is what a harness that predates it sends — so every case that does not
-  /// care models that harness.
-  fn stop(
-    &self,
-    transcript: &Path,
-    files: &Path,
-    clippy_cmd: &str,
-    permission_mode: Option<&str>,
-  ) -> String {
-    let stdin_json = serde_json::json!({
-      "session_id": self.id,
-      "transcript_path": transcript,
-    });
-    let stdin_json = permission_mode.map_or(stdin_json.clone(), |mode| {
-      let mut with_mode = stdin_json.clone();
-      with_mode["permission_mode"] =
-        serde_json::Value::String(mode.to_string());
-      with_mode
-    });
-    let mut child = Command::new(GATE)
+  fn marker(&self) -> PathBuf {
+    self.scratch.path().join("invocations")
+  }
+
+  /// A reviewer seam that records each invocation, then prints `envelope`.
+  /// The seams drain stdin (`cat >/dev/null`) so they model a reviewer that
+  /// actually reads the packet; one that exits without reading is rejected, and
+  /// `reviewer_that_ignores_the_packet_blocks` exercises that path on purpose.
+  fn reviewer(&self, envelope: &str) -> String {
+    format!(
+      "echo run >> '{}'; cat >/dev/null; printf '%s' '{envelope}'",
+      self.marker().display()
+    )
+  }
+
+  /// A reviewer seam that records the invocation and fails without a verdict.
+  fn failing_reviewer(&self) -> String {
+    format!(
+      "echo run >> '{}'; cat >/dev/null; echo 'reviewer crashed' >&2; exit 3",
+      self.marker().display()
+    )
+  }
+
+  /// A reviewer seam that saves the packet it was fed, then passes.
+  fn recording_reviewer(&self) -> (String, PathBuf) {
+    let dump = self.scratch.path().join("packet");
+    (
+      format!(
+        "echo run >> '{}'; cat > '{}'; printf '%s' '{VERDICT_PASS}'",
+        self.marker().display(),
+        dump.display()
+      ),
+      dump,
+    )
+  }
+
+  fn invocations(&self) -> usize {
+    fs::read_to_string(self.marker())
+      .map(|text| text.lines().count())
+      .unwrap_or(0)
+  }
+
+  fn gate(&self) -> Command {
+    let mut command = Command::new(GATE);
+    command
       .env("TMPDIR", self.scratch.path())
-      .env("review_stop_git_files_file", files)
-      .env("review_stop_clippy_cmd", clippy_cmd)
-      .stdin(Stdio::piped())
-      .stdout(Stdio::piped())
-      .stderr(Stdio::piped())
-      .spawn()
-      .unwrap();
-    child
-      .stdin
-      .take()
-      .unwrap()
-      .write_all(stdin_json.to_string().as_bytes())
-      .unwrap();
-    let output = child.wait_with_output().unwrap();
+      .env("HOME", self.scratch.path());
+    command
+  }
+
+  /// Invoke the gate as the Stop hook and return its stdout.  A missing file
+  /// list means the gate reads git for real, which the packet cases rely on.
+  fn stop_with(&self, stop: &Stop) -> String {
+    let stdin_json = stop.permission_mode.map_or_else(
+      || serde_json::json!({}),
+      |mode| serde_json::json!({ "permission_mode": mode }),
+    );
+    let mut command = self.gate();
+    if let Some(files) = stop.files {
+      command.env("review_stop_git_files_file", files);
+    }
+    if let Some(dir) = stop.cwd {
+      command.current_dir(dir);
+    }
+    command
+      .env("review_stop_clippy_cmd", stop.clippy_cmd)
+      .env("review_stop_reviewer_cmd", stop.reviewer_cmd)
+      .envs(stop.extra_env.iter().cloned());
+    let output = run(command, Some(&stdin_json.to_string()));
     assert!(
       output.status.success(),
       "the gate must exit zero; stderr: {}",
@@ -343,6 +153,66 @@ impl Session {
     );
     String::from_utf8(output.stdout).unwrap()
   }
+
+  fn stop(&self, files: &Path, clippy_cmd: &str, reviewer_cmd: &str) -> String {
+    self.stop_with(&Stop::new(files, clippy_cmd, reviewer_cmd))
+  }
+}
+
+/// One Stop invocation's inputs.
+struct Stop<'a> {
+  files: Option<&'a Path>,
+  clippy_cmd: &'a str,
+  reviewer_cmd: &'a str,
+  permission_mode: Option<&'a str>,
+  extra_env: Vec<(String, OsString)>,
+  cwd: Option<&'a Path>,
+}
+
+impl<'a> Stop<'a> {
+  fn new(files: &'a Path, clippy_cmd: &'a str, reviewer_cmd: &'a str) -> Self {
+    Self {
+      files: Some(files),
+      clippy_cmd,
+      reviewer_cmd,
+      permission_mode: None,
+      extra_env: Vec::new(),
+      cwd: None,
+    }
+  }
+
+  /// A Stop that lists changes from git itself, inside `repo`.
+  fn in_repo(repo: &'a Path, reviewer_cmd: &'a str) -> Self {
+    Self {
+      files: None,
+      clippy_cmd: CLIPPY_PASSES,
+      reviewer_cmd,
+      permission_mode: None,
+      extra_env: Vec::new(),
+      cwd: Some(repo),
+    }
+  }
+}
+
+fn run(mut command: Command, stdin: Option<&str>) -> Output {
+  let mut child = command
+    .stdin(Stdio::piped())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap();
+  if let Some(text) = stdin {
+    child
+      .stdin
+      .take()
+      .unwrap()
+      .write_all(text.as_bytes())
+      .unwrap();
+  }
+  // Whether or not anything was written, the pipe must close so a gate that
+  // reads stdin sees end-of-input.
+  drop(child.stdin.take());
+  child.wait_with_output().unwrap()
 }
 
 fn assert_releases(stdout: &str) {
@@ -364,495 +234,374 @@ fn assert_blocks(stdout: &str, reason_contains: &str) {
   );
 }
 
-// ── Cases ────────────────────────────────────────────────────────────
-
-/// Prose-only changes are gated like any other: documentation carries
-/// conventions of its own, so a turn that edited only prose still needs the
-/// review.
-#[test]
-fn prose_only_changes_block() {
-  let s = Session::new("prose");
-  assert_blocks(
-    &s.stop(
-      &s.transcript(TX_NOREVIEW),
-      &s.files(FILES_PROSE),
-      CLIPPY_PASSES,
-      None,
-    ),
-    "has not run",
-  );
+/// A git repository under the session's scratch directory with one committed
+/// convention document, so a case can put a different rule in the working
+/// copy and see which one the packet carries.
+fn repo_with_committed_rule(session: &Session, rule: &str) -> PathBuf {
+  let repo = session.scratch.path().join("repo");
+  fs::create_dir(&repo).unwrap();
+  git(&repo, &["init", "--quiet"]);
+  fs::write(repo.join("CONTRIBUTING.org"), format!("* Rules\n\n{rule}\n"))
+    .unwrap();
+  git(&repo, &["add", "CONTRIBUTING.org"]);
+  git(&repo, &["commit", "--quiet", "--message", "rules"]);
+  repo
 }
 
-/// No working-tree changes at all: nothing to gate.
+/// Run git in `repo` with identity, signing, and hooks pinned so the
+/// developer's global configuration cannot interfere.  (`git -c` sets a config
+/// value for one invocation; git has no long-form spelling of the flag.)
+fn git(repo: &Path, args: &[&str]) {
+  let status = Command::new("git")
+    .current_dir(repo)
+    .args([
+      "-c",
+      "user.name=gate-test",
+      "-c",
+      "user.email=gate-test@example.invalid",
+      "-c",
+      "commit.gpgsign=false",
+      "-c",
+      "core.hooksPath=/dev/null",
+    ])
+    .args(args)
+    .status()
+    .unwrap();
+  assert!(status.success(), "git {args:?} failed");
+}
+
+/// The section of `packet` between the BEGIN and END markers for `label`.
+fn section<'a>(packet: &'a str, label: &str) -> &'a str {
+  let begin = format!("----- BEGIN {label} -----\n");
+  let end = format!("\n----- END {label} -----");
+  let start = packet
+    .find(&begin)
+    .unwrap_or_else(|| panic!("no {label} section in:\n{packet}"))
+    + begin.len();
+  let stop = packet[start..].find(&end).unwrap() + start;
+  &packet[start..stop]
+}
+
+/// The current PATH with every directory that offers a `claude` removed.
+fn path_without_claude() -> OsString {
+  std::env::join_paths(
+    std::env::split_paths(&std::env::var_os("PATH").unwrap())
+      .filter(|dir| !dir.join("claude").is_file()),
+  )
+  .unwrap()
+}
+
+// ── Release valves ───────────────────────────────────────────────────
+
+/// No working-tree changes at all: nothing to gate, nothing to review.
 #[test]
-fn no_changes_releases() {
-  let s = Session::new("none");
+fn no_changes_releases_without_review() {
+  let s = Session::new();
   assert_releases(&s.stop(
-    &s.transcript(TX_NOREVIEW),
     &s.files(FILES_NONE),
     CLIPPY_PASSES,
-    None,
+    &s.failing_reviewer(),
   ));
+  assert_eq!(s.invocations(), 0);
 }
 
-/// Code changed and no review ran: block with the "has not run" reason.
+/// Plan mode is read-only, so the gate stands aside before reviewing.
 #[test]
-fn code_without_review_blocks() {
-  let s = Session::new("code-noreview");
-  assert_blocks(
-    &s.stop(
-      &s.transcript(TX_NOREVIEW),
-      &s.files(FILES_CODE),
-      CLIPPY_PASSES,
-      None,
-    ),
-    "has not run",
-  );
-}
-
-/// A passing review recorded under the "Agent" tool name releases the gate.
-#[test]
-fn agent_review_pass_releases() {
-  let s = Session::new("agent-pass");
-  assert_releases(&s.stop(
-    &s.transcript(TX_AGENT_PASS),
-    &s.files(FILES_CODE),
-    CLIPPY_PASSES,
-    None,
-  ));
-}
-
-/// A passing review recorded under the "Task" tool name releases the gate.
-#[test]
-fn task_review_pass_releases() {
-  let s = Session::new("task-pass");
-  assert_releases(&s.stop(
-    &s.transcript(TX_TASK_PASS),
-    &s.files(FILES_CODE),
-    CLIPPY_PASSES,
-    None,
-  ));
-}
-
-/// A background review whose verdict arrives as a task-notification, rather
-/// than in the tool_result, still releases the gate.  Without this the launch
-/// metadata is the only thing the gate can see, and it never converges.
-#[test]
-fn background_review_pass_releases() {
-  let s = Session::new("background-pass");
-  assert_releases(&s.stop(
-    &s.transcript(TX_BACKGROUND_PASS),
-    &s.files(FILES_CODE),
-    CLIPPY_PASSES,
-    None,
-  ));
-}
-
-/// The same delivery path must carry findings through as well.
-#[test]
-fn background_review_findings_blocks() {
-  let s = Session::new("background-findings");
-  assert_blocks(
-    &s.stop(
-      &s.transcript(TX_BACKGROUND_FINDINGS),
-      &s.files(FILES_CODE),
-      CLIPPY_PASSES,
-      None,
-    ),
-    "reported findings",
-  );
-}
-
-/// The notification also releases the gate when it arrives as a text block.
-#[test]
-fn background_review_text_notification_releases() {
-  let s = Session::new("background-pass-text");
-  assert_releases(&s.stop(
-    &s.transcript(TX_BACKGROUND_PASS_TEXT),
-    &s.files(FILES_CODE),
-    CLIPPY_PASSES,
-    None,
-  ));
-}
-
-/// The notification also releases the gate when it arrives in a
-/// toolUseResult field beside the message.
-#[test]
-fn background_review_sibling_notification_releases() {
-  let s = Session::new("background-pass-sibling");
-  assert_releases(&s.stop(
-    &s.transcript(TX_BACKGROUND_PASS_SIBLING),
-    &s.files(FILES_CODE),
-    CLIPPY_PASSES,
-    None,
-  ));
-}
-
-/// A verdict recorded only as queue bookkeeping and a queued_command
-/// attachment — no user turn carries it — still releases the gate.
-#[test]
-fn queued_notification_releases() {
-  let s = Session::new("queued-pass");
-  assert_releases(&s.stop(
-    &s.transcript(TX_QUEUED_PASS),
-    &s.files(FILES_CODE),
-    CLIPPY_PASSES,
-    None,
-  ));
-}
-
-/// Queued findings followed by a queued pass release: the latest verdict
-/// wins.
-#[test]
-fn queued_findings_then_pass_releases() {
-  let s = Session::new("queued-findings-then-pass");
-  assert_releases(&s.stop(
-    &s.transcript(TX_QUEUED_FINDINGS_THEN_PASS),
-    &s.files(FILES_CODE),
-    CLIPPY_PASSES,
-    None,
-  ));
-}
-
-/// Queued findings with no later pass keep the gate closed.
-#[test]
-fn queued_findings_blocks() {
-  let s = Session::new("queued-findings");
-  assert_blocks(
-    &s.stop(
-      &s.transcript(TX_QUEUED_FINDINGS),
-      &s.files(FILES_CODE),
-      CLIPPY_PASSES,
-      None,
-    ),
-    "reported findings",
-  );
-}
-
-/// The assistant talking about the gate never satisfies it.
-#[test]
-fn assistant_prose_is_not_a_verdict() {
-  let s = Session::new("assistant-prose");
-  assert_blocks(
-    &s.stop(
-      &s.transcript(TX_ASSISTANT_PROSE),
-      &s.files(FILES_CODE),
-      CLIPPY_PASSES,
-      None,
-    ),
-    "has not run",
-  );
-}
-
-/// The gate's own block reason, re-injected as a user turn, is not a new
-/// prompt: the passing review before it still counts, so the gate releases
-/// instead of spinning.
-#[test]
-fn hook_reinjection_keeps_the_turn() {
-  let s = Session::new("reinjection");
-  assert_releases(&s.stop(
-    &s.transcript(TX_HOOK_REINJECTION),
-    &s.files(FILES_CODE),
-    CLIPPY_PASSES,
-    None,
-  ));
-}
-
-/// A re-injected findings block is never itself a verdict, even though it
-/// carries a task-notification tag and quotes "COMPLIANCE: PASS" while
-/// explaining the rule.  Only the launch metadata sits behind it, so the gate
-/// stays closed.
-#[test]
-fn hook_reinjection_is_not_a_verdict() {
-  let s = Session::new("reinjection-only");
-  assert_blocks(
-    &s.stop(
-      &s.transcript(TX_HOOK_REINJECTION_ONLY),
-      &s.files(FILES_CODE),
-      CLIPPY_PASSES,
-      None,
-    ),
-    "has not run",
-  );
-}
-
-/// The clippy block reason gets the same treatment as the compliance one: it
-/// is not a fresh prompt, so the passing review before it still counts.
-#[test]
-fn clippy_reinjection_keeps_the_turn() {
-  let s = Session::new("clippy-reinjection");
-  assert_releases(&s.stop(
-    &s.transcript(TX_CLIPPY_REINJECTION),
-    &s.files(FILES_CODE_NONRUST),
-    CLIPPY_PASSES,
-    None,
-  ));
-}
-
-/// A review reporting findings keeps the gate closed.
-#[test]
-fn findings_blocks() {
-  let s = Session::new("findings");
-  assert_blocks(
-    &s.stop(
-      &s.transcript(TX_FINDINGS),
-      &s.files(FILES_CODE),
-      CLIPPY_PASSES,
-      None,
-    ),
-    "reported findings",
-  );
-}
-
-/// A passing review from before the latest prompt does not satisfy this turn.
-#[test]
-fn stale_review_blocks() {
-  let s = Session::new("stale");
-  assert_blocks(
-    &s.stop(
-      &s.transcript(TX_STALE_REVIEW),
-      &s.files(FILES_CODE),
-      CLIPPY_PASSES,
-      None,
-    ),
-    "has not run",
-  );
-}
-
-/// A missing transcript leaves nothing to gate on.
-#[test]
-fn missing_transcript_releases() {
-  let s = Session::new("missing");
-  assert_releases(&s.stop(
-    &s.scratch.path().join("does-not-exist.jsonl"),
-    &s.files(FILES_CODE),
-    CLIPPY_PASSES,
-    None,
-  ));
-}
-
-/// Plan mode is read-only, so the gate stands aside: code changes sit in the
-/// tree and no review has run, yet the turn ends.  This is also the release
-/// valve for stepping out of a gated task into a discussion.
-#[test]
-fn plan_mode_releases() {
-  let s = Session::new("plan");
-  assert_releases(&s.stop(
-    &s.transcript(TX_NOREVIEW),
-    &s.files(FILES_CODE),
-    CLIPPY_PASSES,
-    Some("plan"),
-  ));
-}
-
-/// Only plan mode is read-only.  Any other named mode is gated as before, so
-/// a release here would mean the gate keys on the field being present rather
-/// than on its value.
-#[test]
-fn non_plan_mode_still_blocks() {
-  let s = Session::new("not-plan");
-  assert_blocks(
-    &s.stop(
-      &s.transcript(TX_NOREVIEW),
-      &s.files(FILES_CODE),
-      CLIPPY_PASSES,
-      Some("default"),
-    ),
-    "has not run",
-  );
-}
-
-/// A passing review releases and records what it released on.  A later Stop
-/// in the same session — a new prompt with no review since — that finds the
-/// same working tree has nothing new to review, so it releases rather than
-/// demanding the review again.  Without this every discussion turn after
-/// reviewed but uncommitted edits re-blocks.  Once the tree has moved on,
-/// though, the recorded fingerprint no longer matches, so the gate re-arms
-/// and demands a review.  (One test, because the three Stops share a
-/// session's state.)
-#[test]
-fn unchanged_tree_releases_after_pass_and_a_changed_tree_rearms() {
-  let s = Session::new("unchanged");
-  assert_releases(&s.stop(
-    &s.transcript(TX_AGENT_PASS),
-    &s.files(FILES_CODE),
-    CLIPPY_PASSES,
-    None,
-  ));
-  assert_releases(&s.stop(
-    &s.transcript(TX_STALE_REVIEW),
-    &s.files(FILES_CODE),
-    CLIPPY_PASSES,
-    None,
-  ));
-  assert_blocks(
-    &s.stop(
-      &s.transcript(TX_STALE_REVIEW),
-      &s.files(FILES_CODE_TWO),
-      CLIPPY_PASSES,
-      None,
-    ),
-    "has not run",
-  );
-}
-
-/// MAX_ROUNDS safety valve: after the bounded number of consecutive blocks
-/// within one turn, the gate releases so a finding the assistant genuinely
-/// cannot resolve does not wedge the session: the invocation after the cap
-/// releases.  Giving up also records the tree, so the next Stop on the same
-/// content releases at once rather than opening another cycle.
-#[test]
-fn max_rounds_releases() {
-  let s = Session::new("rounds");
-  let transcript = s.transcript(TX_NOREVIEW);
+fn plan_mode_releases_without_review() {
+  let s = Session::new();
   let files = s.files(FILES_CODE);
-  for _ in 0..4 {
-    assert_blocks(
-      &s.stop(&transcript, &files, CLIPPY_PASSES, None),
-      "has not run",
-    );
-  }
-  assert_releases(&s.stop(&transcript, &files, CLIPPY_PASSES, None));
-  assert_releases(&s.stop(&transcript, &files, CLIPPY_PASSES, None));
+  let reviewer = s.failing_reviewer();
+  let stop = Stop {
+    permission_mode: Some("plan"),
+    ..Stop::new(&files, CLIPPY_PASSES, &reviewer)
+  };
+  assert_releases(&s.stop_with(&stop));
+  assert_eq!(s.invocations(), 0);
 }
 
-/// A Rust change with a failing clippy gate blocks before the review is even
-/// consulted — the transcript here carries a passing review, so a release
-/// would prove clippy did not gate.
+/// The nested reviewer's own Stop hook must not review the reviewer.
 #[test]
-fn clippy_failure_blocks() {
-  let s = Session::new("clippy-fail");
+fn nested_reviewer_run_releases_without_review() {
+  let s = Session::new();
+  let files = s.files(FILES_CODE);
+  let reviewer = s.failing_reviewer();
+  let stop = Stop {
+    extra_env: vec![(
+      "RUST_TEMPLATE_REVIEW_NESTED".to_string(),
+      OsString::from("1"),
+    )],
+    ..Stop::new(&files, CLIPPY_PASSES, &reviewer)
+  };
+  assert_releases(&s.stop_with(&stop));
+  assert_eq!(s.invocations(), 0);
+}
+
+// ── Clippy ───────────────────────────────────────────────────────────
+
+/// A clippy failure blocks before the reviewer is ever consulted.
+#[test]
+fn clippy_failure_blocks_before_review() {
+  let s = Session::new();
   assert_blocks(
-    &s.stop(
-      &s.transcript(TX_AGENT_PASS),
-      &s.files(FILES_CODE),
-      "echo clippy-boom; exit 1",
-      None,
-    ),
+    &s.stop(&s.files(FILES_CODE), CLIPPY_FAILS, &s.failing_reviewer()),
     "clippy reported problems",
   );
+  assert_eq!(s.invocations(), 0);
 }
 
-/// The clippy gate only fires for Rust files.  A non-Rust code change with a
-/// failing clippy command must skip clippy and fall through to the review
-/// gate, blocking with the review reason rather than the clippy one.
+/// Changes with no Rust in them never arm the clippy gate.
 #[test]
-fn clippy_skipped_for_non_rust() {
-  let s = Session::new("clippy-skip");
-  assert_blocks(
-    &s.stop(
-      &s.transcript(TX_NOREVIEW),
-      &s.files(FILES_CODE_NONRUST),
-      "echo clippy-boom; exit 1",
-      None,
-    ),
-    "has not run",
-  );
+fn non_rust_changes_skip_clippy() {
+  let s = Session::new();
+  assert_releases(&s.stop(
+    &s.files(FILES_CODE_NONRUST),
+    CLIPPY_FAILS,
+    &s.reviewer(VERDICT_PASS),
+  ));
+  assert_eq!(s.invocations(), 1);
 }
 
-/// clippy safety valve: after MAX_ROUNDS consecutive failing clippy runs the
-/// gate releases (then falls through to the review, which passes here), so an
-/// unfixable warning cannot wedge the session.
+// ── Verdicts ─────────────────────────────────────────────────────────
+
+/// Prose-only changes are reviewed like any other: documentation carries
+/// conventions of its own.
 #[test]
-fn clippy_max_rounds_releases() {
-  let s = Session::new("clippy-rounds");
-  let transcript = s.transcript(TX_AGENT_PASS);
-  let files = s.files(FILES_CODE);
-  for _ in 0..4 {
-    assert_blocks(
-      &s.stop(&transcript, &files, "exit 1", None),
-      "clippy reported problems",
-    );
+fn prose_only_changes_are_reviewed() {
+  let s = Session::new();
+  assert_releases(&s.stop(
+    &s.files(FILES_PROSE),
+    CLIPPY_PASSES,
+    &s.reviewer(VERDICT_PASS),
+  ));
+  assert_eq!(s.invocations(), 1);
+}
+
+#[test]
+fn clean_review_releases() {
+  let s = Session::new();
+  assert_releases(&s.stop(
+    &s.files(FILES_CODE),
+    CLIPPY_PASSES,
+    &s.reviewer(VERDICT_PASS),
+  ));
+  assert_eq!(s.invocations(), 1);
+}
+
+/// Findings block, and the reason carries everything the agent needs to act
+/// on each one.
+#[test]
+fn findings_block_with_their_details() {
+  let s = Session::new();
+  let stdout =
+    s.stop(&s.files(FILES_CODE), CLIPPY_PASSES, &s.reviewer(VERDICT_FINDINGS));
+  assert_blocks(&stdout, "src/main.rs:3");
+  for detail in [
+    "comments are complete sentences",
+    "llms.org",
+    "end the comment with a period",
+    "Address every finding",
+  ] {
+    assert!(stdout.contains(detail), "reason missing '{detail}': {stdout}");
   }
-  assert_releases(&s.stop(&transcript, &files, "exit 1", None));
 }
 
-/// A background review the assistant waited on with a blocking TaskOutput
-/// call: the verdict arrives as TaskOutput's own tool_result, and no
-/// notification is ever written because the wait consumed the completion.
-/// The gate must read it, or a real pass looks like a review that never ran.
+// ── Cache ────────────────────────────────────────────────────────────
+
+/// An unchanged tree that was reviewed clean ends later turns without
+/// another review.
 #[test]
-fn taskoutput_review_pass_releases() {
-  let s = Session::new("taskoutput-pass");
-  assert_releases(&s.stop(
-    &s.transcript(TX_TASKOUTPUT_PASS),
-    &s.files(FILES_CODE),
-    CLIPPY_PASSES,
-    None,
-  ));
+fn clean_verdict_is_cached_for_the_same_tree() {
+  let s = Session::new();
+  let files = s.files(FILES_CODE);
+  assert_releases(&s.stop(&files, CLIPPY_PASSES, &s.reviewer(VERDICT_PASS)));
+  assert_releases(&s.stop(&files, CLIPPY_PASSES, &s.failing_reviewer()));
+  assert_eq!(s.invocations(), 1);
 }
 
-/// The same channel carries findings through, and the block names them.
+/// Findings stay in force, without another review, until the tree changes.
 #[test]
-fn taskoutput_review_findings_blocks() {
-  let s = Session::new("taskoutput-findings");
-  let stdout = s.stop(
-    &s.transcript(TX_TASKOUTPUT_FINDINGS),
-    &s.files(FILES_CODE),
-    CLIPPY_PASSES,
-    None,
+fn findings_are_cached_until_the_tree_changes() {
+  let s = Session::new();
+  let files = s.files(FILES_CODE);
+  assert_blocks(
+    &s.stop(&files, CLIPPY_PASSES, &s.reviewer(VERDICT_FINDINGS)),
+    "src/main.rs:3",
   );
-  assert_blocks(&stdout, "reported findings");
-  assert_blocks(&stdout, "uses let mut");
+  assert_blocks(
+    &s.stop(&files, CLIPPY_PASSES, &s.failing_reviewer()),
+    "src/main.rs:3",
+  );
+  assert_eq!(s.invocations(), 1);
 }
 
-/// A TaskOutput result is a verdict only when it waited on the review agent.
-/// Any other agent's output — even one that quotes "COMPLIANCE: PASS" —
-/// leaves the gate exactly where it was.
+/// A different tree is a different review.
 #[test]
-fn taskoutput_other_agent_is_not_a_verdict() {
-  let s = Session::new("taskoutput-other");
+fn changed_tree_is_reviewed_again() {
+  let s = Session::new();
+  let reviewer = s.reviewer(VERDICT_PASS);
+  assert_releases(&s.stop(&s.files(FILES_CODE), CLIPPY_PASSES, &reviewer));
+  assert_releases(&s.stop(&s.files(FILES_CODE_TWO), CLIPPY_PASSES, &reviewer));
+  assert_eq!(s.invocations(), 2);
+}
+
+// ── Failures block ───────────────────────────────────────────────────
+
+/// A reviewer that fails to run is not a pass; the gate blocks with the
+/// failure so the turn cannot end unreviewed.
+#[test]
+fn reviewer_failure_blocks() {
+  let s = Session::new();
+  let stdout =
+    s.stop(&s.files(FILES_CODE), CLIPPY_PASSES, &s.failing_reviewer());
+  assert_blocks(&stdout, "reviewer exited with");
+  assert!(stdout.contains("reviewer crashed"), "{stdout}");
+}
+
+#[test]
+fn reviewer_error_envelope_blocks() {
+  let s = Session::new();
+  assert_blocks(
+    &s.stop(&s.files(FILES_CODE), CLIPPY_PASSES, &s.reviewer(VERDICT_ERROR)),
+    "rate limited",
+  );
+}
+
+#[test]
+fn unparseable_verdict_blocks() {
+  let s = Session::new();
   assert_blocks(
     &s.stop(
-      &s.transcript(TX_TASKOUTPUT_OTHER_AGENT),
       &s.files(FILES_CODE),
       CLIPPY_PASSES,
-      None,
+      "cat >/dev/null; printf 'not json'",
     ),
-    "has not run",
+    "could not read a verdict",
   );
 }
 
-/// The agent id may be recorded only in the launch entry's toolUseResult
-/// sibling rather than in the result text; the join must find it there too.
+/// A reviewer that exits successfully without reading the packet never saw
+/// what it was meant to judge, so its verdict must not be trusted — the gate
+/// blocks rather than accept a pass from a reviewer that ignored its input.
 #[test]
-fn taskoutput_sibling_agent_id_releases() {
-  let s = Session::new("taskoutput-sibling");
-  assert_releases(&s.stop(
-    &s.transcript(TX_TASKOUTPUT_SIBLING_ID),
-    &s.files(FILES_CODE),
-    CLIPPY_PASSES,
-    None,
-  ));
-}
-
-/// Findings retrieved through TaskOutput, then a foreground re-run that
-/// passes: the later verdict wins even though the two arrived on different
-/// channels.
-#[test]
-fn taskoutput_findings_then_pass_releases() {
-  let s = Session::new("taskoutput-then-pass");
-  assert_releases(&s.stop(
-    &s.transcript(TX_TASKOUTPUT_FINDINGS_THEN_PASS),
-    &s.files(FILES_CODE),
-    CLIPPY_PASSES,
-    None,
-  ));
-}
-
-/// The mirror image: a notification pass followed by a foreground review that
-/// found something must block.  A gate that ranks verdicts by channel rather
-/// than by position releases here on the stale pass.
-#[test]
-fn notification_pass_then_findings_blocks() {
-  let s = Session::new("notification-then-findings");
+fn reviewer_that_ignores_the_packet_blocks() {
+  let s = Session::new();
   assert_blocks(
     &s.stop(
-      &s.transcript(TX_NOTIFICATION_PASS_THEN_FINDINGS),
       &s.files(FILES_CODE),
       CLIPPY_PASSES,
-      None,
+      &format!("printf '%s' '{VERDICT_PASS}'"),
     ),
-    "reported findings",
+    "without reading the review packet",
   );
+}
+
+/// A reviewer that runs past the deadline is killed and blocks, so a slow
+/// review fails closed here instead of being cancelled by the hook timeout and
+/// letting the turn end unreviewed.
+#[test]
+fn slow_reviewer_times_out_and_blocks() {
+  let s = Session::new();
+  let files = s.files(FILES_CODE);
+  let seam = format!("cat >/dev/null; sleep 5; printf '%s' '{VERDICT_PASS}'");
+  let stop = Stop {
+    extra_env: vec![(
+      "review_stop_reviewer_timeout_secs".to_string(),
+      OsString::from("1"),
+    )],
+    ..Stop::new(&files, CLIPPY_PASSES, &seam)
+  };
+  assert_blocks(&s.stop_with(&stop), "did not finish within 1 seconds");
+}
+
+/// Without the seam the gate wants a real `claude`; a PATH without one is a
+/// block, never a release.
+#[test]
+fn missing_reviewer_blocks() {
+  let s = Session::new();
+  let files = s.files(FILES_CODE);
+  let stop = Stop {
+    extra_env: vec![("PATH".to_string(), path_without_claude())],
+    ..Stop::new(&files, CLIPPY_PASSES, "")
+  };
+  assert_blocks(&s.stop_with(&stop), "not on PATH");
+}
+
+// ── The packet ───────────────────────────────────────────────────────
+
+/// The conventions come from HEAD, so an uncommitted change to a rule reaches
+/// the reviewer only as a change under review, never as the rule itself.
+/// Untracked files travel whole, except a top-level licence.
+#[test]
+fn packet_carries_committed_conventions_and_untracked_files() {
+  let s = Session::new();
+  let repo = repo_with_committed_rule(&s, "RULE ALPHA applies.");
+  fs::write(repo.join("CONTRIBUTING.org"), "* Rules\n\nRULE BETA applies.\n")
+    .unwrap();
+  fs::write(repo.join("notes.txt"), "UNTRACKED-MARKER\n").unwrap();
+  fs::write(repo.join("LICENSE"), "MIT\n").unwrap();
+  let (reviewer, dump) = s.recording_reviewer();
+  assert_releases(&s.stop_with(&Stop::in_repo(&repo, &reviewer)));
+  let packet = fs::read_to_string(dump).unwrap();
+  let conventions = section(&packet, "CONVENTIONS: CONTRIBUTING.org");
+  assert!(conventions.contains("RULE ALPHA"), "{packet}");
+  assert!(!conventions.contains("RULE BETA"), "{packet}");
+  assert!(packet.contains("+RULE BETA applies."), "{packet}");
+  assert!(
+    section(&packet, "UNTRACKED FILE: notes.txt").contains("UNTRACKED-MARKER"),
+    "{packet}"
+  );
+  assert!(!packet.contains("UNTRACKED FILE: LICENSE"), "{packet}");
+}
+
+/// With no commit yet there is no committed rule to defend, so the working
+/// copies stand in and every file shows as added against the empty tree.
+#[test]
+fn unborn_repository_reviews_against_the_working_copies() {
+  let s = Session::new();
+  let repo = s.scratch.path().join("unborn");
+  fs::create_dir(&repo).unwrap();
+  git(&repo, &["init", "--quiet"]);
+  fs::write(repo.join("CONTRIBUTING.org"), "* Rules\n\nRULE GAMMA applies.\n")
+    .unwrap();
+  git(&repo, &["add", "CONTRIBUTING.org"]);
+  let (reviewer, dump) = s.recording_reviewer();
+  assert_releases(&s.stop_with(&Stop::in_repo(&repo, &reviewer)));
+  let packet = fs::read_to_string(dump).unwrap();
+  assert!(
+    section(&packet, "CONVENTIONS: CONTRIBUTING.org").contains("RULE GAMMA"),
+    "{packet}"
+  );
+  assert!(packet.contains("+RULE GAMMA applies."), "{packet}");
+}
+
+// ── Manual review ────────────────────────────────────────────────────
+
+/// `--review` runs the same review for a human, prints the findings, and
+/// carries the verdict in the exit code.
+#[test]
+fn review_flag_reports_findings_and_fails() {
+  let s = Session::new();
+  let mut command = s.gate();
+  command
+    .args(["--review", "true"])
+    .env("review_stop_git_files_file", s.files(FILES_CODE))
+    .env("review_stop_reviewer_cmd", s.reviewer(VERDICT_FINDINGS));
+  let output = run(command, None);
+  assert!(!output.status.success());
+  let stdout = String::from_utf8(output.stdout).unwrap();
+  assert!(stdout.contains("src/main.rs:3"), "{stdout}");
+  assert!(stdout.contains("end the comment with a period"), "{stdout}");
+}
+
+#[test]
+fn review_flag_reports_a_clean_tree() {
+  let s = Session::new();
+  let mut command = s.gate();
+  command
+    .args(["--review", "true"])
+    .env("review_stop_git_files_file", s.files(FILES_CODE))
+    .env("review_stop_reviewer_cmd", s.reviewer(VERDICT_PASS));
+  let output = run(command, None);
+  assert!(output.status.success());
+  assert_eq!(String::from_utf8(output.stdout).unwrap(), "No findings.\n");
 }

@@ -20,9 +20,10 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"] }
 
 # Utilities
-# tap - Enables method chaining and reduces superfluous local variables
-# that only exist to name intermediate results. Prefer .tap() over temporary
-# variables when it improves readability.
+# Method chaining that keeps logging/inspection inside a call chain instead of
+# spawning intermediate locals.  LLMs, please stop removing this.  It's left
+# available for use, and generally speaking, if you aren't using it, maybe you
+# aren't listening to your review agent.
 tap = "1.0"
 
 # CLI parsing

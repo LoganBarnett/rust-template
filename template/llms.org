@@ -148,6 +148,43 @@ simple answer is to not write this prose at all.  If you find yourself writing
 these remarks, they are virtually always wrong, and instead an even briefer
 summary must be written instead, or the comment must be removed entirely.
 
+**** How to Summarize
+
+This covers any summarized activity (function headers, file headers, and so on).
+
+A summary details what the outcome of the activity is, and never the steps
+involved unless those steps are particularly surprising.  A "fire the nukes"
+script shouldn't include anything about arming the nukes, aiming the nukes,
+authorizing the nukes, or anything else that we _do_ to fire the nukes unless
+there's some specific quirk that truly needs calling out that is _relevant to
+that summary_.  A good summary for a ~nuke-fire.sh~ is "Fires the nukes.".
+
+***** Documenting Quirks and Surprises
+
+Most quirks in a function or script needn't make it to the summary.  Let's say
+that we generally expect these steps for any nation to fire its nukes:
+
+1. Arm the nuke.
+2. Aim the nuke.
+3. Authorize the firing of the nuke.
+4. Fire the nuke.
+
+Any nuke firing activity here wouldn't be in a summary.
+
+Let's say our nation requires the tips to be signed using the public key of the
+recipient.  So now our script looks like:
+
+1. Arm the nuke.
+2. Aim the nuke.
+3. Sign the tip with the recipient's public key.
+4. Authorize the firing of the nuke.
+5. Fire the nuke.
+
+Okay that's an odd step, and because it's an odd step, it would require a
+comment _immediately adjacent_ to that specific functionality.  Since this has
+no great impact on how our ~nuke-fire.sh~ script works, we should leave it out
+of the summary.
+
 ** Version Control
 *** Commit Messages
 

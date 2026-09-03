@@ -66,13 +66,12 @@ emission before relying on it.
 A user-global or system =/etc/gitignore= commonly ignores =.claude/= wholesale.
 The template's =.gitignore= re-includes it with =!.claude/= (keeping
 =.claude/settings.local.json= ignored) precisely so the review-gate files —
-=.claude/settings.json=, =.claude/hooks/review-stop.sh=, and
-=.claude/agents/template-compliance.md= — are tracked and actually commit.  A
-spawn whose =.gitignore= lacks that block silently leaves the review gate
-untracked: the files exist on disk (so the =review-gate-*= checks, which read
-the filesystem, pass) but never reach a commit, and the Stop hook is dead on a
-fresh clone.  Proposed check: a line-present check that the spawn's =.gitignore=
-contains the =!.claude/= re-include.
+=.claude/settings.json= and =.claude/hooks/review-stop.sh= — are tracked and
+actually commit.  A spawn whose =.gitignore= lacks that block silently leaves
+the review gate untracked: the files exist on disk (so the =review-gate-*=
+checks, which read the filesystem, pass) but never reach a commit, and the Stop
+hook is dead on a fresh clone.  Proposed check: a line-present check that the
+spawn's =.gitignore= contains the =!.claude/= re-include.
 
 * TODO Add compliance checks for the justfile and its devshell runner
 
