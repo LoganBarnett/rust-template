@@ -6,6 +6,10 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+1. Bump cc from 1.4.4 to 1.4.5
+2. Bump find-msvc-tools from 0.1.11 to 0.1.12
+3. Bump tinyvec from 1.12.0 to 1.13.2
+4. Bump tokio-rustls from 0.26.4 to 0.26.5
 * v0.111.0
 ** Added
 1. The review Stop hook now runs the compliance review itself against the
