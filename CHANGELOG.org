@@ -6,6 +6,8 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+* v0.112.0
+** Maintenance
 1. Bump cc from 1.4.4 to 1.4.5
 2. Bump find-msvc-tools from 0.1.11 to 0.1.12
 3. Bump tinyvec from 1.12.0 to 1.13.2
