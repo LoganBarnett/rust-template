@@ -6,6 +6,8 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+* v0.113.0
+** Maintenance
 1. Bump indexmap from 2.14.1 to 2.14.2
 2. Bump js-sys from 0.3.104 to 0.3.105
 3. Bump portable-atomic-util from 0.2.7 to 0.2.8
