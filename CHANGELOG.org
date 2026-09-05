@@ -6,6 +6,16 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+1. Bump indexmap from 2.14.1 to 2.14.2
+2. Bump js-sys from 0.3.104 to 0.3.105
+3. Bump portable-atomic-util from 0.2.7 to 0.2.8
+4. Bump syn from 3.0.4 to 3.0.5
+5. Bump wasm-bindgen from 0.2.127 to 0.2.128
+6. Bump wasm-bindgen-futures from 0.4.77 to 0.4.78
+7. Bump wasm-bindgen-macro from 0.2.127 to 0.2.128
+8. Bump wasm-bindgen-macro-support from 0.2.127 to 0.2.128
+9. Bump wasm-bindgen-shared from 0.2.127 to 0.2.128
+10. Bump web-sys from 0.3.104 to 0.3.105
 * v0.112.0
 ** Maintenance
 1. Bump cc from 1.4.4 to 1.4.5
