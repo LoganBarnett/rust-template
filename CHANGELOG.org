@@ -6,6 +6,8 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+* v0.114.0
+** Maintenance
 1. Bump crossbeam-utils from 0.8.22 to 0.8.23
 2. Bump ipnet from 2.12.1 to 2.12.2
 * v0.113.0
