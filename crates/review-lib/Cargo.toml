@@ -1,0 +1,39 @@
+[package]
+name = "rust-template-review-lib"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = []
+
+[dependencies]
+# Supplies the logging enums this crate re-exports, so the cli's staged config
+# names them without reaching past the engine.
+rust-template-foundation = { workspace = true }
+# Reports which paths a pass judged and which it reused, and why a record was
+# discarded — the questions asked when a review costs more than expected.
+tracing = { workspace = true }
+# Models the review record on disk and the finding shape the reviewer returns.
+serde = { workspace = true }
+# Names each failing operation (a git read, a record write, a reviewer run) as
+# its own error variant rather than a shared stringly-typed one.
+thiserror = { workspace = true }
+# Enables method chaining and reduces superfluous local variables that only
+# exist to name intermediate results.  Prefer .tap() over temporary variables
+# when it improves readability.
+tap = { workspace = true }
+# Reads the reviewer's JSON envelope and writes the review record.
+serde_json = { workspace = true }
+# Writes the review record to a temporary file in the same directory before
+# renaming it into place, so a reader never sees a half-written document, and
+# holds the reviewer's system prompt for the file-path flag that takes it.
+tempfile = "3"
+# Reads the repository in-process, so no `git` binary is needed and nothing
+# depends on parsing git's output, which is translated under a non-English
+# locale.  Default features are off to keep the network transports out of the
+# build.
+gix = { version = "0.87", default-features = false, features = ["status", "revision", "blob-diff", "parallel", "sha1"] }
+
+[lints]
+workspace = true

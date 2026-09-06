@@ -48,6 +48,10 @@
     # input pre-bound.  Consumed both by this repo's own `.#ci` devShell
     # below and, via `foundation.lib.mkCiShell`, by every spawned project.
     mkCiShell = import ./nix/lib/mkCiShell.nix {inherit changelog-roller org-fmt;};
+    # Symlinks .cargo-husky/hooks into .git/hooks on entering the dev shell.
+    # Exported for spawns under lib below, and spliced into this repo's own
+    # shell so a fresh clone here gets the pre-commit formatter too.
+    cargoHuskyHookSnippet = import ./nix/lib/cargoHuskyHookSnippet.nix;
     # Binary crates this repo ships as release artifacts; mirrors the
     # release-binary = true entries in rust-template.json.
     crates = {
@@ -59,13 +63,22 @@
         name = "rust-template-dependency-bump-cli";
         binary = "rust-template-dependency-bump-cli";
       };
-      # The code-review Stop hook's gate.  Spawns pull it into their dev shell
-      # as foundation.packages.<system>.review-stop; the emitted hook script
-      # only execs it.
+      # The retired Stop hook's gate.  Nothing consumes it now that spawns no
+      # longer receive the hook; it is still built while the question of
+      # re-pointing it at review-lib or dropping it is open (see tasks.org).
       review-stop = {
         name = "rust-template-review-stop";
         binary = "rust-template-review-stop";
       };
+      # CRATE:review-cli:begin
+      # The on-demand code review a contributor runs when a piece of work is
+      # done; `just review` drives it from source.
+      review-cli = {
+        name = "rust-template-review-cli";
+        binary = "rust-template-review-cli";
+      };
+      # CRATE:review-cli:end
+      # CRATE_ENTRIES
     };
     # A build-only regression fixture guarding the zig-linked build paths the
     # release crates never hit: cross-compiled with the Apple SDK for the two
@@ -84,17 +97,36 @@
     # Crane-built workspace binaries for one system, assembled the same way
     # template/flake.nix builds a spawned project's cli/server so the repo
     # dogfoods its own release-binary machinery.
+    # The workspace source as crane should see it.  Crane's own filter keeps
+    # Cargo sources alone (`.rs`, `.toml`, the lockfile); the review engine
+    # embeds its reviewer prompt from a Markdown file with `include_str!`,
+    # which that filter would drop and the compiler would then fail to find.
+    # Every build variant takes this source, so the file ships everywhere or
+    # nowhere.
+    workspaceSourceFor = system: let
+      inherit ((pkgsFor system)) lib;
+      craneLib = crane.mkLib (pkgsFor system);
+    in
+      lib.cleanSourceWith {
+        src = lib.cleanSource self;
+        filter = path: type:
+          craneLib.filterCargoSources path type
+          || lib.hasSuffix ".md" path;
+        name = "source";
+      };
+    # The crane arguments every build of the release crates shares.
+    # mkRustPackages chooses the test scope per crate (a bin-only crate would
+    # error on `cargo test --lib`) and adds a workspace-wide test check, so no
+    # cargoTestExtraArgs is set here.
+    commonArgsFor = system: {
+      src = workspaceSourceFor system;
+    };
     rustPackagesFor = system: let
       pkgs = pkgsFor system;
       craneLib =
         (crane.mkLib pkgs).overrideToolchain
         (p: p.rust-bin.stable.latest.default);
-      commonArgs = {
-        src = craneLib.cleanCargoSource self;
-        # mkRustPackages chooses the test scope per crate (a bin-only crate
-        # would error on `cargo test --lib`) and adds a workspace-wide test
-        # check, so no cargoTestExtraArgs is set here.
-      };
+      commonArgs = commonArgsFor system;
     in
       mkRustPackages {inherit self pkgs craneLib crates commonArgs;};
     mkMuslPackages = import ./nix/lib/mkMuslPackages.nix;
@@ -160,14 +192,17 @@
       # package output so `just dependency-bump` works here the same way it
       # does in a spawn.
       self.packages.${system}.dependency-bump
-      # The code-review Stop hook's gate, taken from this flake's own package
-      # output.
-      self.packages.${system}.review-stop
     ];
   in {
-    devShells = forAllSystems (system: {
-      default = (pkgsFor system).mkShell {
+    devShells = forAllSystems (system: let
+      pkgs = pkgsFor system;
+    in {
+      default = pkgs.mkShell {
         buildInputs = devPackages system;
+        # The emitted template runs this in its own shell, so run it here too:
+        # nothing else installs the treefmt pre-commit hook in this repository,
+        # and a clone without it commits unformatted code.
+        shellHook = cargoHuskyHookSnippet pkgs;
         # A runtime marker identifying this as rust-template's default dev
         # shell, matching what the emitted template ships; a compliance
         # check reads it back with `nix eval` to confirm the shell
@@ -198,6 +233,7 @@
         muslPackages = mkMuslPackages {
           inherit self crane crates system;
           pkgs = pkgsFor system;
+          commonArgs = commonArgsFor system;
         };
         # Portable glibc-dynamic variant: runs off the Nix store (FHS
         # interpreter, glibc 2.17 floor) and links host shared libraries.
@@ -205,10 +241,12 @@
         gnuPortablePackages = mkGnuPortablePackages {
           inherit self crane crates system;
           pkgs = pkgsFor system;
+          commonArgs = commonArgsFor system;
         };
         darwinCrossPackages = mkDarwinCrossPackages {
           inherit self crane crates system;
           pkgs = pkgsFor system;
+          commonArgs = commonArgsFor system;
         };
         # Native Windows PE variants (`<crate>-{x86_64,aarch64}-windows`),
         # cross-compiled via llvm-mingw for the gnullvm targets.  Host-agnostic
@@ -219,6 +257,7 @@
         windowsCrossPackages = mkWindowsCrossPackages {
           inherit self crane crates system;
           pkgs = pkgsFor system;
+          commonArgs = commonArgsFor system;
         };
         # The opt-in MSVC-ABI Windows variant
         # (`<crate>-x86_64-windows-msvc`).  This repo dogfoods the opt-in by
@@ -230,6 +269,7 @@
         windowsMsvcCrossPackages = mkWindowsMsvcCrossPackages {
           inherit self crane crates system;
           pkgs = pkgsFor system;
+          commonArgs = commonArgsFor system;
           xwinSdk = xwinSdk {pkgs = pkgsFor system;};
         };
         # The fixture links Apple frameworks, so it needs the Apple SDK and the
@@ -372,8 +412,7 @@
       mkWindowsSmokeCheck = import ./nix/lib/mkWindowsSmokeCheck.nix;
       mkWindowsMsvcCrossPackages = import ./nix/lib/mkWindowsMsvcCrossPackages.nix;
       xwinSdk = import ./nix/lib/xwin-sdk.nix;
-      cargoHuskyHookSnippet = import ./nix/lib/cargoHuskyHookSnippet.nix;
-      inherit mkCiShell;
+      inherit cargoHuskyHookSnippet mkCiShell;
     };
   };
 }

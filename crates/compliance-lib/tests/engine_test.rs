@@ -204,12 +204,15 @@ fn minimal_spawn_yields_expected_outcomes_without_engine_errors() {
     outcome(spawn, "foundation-pins-current"),
     Verdict::Skip { .. }
   ));
-  // No hook in the stub, so the check that the hook delegates to the gate
-  // binary reports the missing file as a plain failure, never an error.
+  // No Claude settings in the stub, so a check that reads a file the spawn
+  // lacks reports it as a plain failure, never an error.
   assert!(matches!(
-    outcome(spawn, "review-gate-hook-delegates-to-binary"),
+    outcome(spawn, "settings-disables-auto-memory"),
     Verdict::Fail { .. }
   ));
+  // The retired Stop hook is absent, which is the whole of what its
+  // retirement check asks for.
+  assert!(matches!(outcome(spawn, "review-gate-hook-retired"), Verdict::Pass));
 }
 
 #[test]

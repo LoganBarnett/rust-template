@@ -1,0 +1,56 @@
+[package]
+name = "rust-template-review-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = []
+
+[[bin]]
+name = "rust-template-review-cli"
+path = "src/main.rs"
+
+[dependencies]
+# Supplies the staged-configuration derive and the entry point that parses the
+# arguments, resolves the config file, and initialises logging.
+rust-template-foundation = { workspace = true, features = ["cli"] }
+# The review engine: git plumbing, the review record, and the nested reviewer
+# run.  This crate is the front-end that renders what the engine concludes.
+rust-template-review-lib = { workspace = true }
+# Supplies the value-enum derive behind the enum-valued flags, so each
+# documents its accepted values in --help.
+clap = { workspace = true }
+# Carries the diagnostics the engine emits to stderr, keeping stdout clean for
+# the report a caller may pipe.
+tracing = { workspace = true }
+# Deserializes the enum-valued flags when they come from the config file rather
+# than the command line.
+serde = { workspace = true }
+# Names the two halves of a run — the review, and reporting it — as separate
+# error variants wrapping the engine's own.
+thiserror = { workspace = true }
+# Enables method chaining and reduces superfluous local variables that only
+# exist to name intermediate results.  Prefer .tap() over temporary variables
+# when it improves readability.
+tap = { workspace = true }
+# Colours the report for a reader, and drops the colour on its own when stdout
+# is not a terminal — so a report piped to a file or to another session is
+# clean without the caller having to ask.
+owo-colors = { version = "4", features = ["supports-colors"] }
+# Reflows the org report, which needs to know that =a b= is one span and must
+# not be broken across a line — the reason this is not a hand-rolled word wrap.
+# Pinned to the revision flake.lock already carries for the org-fmt binary, so
+# the report and `treefmt` reflow org the same way.
+org-fmt-lib = { git = "https://github.com/LoganBarnett/org-fmt.git", rev = "92a603feea4ae8c9046e4e2ad0dfbf5950d4af4c" }
+
+[dev-dependencies]
+# Gives each integration case its own scratch git repository, so a case's
+# review record lands in that tree rather than in the checkout under test.
+tempfile = "3"
+# Reads back the review record the binary writes, so a case can assert on what
+# was recorded rather than only on what was printed.
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

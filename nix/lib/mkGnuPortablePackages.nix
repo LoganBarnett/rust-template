@@ -137,7 +137,9 @@ in
     gnuArgs =
       commonArgs
       // {
-        src = craneLib.cleanCargoSource self;
+        # A source the caller assembled wins, since it may keep files crane's
+        # Cargo-only filter would drop; the filter is the default otherwise.
+        src = commonArgs.src or (craneLib.cleanCargoSource self);
         # The plain triple: what rustc builds and where crane installs from
         # (`target/${target}/release`).  cargo-zigbuild strips the `.2.17` it
         # gets via --target down to this same triple for cargo, so the paths

@@ -660,11 +660,8 @@ reaching the reviewer or the pipeline.  It also surfaces the combinator lints
 that steer toward the least-powerful construct (see "Rule of least power") while
 the change is still in hand, rather than after the fact.
 
-Claude Code agents may skip this step: the Stop hook at
-~.claude/hooks/review-stop.sh~ runs the same clippy gate deterministically on
-~.rs~ changes and blocks the turn until it passes, so the check is already
-enforced for them.  The instruction is spelled out here for other coding agents
-and humans, whose workflow that hook does not cover.
+This applies to every contributor, human or agent.  Nothing runs it on your
+behalf.
 
 * Template compliance
 

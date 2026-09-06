@@ -88,7 +88,9 @@ in
       windowsArgs =
         commonArgs
         // {
-          src = craneLib.cleanCargoSource self;
+          # A source the caller assembled wins, since it may keep files crane's
+          # Cargo-only filter would drop; the filter is the default otherwise.
+          src = commonArgs.src or (craneLib.cleanCargoSource self);
           CARGO_BUILD_TARGET = target;
           # llvm-mingw's clang wrapper is both the linker (it drives lld and
           # supplies the mingw-w64 CRT, startup objects, and import libraries)

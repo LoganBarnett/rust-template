@@ -1,13 +1,36 @@
 {
   "windows-msvc": true,
   "workspaces": {
-    "foundation": { "release-binary": false },
-    "foundation-derive": { "release-binary": false },
-    "compliance-lib": { "release-binary": false },
-    "compliance-cli": { "release-binary": true },
-    "dependency-bump-lib": { "release-binary": false },
-    "dependency-bump-cli": { "release-binary": true },
-    "cross-fixture": { "release-binary": false },
-    "review-stop": { "release-binary": true }
-  }
+    "foundation": {
+      "release-binary": false
+    },
+    "foundation-derive": {
+      "release-binary": false
+    },
+    "compliance-lib": {
+      "release-binary": false
+    },
+    "compliance-cli": {
+      "release-binary": true
+    },
+    "dependency-bump-lib": {
+      "release-binary": false
+    },
+    "dependency-bump-cli": {
+      "release-binary": true
+    },
+    "cross-fixture": {
+      "release-binary": false
+    },
+    "review-stop": {
+      "release-binary": true
+    },
+    "review-lib": {
+      "release-binary": false
+    },
+    "review-cli": {
+      "release-binary": true
+    }
+  },
+  "apple-frameworks": false
 }

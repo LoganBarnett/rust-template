@@ -95,7 +95,9 @@ in
       msvcArgs =
         commonArgs
         // {
-          src = craneLib.cleanCargoSource self;
+          # A source the caller assembled wins, since it may keep files crane's
+          # Cargo-only filter would drop; the filter is the default otherwise.
+          src = commonArgs.src or (craneLib.cleanCargoSource self);
           CARGO_BUILD_TARGET = target;
           # lld-link is the link.exe-compatible linker rustc drives for an MSVC
           # target; the SDK library roots reach the link through per-target
