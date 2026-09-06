@@ -65,13 +65,11 @@ emission before relying on it.
 
 A user-global or system =/etc/gitignore= commonly ignores =.claude/= wholesale.
 The template's =.gitignore= re-includes it with =!.claude/= (keeping
-=.claude/settings.local.json= ignored) precisely so the review-gate files —
-=.claude/settings.json= and =.claude/hooks/review-stop.sh= — are tracked and
-actually commit.  A spawn whose =.gitignore= lacks that block silently leaves
-the review gate untracked: the files exist on disk (so the =review-gate-*=
-checks, which read the filesystem, pass) but never reach a commit, and the Stop
-hook is dead on a fresh clone.  Proposed check: a line-present check that the
-spawn's =.gitignore= contains the =!.claude/= re-include.
+=.claude/settings.local.json= ignored) precisely so =.claude/settings.json= is
+tracked and actually commits.  A spawn whose =.gitignore= lacks that block
+silently leaves it untracked: the file exists on disk (so the checks that read
+the filesystem pass) but never reaches a commit.  Proposed check: a line-present
+check that the spawn's =.gitignore= contains the =!.claude/= re-include.
 
 * TODO Add compliance checks for the justfile and its devshell runner
 
@@ -129,11 +127,10 @@ necessary but not sufficient — an agent can violate prose (this one did).  Per
 - *Mechanism (preferred):* gate it through tooling, not trust.  Either a
   permission deny / PreToolUse hook in the emitted =.claude/settings.json= that
   blocks a Bash =git commit … --no-verify= / =-n= and requires explicit
-  per-commit approval (the same shape as the shipped review-stop Stop hook), or
-  expose git through an MCP tool whose commit operation offers no
-  verify-skipping flag at all, so the capability is /absent/ rather than merely
-  discouraged.  Standardize on whichever the fleet adopts; the point is that the
-  skip is not reachable by default.
+  per-commit approval, or expose git through an MCP tool whose commit operation
+  offers no verify-skipping flag at all, so the capability is /absent/ rather
+  than merely discouraged.  Standardize on whichever the fleet adopts; the point
+  is that the skip is not reachable by default.
 
 Per /a propagated change needs a check/, add a compliance check when it lands so
 existing spawns adopt the guard — e.g. a mention/value check that the emitted

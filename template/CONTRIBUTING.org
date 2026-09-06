@@ -299,37 +299,6 @@ automatically discovers credentials at runtime without extra configuration.
 
 See [[file:docs/systemd.org][docs/systemd.org]] for the full pattern and how to add new secrets.
 
-* Code-review Stop hook
-
-Claude Code sessions in this project run a deterministic code-review gate: the
-Stop hook at =.claude/hooks/review-stop.sh= blocks a turn from ending while
-un-reviewed changes sit in the working tree.  Optimizations are in place to
-ensure the gate doesn't run wastefully (no values changed, plan mode, etc.).
-The gate is designed to be something the main coding agent cannot bypass or
-weasel its way out of - It placates the review agent, or it has to put in
-another turn.
-
-To run the review by hand, without gating:
-
-#+begin_src sh :results none :exports code
-rust-template-review-stop --review true
-#+end_src
-
-It prints the findings for the current tree and exits non-zero when there are
-any.
-
-*Running an LLM coding agent outside the Nix dev shell* — Claude Code today, and
-any other agent that honours the same hook — requires you to put
-=rust-template-review-stop= on =PATH= yourself.  The hook does not fetch or
-build it, and how it gets there is not something this project can dictate.  Two
-routes that work: the template repository's GitHub releases carry a binary for
-every mainstream target, and cargo can build the same version the flake pins:
-
-#+begin_src sh :results none :exports code
-cargo install --git https://github.com/LoganBarnett/rust-template.git \
-  --tag v<version> rust-template-review-stop
-#+end_src
-
 * Logging levels
 
 - ~error!~ — errors that prevent normal operation.

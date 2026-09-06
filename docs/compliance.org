@@ -184,13 +184,11 @@ the absence of stale =rust-template= literals, the documented sections in
 =llms.org= and =CONTRIBUTING.org=, and the foundation pin agreement: the
 revisions pinned in =Cargo.lock= and =flake.lock= must agree with each other
 (=foundation-pins-agree=) and with the template =HEAD=
-(=foundation-pins-current=), and the code-review gate: its files are present,
-the Stop hook execs the gate binary the foundation flake provides
-(=review-gate-hook-delegates-to-binary=) rather than carrying a copy of the
-gate, and the dev shell supplies that binary (=dev-shell-provides-review-stop=),
-so a hook fix reaches the spawn on a foundation bump instead of a file sync.
-Rust facts are read from the parsed syntax tree, and YAML / JSON / TOML facts
-from the parsed value tree, narrowing to a substring match only at the leaf.
+(=foundation-pins-current=), and the Claude settings the template emits,
+including the absence of the retired review Stop hook
+(=review-gate-hook-retired=).  Rust facts are read from the parsed syntax tree,
+and YAML / JSON / TOML facts from the parsed value tree, narrowing to a
+substring match only at the leaf.
 
 It is the first step of both processes above (see
 [[*Run the structural checker first]]), but does not replace them.  The checker

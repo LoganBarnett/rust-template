@@ -3,8 +3,23 @@
 
 * Upcoming
 ** Added
+1. The rust-template repository gains =rust-template-review-cli=, an on-demand
+   code review that judges the current change set against the project's
+   conventions.  Run it with =just review=; spawned projects do not receive it
+   yet.
+2. =crate-add.sh= now works against the rust-template repository itself.  No
+   action needed.
 ** Fixes
+1. The rust-template repository's dev shell now installs its own pre-commit
+   formatting hook, which nothing had been doing.  No action needed; spawned
+   projects already installed theirs.
+2. The release cross-build helpers now honour a =src= passed in =commonArgs=
+   instead of replacing it with their own filtered source.  No action needed.
 ** Breaking
+1. The review Stop hook is retired.  Delete =.claude/hooks/review-stop.sh= and
+   remove the =Stop= block from =.claude/settings.json=; nothing replaces it in
+   spawns yet.  Any =review-gate= or =review-stop= ids under
+   =compliance-ignores= are now inert and may be dropped.
 ** Maintenance
 * v0.118.0
 ** Maintenance

@@ -1640,16 +1640,9 @@ package = "cargo-semver-checks"
 
 [[check]]
 id = "review-gate-settings"
-description = "The project ships .claude/settings.json registering the review Stop hook."
+description = "The project ships .claude/settings.json, which holds the Claude Code settings the template emits."
 kind = "file-present"
 path = ".claude/settings.json"
-
-[[check]]
-id = "review-gate-settings-wires-hook"
-description = "The .claude/settings.json Stop hook invokes review-stop.sh."
-kind = "file-contains"
-target = ".claude/settings.json"
-contains = "review-stop.sh"
 
 # A separate concern that happens to live in the same file: the emitted
 # settings disable Claude Code's auto-memory, so conventions are codified in
@@ -1662,81 +1655,27 @@ kind = "file-contains"
 target = ".claude/settings.json"
 contains = '"autoMemoryEnabled": false'
 
-###
-# Review Gate.
-#
-# The review gate is for LLM coding agents (as of 2026-08-19, only tested
-# against Claude Code) to perform a review once a conversation turn is
-# complete.  Helps prevent guessing and high confidence "I did it right" kind of
-# assertions.
-###
+# The Stop hook is retired: it ran a review on every turn end rather than at
+# task completion, which Claude Code gives no way to tell apart, and its cost
+# fell on every turn.  A spawn that keeps the script keeps paying that, so its
+# removal is enforced rather than merely no longer emitted.  The registration in
+# .claude/settings.json is the other half; no check kind asserts a JSON path is
+# absent, so that half is unchecked and a spawn syncing settings.json from the
+# template is what clears it.
 [[check]]
-id = "review-gate-hook"
-description = "The project ships the review-stop.sh Stop hook."
-kind = "file-present"
+id = "review-gate-hook-retired"
+description = "The retired review-stop.sh Stop hook is absent; it reviewed on every turn end rather than at task completion, so a spawn must not keep it."
+kind = "file-absent"
 path = ".claude/hooks/review-stop.sh"
 
-[[check]]
-id = "review-gate-hook-delegates-to-binary"
-description = "Call the review-stop binary."
-kind = "file-contains"
-target = ".claude/hooks/review-stop.sh"
-contains = "rust-template-review-stop"
-
-[[check]]
-id = "dev-shell-provides-review-stop"
-description = "Make the review-stop binary available through the devShell."
-kind = "dev-shell-package"
-package = "rust-template-review-stop"
-
-[[check]]
-id = "review-gate-hook-timeout"
-description = "The Stop hook entry in .claude/settings.json carries the 900-second timeout the in-hook review needs; Claude Code's default would kill the review mid-run and end the turn unreviewed."
-kind = "json-path-equals"
-target = ".claude/settings.json"
-pointer = "hooks.Stop.0.hooks.0.timeout"
-value = "900"
-
-# The gate now runs the review itself, so the old template-compliance subagent
-# is gone.  A spawn that still carries its definition would keep prompting the
-# agent to invoke a subagent the gate no longer reads, so its removal is
-# enforced rather than merely emitted.
+# A spawn that still carries the retired template-compliance subagent
+# definition would keep prompting the agent to invoke a subagent nothing reads,
+# so its removal is enforced rather than merely no longer emitted.
 [[check]]
 id = "review-gate-agent-retired"
-description = "The retired template-compliance subagent definition is absent; the gate runs the review itself, so a spawn must not keep the stale agent."
+description = "The retired template-compliance subagent definition is absent; nothing invokes it, so a spawn must not keep the stale agent."
 kind = "file-absent"
 path = ".claude/agents/template-compliance.md"
-
-[[check]]
-id = "contributing-review-stop-section"
-description = "CONTRIBUTING.org carries the \"Code-review Stop hook\" section explaining the gate binary and its PATH requirement."
-kind = "section-exists"
-target = "CONTRIBUTING.org"
-section = ["Code-review Stop hook"]
-
-[[check]]
-id = "contributing-review-stop-names-binary"
-description = "The Code-review Stop hook section names the rust-template-review-stop binary the hook execs."
-kind = "mention-present"
-target = "CONTRIBUTING.org"
-section = ["Code-review Stop hook"]
-contains = "rust-template-review-stop"
-
-# A load-bearing phrase from the rewritten section: only the
-# gate-runs-the-review-itself wording carries the manual --review command.  A
-# spawn whose stale copy still describes the old subagent flow lacks it and is
-# flagged.
-[[check]]
-id = "contributing-review-stop-runs-review-itself"
-description = "The Code-review Stop hook section documents the manual review command, proving it describes the gate that runs the review itself rather than the retired subagent flow."
-kind = "mention-present"
-target = "CONTRIBUTING.org"
-section = ["Code-review Stop hook"]
-contains = "rust-template-review-stop --review true"
-
-###
-# End Review Gate section.
-###
 
 # ---------------------------------------------------------------------------
 # Darwin (launchd) service log paths.
@@ -1753,7 +1692,6 @@ contains = "rust-template-review-stop --review true"
 # override any of them deliberately.  What must not happen silently is drifting
 # off a path the OS keeps.
 # ---------------------------------------------------------------------------
-
 [[check]]
 id = "darwin-service-log-path-stdout"
 description = "The darwin service's stdout log defaults to a file directly under /var/log, which survives an OS update."

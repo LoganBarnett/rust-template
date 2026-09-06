@@ -26,3 +26,7 @@ config.json
 !.claude/
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+
+# The review tool's per-file review record.  It is machine-local state about an
+# uncommitted working tree.
+review.json*

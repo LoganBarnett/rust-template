@@ -75,3 +75,17 @@ dependabot-combine *args:
 # preview.
 dependency-bump *args:
   cargo run --quiet --package rust-template-dependency-bump-cli -- {{args}}
+
+# Review the current change set against the project's conventions.
+#
+# Sends only the files it has not already judged to a nested reviewer and
+# reports what stands, recording its verdicts per file in review.json at the
+# repository root so addressing one file does not re-review the rest.  Runs
+# from source (like `just compliance`) so local changes to the crates are
+# exercised directly; `--help` documents the flags.
+#
+# Exit code 1 means the review ran and found something; 2 means it could not
+# run at all.  `just` reports either as a failed recipe, so read the code: a 1
+# with findings printed above it is the tool working, not breaking.
+review *args:
+  cargo run --quiet --package rust-template-review-cli -- {{args}}

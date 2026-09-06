@@ -59,7 +59,9 @@ in
     muslArgs =
       commonArgs
       // {
-        src = craneLib.cleanCargoSource self;
+        # A source the caller assembled wins, since it may keep files crane's
+        # Cargo-only filter would drop; the filter is the default otherwise.
+        src = commonArgs.src or (craneLib.cleanCargoSource self);
         CARGO_BUILD_TARGET = muslTarget;
         # musl targets link the C runtime statically by default; state it
         # explicitly so the intent survives a toolchain default change.
