@@ -6,6 +6,8 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+* v0.115.0
+** Maintenance
 1. Bump encoding_rs from 0.8.35 to 0.8.40
 2. Bump rustls from 0.23.43 to 0.23.44
 * v0.114.0
