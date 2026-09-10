@@ -6,6 +6,8 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+* v0.118.0
+** Maintenance
 1. Bump bitflags from 2.13.1 to 2.13.2
 * v0.117.0
 ** Maintenance
