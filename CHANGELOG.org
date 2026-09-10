@@ -3,6 +3,11 @@
 
 * Upcoming
 ** Added
+** Fixes
+** Breaking
+** Maintenance
+* v0.119.0
+** Added
 1. The rust-template repository gains =rust-template-review-cli=, an on-demand
    code review that judges the current change set against the project's
    conventions.  Run it with =just review=; spawned projects do not receive it
@@ -20,7 +25,6 @@
    remove the =Stop= block from =.claude/settings.json=; nothing replaces it in
    spawns yet.  Any =review-gate= or =review-stop= ids under
    =compliance-ignores= are now inert and may be dropped.
-** Maintenance
 * v0.118.0
 ** Maintenance
 1. Bump bitflags from 2.13.1 to 2.13.2
