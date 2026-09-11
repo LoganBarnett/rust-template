@@ -6,6 +6,8 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+* v0.120.0
+** Maintenance
 1. Bump bitflags from 2.13.1 to 2.13.2
 2. Bump crypto-common from 0.1.7 to 0.1.6
 3. Bump generic-array from 0.14.7 to 0.14.9
