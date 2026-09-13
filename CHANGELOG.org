@@ -6,6 +6,11 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+1. Bump cc from 1.4.5 to 1.4.6
+2. Bump crc32fast from 1.5.1 to 1.5.2
+3. Bump jiff from 0.2.35 to 0.2.37
+4. Bump jiff-core from 0.1.0 to 0.1.1
+5. Bump jiff-static from 0.2.35 to 0.2.37
 * v0.121.0
 ** Maintenance
 1. Bump smallvec from 1.16.0 to 1.16.1
