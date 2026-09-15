@@ -6,6 +6,9 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+** Security
+* v0.124.0
+** Maintenance
 1. Bump clap from 4.6.6 to 4.6.7
 2. Bump clap_builder from 4.6.6 to 4.6.7
 3. Bump clap_derive from 4.6.4 to 4.6.7
