@@ -126,5 +126,9 @@ required-features = ["cli"]
 name = "subcommand_test"
 required-features = ["cli"]
 
+[[test]]
+name = "merge_config_env_test"
+required-features = ["cli"]
+
 [lints]
 workspace = true

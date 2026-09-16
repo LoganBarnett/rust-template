@@ -6,9 +6,11 @@
 
 use proc_macro::TokenStream;
 use quote::quote;
+use syn::punctuated::Punctuated;
 use syn::{
-  parse_macro_input, Data, DataStruct, DeriveInput, Expr, Fields, FieldsNamed,
-  FnArg, Ident, ItemFn, LitChar, LitStr, Pat, PatType, Type,
+  parse_macro_input, Data, DataStruct, DeriveInput, Expr, ExprLit, Fields,
+  FieldsNamed, FnArg, Ident, ItemFn, Lit, LitChar, LitStr, Meta, MetaNameValue,
+  Pat, PatType, Token, Type,
 };
 
 /// Derive macro that generates config boilerplate from a single
@@ -30,46 +32,96 @@ pub fn derive_merge_config(input: TokenStream) -> TokenStream {
 
 // ── MergeConfig internals ──────────────────────────────────────────────
 
-struct McStructAttrs {
+struct MergeConfigStructAttrs {
   app_name: LitStr,
   extra_cli: Option<syn::Path>,
   extra_file: Option<syn::Path>,
   extra_error: Option<syn::Path>,
 }
 
-enum McShortFlag {
+/// The struct attributes as written, before `app_name` is known to be there.
+#[derive(Default)]
+struct StructSpec {
+  app_name: Option<LitStr>,
+  extra_cli: Option<syn::Path>,
+  extra_file: Option<syn::Path>,
+  extra_error: Option<syn::Path>,
+}
+
+/// One item of the struct-level `merge_config` attribute.
+enum StructAttr {
+  AppName(LitStr),
+  ExtraCli(syn::Path),
+  ExtraFile(syn::Path),
+  ExtraError(syn::Path),
+}
+
+#[derive(Default)]
+enum MergeConfigArgShortFlag {
+  #[default]
   None,
   Auto,
   Explicit(LitChar),
 }
 
-/// Environment-variable binding for a merged field.
-///
-/// `Auto` derives the name as `<env_prefix>_<raw_name>` (lowercase per
-/// POSIX §8.1's application namespace).  `Literal` is reserved for
-/// genuine deviations from that derivation — using it draws attention,
-/// so a comment beside `env = "..."` should explain why.
-enum McEnv {
-  None,
-  Auto,
-  Literal(LitStr),
+impl MergeConfigArgShortFlag {
+  /// The clap attribute part for the short flag, if the field has one.
+  fn arg_part(&self) -> Option<proc_macro2::TokenStream> {
+    match self {
+      Self::None => None,
+      Self::Auto => Some(quote! { short }),
+      Self::Explicit(c) => Some(quote! { short = #c }),
+    }
+  }
 }
 
-struct McMerged {
+/// Environment-variable binding for a merged field.
+///
+/// `Auto` is what every merged field gets with no attribute: the name is
+/// derived as `<env_prefix>_<raw_name>` (lowercase per POSIX §8.1's
+/// application namespace).  The other two are deviations that draw
+/// attention, so a comment beside the attribute should explain why:
+/// `Literal` reads a name imposed from outside (`env = "..."`), and
+/// `Disabled` reads nothing (`no_env`).
+enum MergeConfigArgEnv {
+  Auto,
+  Literal(LitStr),
+  Disabled,
+}
+
+impl MergeConfigArgEnv {
+  /// The clap attribute part binding the env var, if the field reads one.
+  fn arg_part(
+    &self,
+    prefix: &str,
+    raw_name: &Ident,
+  ) -> Option<proc_macro2::TokenStream> {
+    match self {
+      Self::Disabled => None,
+      Self::Auto => {
+        let derived = ::std::format!("{prefix}_{raw_name}");
+        Some(quote! { env = #derived })
+      }
+      Self::Literal(name) => Some(quote! { env = #name }),
+    }
+  }
+}
+
+struct MergeConfigMergedArg {
   raw_name: Ident,
-  env: McEnv,
-  short: McShortFlag,
+  env: MergeConfigArgEnv,
+  short: MergeConfigArgShortFlag,
   default: Option<Expr>,
   required: bool,
   parse: bool,
   cli_only: bool,
 }
 
-enum McFieldKind {
+enum MergeConfigFieldKind {
   Common,
   // Boxed because the inner struct dwarfs the unit variants — keeping
-  // it inline would push every `McFieldKind` to ~232 bytes.
-  Merged(Box<McMerged>),
+  // it inline would push every `MergeConfigFieldKind` to ~232 bytes.
+  Merged(Box<MergeConfigMergedArg>),
   Skip,
   // Pure passthrough of a clap `#[derive(Subcommand)]` enum.  Forwarded
   // to `CliRaw` with `#[command(subcommand)]` and copied verbatim into
@@ -79,212 +131,358 @@ enum McFieldKind {
   Subcommand,
 }
 
-struct McFieldInfo {
+struct MergeConfigFieldInfo {
   ident: Ident,
   ty: Type,
-  kind: McFieldKind,
+  kind: MergeConfigFieldKind,
   doc_attrs: Vec<syn::Attribute>,
+}
+
+/// One item of a field's `merge_config` attribute.
+enum FieldAttr {
+  Common,
+  Skip,
+  Subcommand,
+  Name(LitStr),
+  EnvLiteral(LitStr),
+  NoEnv,
+  Short(MergeConfigArgShortFlag),
+  Default(Expr),
+  Required,
+  Parse,
+  CliOnly,
+}
+
+/// A field's attributes gathered by meaning, before the field's kind is
+/// known.  Where an item can be written twice, the last spelling wins.
+#[derive(Default)]
+struct FieldSpec {
+  common: bool,
+  skip: bool,
+  subcommand: bool,
+  name: Option<LitStr>,
+  env_literal: Option<LitStr>,
+  no_env: bool,
+  short: MergeConfigArgShortFlag,
+  default: Option<Expr>,
+  required: bool,
+  parse: bool,
+  cli_only: bool,
+}
+
+/// Every item written across the `merge_config` attributes, in order.
+fn merge_config_items(attrs: &[syn::Attribute]) -> syn::Result<Vec<Meta>> {
+  attrs
+    .iter()
+    .filter(|attr| attr.path().is_ident("merge_config"))
+    .map(|attr| {
+      attr.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)
+    })
+    .collect::<syn::Result<Vec<_>>>()
+    .map(|lists| lists.into_iter().flatten().collect())
+}
+
+/// The name of an item, when its path is a single identifier, which is the
+/// only shape any item accepts.
+fn item_name(meta: &Meta) -> Option<String> {
+  meta.path().get_ident().map(ToString::to_string)
+}
+
+/// The string literal an `= "..."` item carries.
+fn string_value(pair: &MetaNameValue) -> syn::Result<LitStr> {
+  match &pair.value {
+    Expr::Lit(ExprLit {
+      lit: Lit::Str(text),
+      ..
+    }) => Ok(text.clone()),
+    other => Err(syn::Error::new_spanned(other, "expected a string literal")),
+  }
+}
+
+/// The char literal an `= 'x'` item carries.
+fn char_value(pair: &MetaNameValue) -> syn::Result<LitChar> {
+  match &pair.value {
+    Expr::Lit(ExprLit {
+      lit: Lit::Char(c), ..
+    }) => Ok(c.clone()),
+    other => Err(syn::Error::new_spanned(other, "expected a char literal")),
+  }
+}
+
+/// A path written as a string literal, as `extra_cli = "Type"` spells it.
+fn path_value(pair: &MetaNameValue) -> syn::Result<syn::Path> {
+  string_value(pair).and_then(|text| syn::parse_str(&text.value()))
+}
+
+fn struct_attr(meta: Meta) -> syn::Result<StructAttr> {
+  match (item_name(&meta).as_deref(), &meta) {
+    (Some("app_name"), Meta::NameValue(pair)) => {
+      string_value(pair).map(StructAttr::AppName)
+    }
+    (Some("extra_cli"), Meta::NameValue(pair)) => {
+      path_value(pair).map(StructAttr::ExtraCli)
+    }
+    (Some("extra_file"), Meta::NameValue(pair)) => {
+      path_value(pair).map(StructAttr::ExtraFile)
+    }
+    (Some("extra_error"), Meta::NameValue(pair)) => {
+      path_value(pair).map(StructAttr::ExtraError)
+    }
+    _ => Err(syn::Error::new_spanned(&meta, "unknown merge_config attribute")),
+  }
 }
 
 fn mc_parse_struct_attrs(
   attrs: &[syn::Attribute],
-) -> syn::Result<McStructAttrs> {
-  let mut app_name: Option<LitStr> = None;
-  let mut extra_cli: Option<syn::Path> = None;
-  let mut extra_file: Option<syn::Path> = None;
-  let mut extra_error: Option<syn::Path> = None;
-
-  for attr in attrs {
-    if !attr.path().is_ident("merge_config") {
-      continue;
-    }
-    attr.parse_nested_meta(|meta| {
-      if meta.path.is_ident("app_name") {
-        app_name = Some(meta.value()?.parse()?);
-      } else if meta.path.is_ident("extra_cli") {
-        let s: LitStr = meta.value()?.parse()?;
-        extra_cli = Some(syn::parse_str(&s.value())?);
-      } else if meta.path.is_ident("extra_file") {
-        let s: LitStr = meta.value()?.parse()?;
-        extra_file = Some(syn::parse_str(&s.value())?);
-      } else if meta.path.is_ident("extra_error") {
-        let s: LitStr = meta.value()?.parse()?;
-        extra_error = Some(syn::parse_str(&s.value())?);
-      } else {
-        return Err(meta.error("unknown merge_config attribute"));
-      }
-      Ok(())
-    })?;
-  }
-
-  let app_name = app_name.ok_or_else(|| {
-    syn::Error::new(
-      proc_macro2::Span::call_site(),
-      "merge_config requires `app_name`",
-    )
-  })?;
-
-  Ok(McStructAttrs {
-    app_name,
-    extra_cli,
-    extra_file,
-    extra_error,
+) -> syn::Result<MergeConfigStructAttrs> {
+  let spec = merge_config_items(attrs)?
+    .into_iter()
+    .map(struct_attr)
+    .collect::<syn::Result<Vec<_>>>()?
+    .into_iter()
+    .fold(StructSpec::default(), |so_far, attr| match attr {
+      StructAttr::AppName(name) => StructSpec {
+        app_name: Some(name),
+        ..so_far
+      },
+      StructAttr::ExtraCli(path) => StructSpec {
+        extra_cli: Some(path),
+        ..so_far
+      },
+      StructAttr::ExtraFile(path) => StructSpec {
+        extra_file: Some(path),
+        ..so_far
+      },
+      StructAttr::ExtraError(path) => StructSpec {
+        extra_error: Some(path),
+        ..so_far
+      },
+    });
+  Ok(MergeConfigStructAttrs {
+    app_name: spec.app_name.ok_or_else(|| {
+      syn::Error::new(
+        proc_macro2::Span::call_site(),
+        "merge_config requires `app_name`",
+      )
+    })?,
+    extra_cli: spec.extra_cli,
+    extra_file: spec.extra_file,
+    extra_error: spec.extra_error,
   })
 }
 
-fn mc_parse_field(field: &syn::Field) -> syn::Result<McFieldInfo> {
+fn field_attr(meta: Meta) -> syn::Result<FieldAttr> {
+  match (item_name(&meta).as_deref(), &meta) {
+    (Some("common"), Meta::Path(_)) => Ok(FieldAttr::Common),
+    (Some("skip"), Meta::Path(_)) => Ok(FieldAttr::Skip),
+    (Some("subcommand"), Meta::Path(_)) => Ok(FieldAttr::Subcommand),
+    (Some("name"), Meta::NameValue(pair)) => {
+      string_value(pair).map(FieldAttr::Name)
+    }
+    (Some("env"), Meta::NameValue(pair)) => {
+      string_value(pair).map(FieldAttr::EnvLiteral)
+    }
+    // A bare `env` would be a no-op that reads as meaningful, so it is
+    // refused with the fix named rather than silently accepted.
+    (Some("env"), Meta::Path(_)) => Err(syn::Error::new_spanned(
+      &meta,
+      "`env` without a value is redundant: every merged field reads \
+       `<app>_<flag>` by default.  Remove it, or write `no_env` to opt the \
+       field out.",
+    )),
+    (Some("no_env"), Meta::Path(_)) => Ok(FieldAttr::NoEnv),
+    (Some("short"), Meta::Path(_)) => {
+      Ok(FieldAttr::Short(MergeConfigArgShortFlag::Auto))
+    }
+    (Some("short"), Meta::NameValue(pair)) => char_value(pair)
+      .map(|c| FieldAttr::Short(MergeConfigArgShortFlag::Explicit(c))),
+    (Some("default"), Meta::NameValue(pair)) => string_value(pair)
+      .and_then(|text| syn::parse_str(&text.value()))
+      .map(FieldAttr::Default),
+    (Some("required"), Meta::Path(_)) => Ok(FieldAttr::Required),
+    (Some("parse"), Meta::Path(_)) => Ok(FieldAttr::Parse),
+    (Some("cli_only"), Meta::Path(_)) => Ok(FieldAttr::CliOnly),
+    _ => Err(syn::Error::new_spanned(
+      &meta,
+      "unknown merge_config field attribute",
+    )),
+  }
+}
+
+/// The field's attributes gathered by meaning.
+fn field_spec(items: Vec<Meta>) -> syn::Result<FieldSpec> {
+  items
+    .into_iter()
+    .map(field_attr)
+    .collect::<syn::Result<Vec<_>>>()
+    .map(|attrs| {
+      attrs
+        .into_iter()
+        .fold(FieldSpec::default(), |so_far, attr| match attr {
+          FieldAttr::Common => FieldSpec {
+            common: true,
+            ..so_far
+          },
+          FieldAttr::Skip => FieldSpec {
+            skip: true,
+            ..so_far
+          },
+          FieldAttr::Subcommand => FieldSpec {
+            subcommand: true,
+            ..so_far
+          },
+          FieldAttr::Name(name) => FieldSpec {
+            name: Some(name),
+            ..so_far
+          },
+          FieldAttr::EnvLiteral(name) => FieldSpec {
+            env_literal: Some(name),
+            ..so_far
+          },
+          FieldAttr::NoEnv => FieldSpec {
+            no_env: true,
+            ..so_far
+          },
+          FieldAttr::Short(short) => FieldSpec { short, ..so_far },
+          FieldAttr::Default(default) => FieldSpec {
+            default: Some(default),
+            ..so_far
+          },
+          FieldAttr::Required => FieldSpec {
+            required: true,
+            ..so_far
+          },
+          FieldAttr::Parse => FieldSpec {
+            parse: true,
+            ..so_far
+          },
+          FieldAttr::CliOnly => FieldSpec {
+            cli_only: true,
+            ..so_far
+          },
+        })
+    })
+}
+
+fn mc_parse_field(field: &syn::Field) -> syn::Result<MergeConfigFieldInfo> {
   let ident = field.ident.clone().ok_or_else(|| {
     syn::Error::new_spanned(field, "unnamed fields not supported")
   })?;
-  let ty = field.ty.clone();
-
-  let doc_attrs: Vec<_> = field
+  if !field
     .attrs
     .iter()
-    .filter(|a| a.path().is_ident("doc"))
-    .cloned()
-    .collect();
-
-  let has_mc = field
-    .attrs
-    .iter()
-    .any(|a| a.path().is_ident("merge_config"));
-  if !has_mc {
-    return Err(syn::Error::new_spanned(
+    .any(|attr| attr.path().is_ident("merge_config"))
+  {
+    Err(syn::Error::new_spanned(
       &ident,
       "every field must have a #[merge_config(...)] attribute",
-    ));
-  }
-
-  let mut is_common = false;
-  let mut is_skip = false;
-  let mut is_subcommand = false;
-  let mut name: Option<LitStr> = None;
-  let mut env = McEnv::None;
-  let mut short = McShortFlag::None;
-  let mut default: Option<Expr> = None;
-  let mut required = false;
-  let mut parse = false;
-  let mut cli_only = false;
-
-  for attr in &field.attrs {
-    if !attr.path().is_ident("merge_config") {
-      continue;
-    }
-    attr.parse_nested_meta(|meta| {
-      if meta.path.is_ident("common") {
-        is_common = true;
-      } else if meta.path.is_ident("skip") {
-        is_skip = true;
-      } else if meta.path.is_ident("subcommand") {
-        is_subcommand = true;
-      } else if meta.path.is_ident("name") {
-        name = Some(meta.value()?.parse()?);
-      } else if meta.path.is_ident("env") {
-        // Bare `env` derives the name; `env = "literal"` overrides.
-        if meta.input.peek(syn::Token![=]) {
-          env = McEnv::Literal(meta.value()?.parse()?);
-        } else {
-          env = McEnv::Auto;
-        }
-      } else if meta.path.is_ident("short") {
-        if meta.input.peek(syn::Token![=]) {
-          short = McShortFlag::Explicit(meta.value()?.parse()?);
-        } else {
-          short = McShortFlag::Auto;
-        }
-      } else if meta.path.is_ident("default") {
-        let s: LitStr = meta.value()?.parse()?;
-        default = Some(syn::parse_str(&s.value())?);
-      } else if meta.path.is_ident("required") {
-        required = true;
-      } else if meta.path.is_ident("parse") {
-        parse = true;
-      } else if meta.path.is_ident("cli_only") {
-        cli_only = true;
-      } else {
-        return Err(meta.error("unknown merge_config field attribute"));
-      }
-      Ok(())
-    })?;
-  }
-
-  // Mutually exclusive top-level kinds.
-  let exclusive_count = [is_common, is_skip, is_subcommand]
-    .iter()
-    .filter(|b| **b)
-    .count();
-  if exclusive_count > 1 {
-    return Err(syn::Error::new_spanned(
-      &ident,
-      "`common`, `skip`, and `subcommand` are mutually exclusive",
-    ));
-  }
-
-  let kind = if is_common {
-    McFieldKind::Common
-  } else if is_skip {
-    McFieldKind::Skip
-  } else if is_subcommand {
-    // Subcommand fields are pure clap passthrough.  Reject any merge-
-    // semantics attrs — they have no meaning here, and forbidding
-    // them keeps the surface honest.
-    let forbidden = [
-      ("name", name.is_some()),
-      ("env", !matches!(env, McEnv::None)),
-      ("short", !matches!(short, McShortFlag::None)),
-      ("default", default.is_some()),
-      ("required", required),
-      ("parse", parse),
-      ("cli_only", cli_only),
-    ];
-    for (attr_name, present) in forbidden {
-      if present {
-        return Err(syn::Error::new_spanned(
-          &ident,
-          ::std::format!(
-            "`{}` is not allowed on a `subcommand` field",
-            attr_name,
-          ),
-        ));
-      }
-    }
-    McFieldKind::Subcommand
+    ))
   } else {
-    if default.is_none() && !required {
-      return Err(syn::Error::new_spanned(
-        &ident,
-        "merged fields require `default` or `required`",
-      ));
-    }
-    if default.is_some() && required {
-      return Err(syn::Error::new_spanned(
-        &ident,
-        "`default` and `required` are mutually exclusive",
-      ));
-    }
+    Ok(MergeConfigFieldInfo {
+      ty: field.ty.clone(),
+      kind: field_kind(&ident, field_spec(merge_config_items(&field.attrs)?)?)?,
+      doc_attrs: field
+        .attrs
+        .iter()
+        .filter(|attr| attr.path().is_ident("doc"))
+        .cloned()
+        .collect(),
+      ident,
+    })
+  }
+}
 
-    let raw_name = name
-      .as_ref()
-      .map_or_else(|| ident.clone(), |n| Ident::new(&n.value(), n.span()));
+/// The kind a field's attributes name, or why they name none.
+fn field_kind(
+  ident: &Ident,
+  spec: FieldSpec,
+) -> syn::Result<MergeConfigFieldKind> {
+  let exclusive = [spec.common, spec.skip, spec.subcommand]
+    .into_iter()
+    .filter(|set| *set)
+    .count();
+  if exclusive > 1 {
+    Err(syn::Error::new_spanned(
+      ident,
+      "`common`, `skip`, and `subcommand` are mutually exclusive",
+    ))
+  } else if spec.common {
+    Ok(MergeConfigFieldKind::Common)
+  } else if spec.skip {
+    Ok(MergeConfigFieldKind::Skip)
+  } else if spec.subcommand {
+    subcommand_kind(ident, &spec)
+  } else {
+    merged_kind(ident, spec)
+  }
+}
 
-    McFieldKind::Merged(Box::new(McMerged {
-      raw_name,
-      env,
-      short,
-      default,
-      required,
-      parse,
-      cli_only,
-    }))
-  };
-
-  Ok(McFieldInfo {
-    ident,
-    ty,
-    kind,
-    doc_attrs,
+/// A subcommand field is pure clap passthrough, so every merge-semantics
+/// attribute on it is refused: none has a meaning there, and forbidding them
+/// keeps the surface honest.
+fn subcommand_kind(
+  ident: &Ident,
+  spec: &FieldSpec,
+) -> syn::Result<MergeConfigFieldKind> {
+  [
+    ("name", spec.name.is_some()),
+    ("env", spec.env_literal.is_some()),
+    ("no_env", spec.no_env),
+    ("short", !matches!(spec.short, MergeConfigArgShortFlag::None)),
+    ("default", spec.default.is_some()),
+    ("required", spec.required),
+    ("parse", spec.parse),
+    ("cli_only", spec.cli_only),
+  ]
+  .into_iter()
+  .find(|(_, present)| *present)
+  .map_or(Ok(MergeConfigFieldKind::Subcommand), |(attr, _)| {
+    Err(syn::Error::new_spanned(
+      ident,
+      ::std::format!("`{attr}` is not allowed on a `subcommand` field"),
+    ))
   })
+}
+
+fn merged_kind(
+  ident: &Ident,
+  spec: FieldSpec,
+) -> syn::Result<MergeConfigFieldKind> {
+  if spec.default.is_none() && !spec.required {
+    Err(syn::Error::new_spanned(
+      ident,
+      "merged fields require `default` or `required`",
+    ))
+  } else if spec.default.is_some() && spec.required {
+    Err(syn::Error::new_spanned(
+      ident,
+      "`default` and `required` are mutually exclusive",
+    ))
+  } else if spec.no_env && spec.env_literal.is_some() {
+    Err(syn::Error::new_spanned(
+      ident,
+      "`no_env` and `env = \"...\"` are mutually exclusive",
+    ))
+  } else {
+    Ok(MergeConfigFieldKind::Merged(Box::new(MergeConfigMergedArg {
+      raw_name: spec
+        .name
+        .as_ref()
+        .map_or_else(|| ident.clone(), |n| Ident::new(&n.value(), n.span())),
+      env: if spec.no_env {
+        MergeConfigArgEnv::Disabled
+      } else {
+        spec
+          .env_literal
+          .map_or(MergeConfigArgEnv::Auto, MergeConfigArgEnv::Literal)
+      },
+      short: spec.short,
+      default: spec.default,
+      required: spec.required,
+      parse: spec.parse,
+      cli_only: spec.cli_only,
+    })))
+  }
 }
 
 /// Convert the `app_name` literal into the env-var prefix.
@@ -297,72 +495,65 @@ fn env_prefix(app_name: &LitStr) -> String {
   app_name.value().to_lowercase().replace('-', "_")
 }
 
+/// One merged field of `CliRaw`.
+fn cli_field_def(
+  field: &MergeConfigFieldInfo,
+  merged: &MergeConfigMergedArg,
+  prefix: &str,
+) -> proc_macro2::TokenStream {
+  let docs = &field.doc_attrs;
+  let raw_name = &merged.raw_name;
+  let arg_parts: Vec<proc_macro2::TokenStream> = merged
+    .short
+    .arg_part()
+    .into_iter()
+    .chain(std::iter::once(quote! { long }))
+    .chain(merged.env.arg_part(prefix, raw_name))
+    .collect();
+  let ty = &field.ty;
+  let field_ty = if merged.parse {
+    quote! { Option<String> }
+  } else {
+    quote! { Option<#ty> }
+  };
+  quote! {
+    #(#docs)*
+    #[arg(#(#arg_parts),*)]
+    pub #raw_name: #field_ty,
+  }
+}
+
 fn mc_gen_cli_raw(
-  fields: &[McFieldInfo],
-  attrs: &McStructAttrs,
+  fields: &[MergeConfigFieldInfo],
+  attrs: &MergeConfigStructAttrs,
 ) -> proc_macro2::TokenStream {
   let app_name = &attrs.app_name;
   let prefix = env_prefix(app_name);
 
   let field_defs: Vec<_> = fields
     .iter()
-    .filter_map(|f| {
-      let McFieldKind::Merged(m) = &f.kind else {
-        return None;
-      };
-
-      let docs = &f.doc_attrs;
-
-      let mut arg_parts = Vec::new();
-      match &m.short {
-        McShortFlag::Auto => arg_parts.push(quote! { short }),
-        McShortFlag::Explicit(c) => arg_parts.push(quote! { short = #c }),
-        McShortFlag::None => {}
-      }
-      arg_parts.push(quote! { long });
-      match &m.env {
-        McEnv::None => {}
-        McEnv::Auto => {
-          let derived = ::std::format!("{}_{}", prefix, m.raw_name);
-          arg_parts.push(quote! { env = #derived });
-        }
-        McEnv::Literal(s) => {
-          arg_parts.push(quote! { env = #s });
-        }
-      }
-
-      let field_ty = if m.parse {
-        quote! { Option<String> }
-      } else {
-        let ty = &f.ty;
-        quote! { Option<#ty> }
-      };
-
-      let raw_name = &m.raw_name;
-      Some(quote! {
-        #(#docs)*
-        #[arg(#(#arg_parts),*)]
-        pub #raw_name: #field_ty,
-      })
+    .filter_map(|f| match &f.kind {
+      MergeConfigFieldKind::Merged(m) => Some(cli_field_def(f, m, &prefix)),
+      _ => None,
     })
     .collect();
 
   // Subcommand field is forwarded verbatim.  Required/optional follows
   // the user's field type: `Commands` requires a subcommand, while
   // `Option<Commands>` makes it optional.
-  let subcommand_field = fields.iter().find_map(|f| {
-    if !matches!(f.kind, McFieldKind::Subcommand) {
-      return None;
-    }
-    let ident = &f.ident;
-    let ty = &f.ty;
-    let docs = &f.doc_attrs;
-    Some(quote! {
-      #(#docs)*
-      #[command(subcommand)]
-      pub #ident: #ty,
-    })
-  });
+  let subcommand_field = fields
+    .iter()
+    .find(|f| matches!(f.kind, MergeConfigFieldKind::Subcommand))
+    .map(|f| {
+      let ident = &f.ident;
+      let ty = &f.ty;
+      let docs = &f.doc_attrs;
+      quote! {
+        #(#docs)*
+        #[command(subcommand)]
+        pub #ident: #ty,
+      }
+    });
 
   let extra_field = attrs.extra_cli.as_ref().map(|extra_ty| {
     quote! {
@@ -407,13 +598,13 @@ fn mc_gen_cli_raw(
 }
 
 fn mc_gen_config_file_raw(
-  fields: &[McFieldInfo],
-  attrs: &McStructAttrs,
+  fields: &[MergeConfigFieldInfo],
+  attrs: &MergeConfigStructAttrs,
 ) -> proc_macro2::TokenStream {
   let field_defs: Vec<_> = fields
     .iter()
     .filter_map(|f| {
-      let McFieldKind::Merged(m) = &f.kind else {
+      let MergeConfigFieldKind::Merged(m) = &f.kind else {
         return None;
       };
       if m.cli_only {
@@ -453,7 +644,9 @@ fn mc_gen_config_file_raw(
   }
 }
 
-fn mc_gen_config_error(attrs: &McStructAttrs) -> proc_macro2::TokenStream {
+fn mc_gen_config_error(
+  attrs: &MergeConfigStructAttrs,
+) -> proc_macro2::TokenStream {
   let extra_variant = attrs.extra_error.as_ref().map(|ty| {
     quote! {
       #[error(transparent)]
@@ -491,19 +684,23 @@ fn mc_gen_config_error(attrs: &McStructAttrs) -> proc_macro2::TokenStream {
 
 fn mc_gen_from_cli_and_file(
   struct_name: &Ident,
-  fields: &[McFieldInfo],
-  attrs: &McStructAttrs,
+  fields: &[MergeConfigFieldInfo],
+  attrs: &MergeConfigStructAttrs,
 ) -> proc_macro2::TokenStream {
   let app_name = &attrs.app_name;
 
   // Find common field idents by name.
   let log_level_ident = fields
     .iter()
-    .find(|f| matches!(f.kind, McFieldKind::Common) && f.ident == "log_level")
+    .find(|f| {
+      matches!(f.kind, MergeConfigFieldKind::Common) && f.ident == "log_level"
+    })
     .map(|f| &f.ident);
   let log_format_ident = fields
     .iter()
-    .find(|f| matches!(f.kind, McFieldKind::Common) && f.ident == "log_format")
+    .find(|f| {
+      matches!(f.kind, MergeConfigFieldKind::Common) && f.ident == "log_format"
+    })
     .map(|f| &f.ident);
 
   let log_resolve = match (log_level_ident, log_format_ident) {
@@ -524,7 +721,7 @@ fn mc_gen_from_cli_and_file(
   let skip_stmts: Vec<_> = fields
     .iter()
     .filter_map(|f| {
-      if !matches!(f.kind, McFieldKind::Skip) {
+      if !matches!(f.kind, MergeConfigFieldKind::Skip) {
         return None;
       }
       let field_name = &f.ident;
@@ -540,7 +737,7 @@ fn mc_gen_from_cli_and_file(
   // relative to merged stmts is irrelevant; each field moves
   // independently.
   let subcommand_stmt = fields.iter().find_map(|f| {
-    if !matches!(f.kind, McFieldKind::Subcommand) {
+    if !matches!(f.kind, MergeConfigFieldKind::Subcommand) {
       return None;
     }
     let field_name = &f.ident;
@@ -553,7 +750,7 @@ fn mc_gen_from_cli_and_file(
   let merge_stmts: Vec<_> = fields
     .iter()
     .filter_map(|f| {
-      let McFieldKind::Merged(m) = &f.kind else {
+      let MergeConfigFieldKind::Merged(m) = &f.kind else {
         return None;
       };
 
@@ -654,18 +851,22 @@ fn mc_gen_from_cli_and_file(
 
 fn mc_gen_cli_app_impl(
   struct_name: &Ident,
-  fields: &[McFieldInfo],
-  attrs: &McStructAttrs,
+  fields: &[MergeConfigFieldInfo],
+  attrs: &MergeConfigStructAttrs,
 ) -> proc_macro2::TokenStream {
   let app_name = &attrs.app_name;
 
   let log_level_ident = fields
     .iter()
-    .find(|f| matches!(f.kind, McFieldKind::Common) && f.ident == "log_level")
+    .find(|f| {
+      matches!(f.kind, MergeConfigFieldKind::Common) && f.ident == "log_level"
+    })
     .map(|f| &f.ident);
   let log_format_ident = fields
     .iter()
-    .find(|f| matches!(f.kind, McFieldKind::Common) && f.ident == "log_format")
+    .find(|f| {
+      matches!(f.kind, MergeConfigFieldKind::Common) && f.ident == "log_format"
+    })
     .map(|f| &f.ident);
 
   let log_level_fn = log_level_ident.map(|id| {
@@ -725,7 +926,7 @@ fn mc_derive_impl(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
     ));
   };
 
-  let field_infos: Vec<McFieldInfo> = named
+  let field_infos: Vec<MergeConfigFieldInfo> = named
     .iter()
     .map(mc_parse_field)
     .collect::<syn::Result<_>>()?;
@@ -733,7 +934,7 @@ fn mc_derive_impl(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
   // Validate common fields.
   let common_count = field_infos
     .iter()
-    .filter(|f| matches!(f.kind, McFieldKind::Common))
+    .filter(|f| matches!(f.kind, MergeConfigFieldKind::Common))
     .count();
   if common_count != 2 {
     return Err(syn::Error::new_spanned(
@@ -742,12 +943,12 @@ fn mc_derive_impl(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
        (log_level and log_format)",
     ));
   }
-  let has_log_level = field_infos
-    .iter()
-    .any(|f| matches!(f.kind, McFieldKind::Common) && f.ident == "log_level");
-  let has_log_format = field_infos
-    .iter()
-    .any(|f| matches!(f.kind, McFieldKind::Common) && f.ident == "log_format");
+  let has_log_level = field_infos.iter().any(|f| {
+    matches!(f.kind, MergeConfigFieldKind::Common) && f.ident == "log_level"
+  });
+  let has_log_format = field_infos.iter().any(|f| {
+    matches!(f.kind, MergeConfigFieldKind::Common) && f.ident == "log_format"
+  });
   if !has_log_level || !has_log_format {
     return Err(syn::Error::new_spanned(
       &input,
@@ -758,7 +959,7 @@ fn mc_derive_impl(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
 
   let subcommand_count = field_infos
     .iter()
-    .filter(|f| matches!(f.kind, McFieldKind::Subcommand))
+    .filter(|f| matches!(f.kind, MergeConfigFieldKind::Subcommand))
     .count();
   if subcommand_count > 1 {
     return Err(syn::Error::new_spanned(
@@ -1142,5 +1343,91 @@ fn generate_async_cli_main(
 
       __result
     }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use syn::parse::Parser;
+
+  /// A named struct field parsed from its token form.
+  fn field(tokens: proc_macro2::TokenStream) -> syn::Field {
+    syn::Field::parse_named
+      .parse2(tokens)
+      .expect("the field tokens to parse")
+  }
+
+  /// The merged binding of a field parsed from its token form.
+  fn merged(tokens: proc_macro2::TokenStream) -> Box<MergeConfigMergedArg> {
+    match mc_parse_field(&field(tokens)).unwrap().kind {
+      MergeConfigFieldKind::Merged(merged) => merged,
+      _ => panic!("the field to be a merged field"),
+    }
+  }
+
+  /// The error a field's attributes produce.
+  fn error_of(tokens: proc_macro2::TokenStream) -> String {
+    mc_parse_field(&field(tokens))
+      .err()
+      .expect("the field to be rejected")
+      .to_string()
+  }
+
+  #[test]
+  fn a_plain_field_reads_the_derived_variable() {
+    let binding = merged(quote! {
+      #[merge_config(default = "0")]
+      pub port: u32
+    });
+    assert!(matches!(binding.env, MergeConfigArgEnv::Auto));
+  }
+
+  #[test]
+  fn no_env_opts_a_field_out() {
+    let binding = merged(quote! {
+      #[merge_config(no_env, default = "String::new()")]
+      pub token: String
+    });
+    assert!(matches!(binding.env, MergeConfigArgEnv::Disabled));
+  }
+
+  #[test]
+  fn a_literal_env_names_its_own_variable() {
+    let binding = merged(quote! {
+      #[merge_config(env = "LEGACY_PORT", default = "0")]
+      pub port: u32
+    });
+    assert!(matches!(
+      binding.env,
+      MergeConfigArgEnv::Literal(ref name) if name.value() == "LEGACY_PORT"
+    ));
+  }
+
+  #[test]
+  fn a_bare_env_is_refused_with_the_fix_named() {
+    let error = error_of(quote! {
+      #[merge_config(env, default = "0")]
+      pub port: u32
+    });
+    assert!(error.contains("no_env"), "{error}");
+  }
+
+  #[test]
+  fn no_env_and_a_literal_env_are_mutually_exclusive() {
+    let error = error_of(quote! {
+      #[merge_config(no_env, env = "PORT", default = "0")]
+      pub port: u32
+    });
+    assert!(error.contains("mutually exclusive"), "{error}");
+  }
+
+  #[test]
+  fn no_env_is_refused_on_a_subcommand_field() {
+    let error = error_of(quote! {
+      #[merge_config(subcommand, no_env)]
+      pub command: Commands
+    });
+    assert!(error.contains("not allowed on a `subcommand` field"), "{error}");
   }
 }

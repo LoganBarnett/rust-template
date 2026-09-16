@@ -11,7 +11,7 @@
 use crate::config::{Format, Output};
 use crate::error::AppError;
 use owo_colors::{AnsiColors, OwoColorize, Stream};
-use rust_template_review_lib::{Finding, Markup, Outcome, Standing};
+use rust_template_review_lib::{Finding, Markup, Outcome, Skipped, Standing};
 use std::collections::BTreeMap;
 use std::io::{self, Write};
 
@@ -78,6 +78,11 @@ pub fn found_anything(outcome: &Outcome) -> bool {
   }
 }
 
+/// Whether the pass had to leave part of the change set unjudged.
+pub fn incomplete(outcome: &Outcome) -> bool {
+  matches!(outcome, Outcome::Reviewed { skipped, .. } if !skipped.is_empty())
+}
+
 /// Colour `text`, but only when stdout is something that renders colour.
 fn paint(text: &str, hue: AnsiColors) -> String {
   text
@@ -100,10 +105,13 @@ fn human(markup: Markup, outcome: &Outcome) -> String {
       base,
       standing,
       reviewed,
+      skipped,
+      ..
     } => format!(
-      "{}\n\n{}\n{}",
+      "{}\n\n{}\n{}{}",
       bold(&markup.heading(1, &format!("Review — {}", base.describe()))),
       pass_note(reviewed),
+      skipped_note(markup, skipped),
       if standing.passes() {
         format!("\n{}\n", paint("No findings.", AnsiColors::Green))
       } else {
@@ -114,6 +122,40 @@ fn human(markup: Markup, outcome: &Outcome) -> String {
         )
       }
     ),
+  }
+}
+
+/// Name what the pass could not read.  A report that passed over a path in
+/// silence would read as a clean verdict on it, and the exit code alone does
+/// not say which path it was.
+fn skipped_note(markup: Markup, skipped: &[Skipped]) -> String {
+  if skipped.is_empty() {
+    String::new()
+  } else {
+    format!(
+      "\n{}\n\n{}",
+      paint(
+        &format!(
+          "{} path(s) could not be read and were not judged; they will be \
+           tried again next pass:",
+          skipped.len()
+        ),
+        AnsiColors::Red,
+      ),
+      skipped
+        .iter()
+        .map(|entry| {
+          format!(
+            "{}\n",
+            markup.item(&format!(
+              "{} — {}",
+              markup.code(&entry.path),
+              entry.reason
+            ))
+          )
+        })
+        .collect::<String>(),
+    )
   }
 }
 
@@ -211,12 +253,23 @@ fn llm_prompt(markup: Markup, outcome: &Outcome) -> String {
       "There is nothing to review ({}), so there is nothing to do.\n",
       base.describe()
     ),
-    Outcome::Reviewed { base, standing, .. } if standing.passes() => format!(
+    Outcome::Reviewed {
+      base,
+      standing,
+      skipped,
+      ..
+    } if standing.passes() => format!(
       "A code review of the current change set ({}) reported no findings.  \
-       There is nothing to do.\n",
-      base.describe()
+       There is nothing to do.\n{}",
+      base.describe(),
+      skipped_prompt(skipped),
     ),
-    Outcome::Reviewed { base, standing, .. } => format!(
+    Outcome::Reviewed {
+      base,
+      standing,
+      skipped,
+      ..
+    } => format!(
       "Your task is to satisfy a code review of this repository's current \
        change set.  A review tool judged the changes against the project's \
        conventions and reported the findings below.  Address every one of \
@@ -229,9 +282,30 @@ fn llm_prompt(markup: Markup, outcome: &Outcome) -> String {
        wrong, make no change for it and say which one and why, rather than \
        working around it.\n\n\
        When you are done, run `just review` again and confirm the findings \
-       are gone.\n",
+       are gone.\n{}",
       base.describe(),
       grouped(markup, standing),
+      skipped_prompt(skipped),
     ),
+  }
+}
+
+/// The same gap, for the session.  It is not a finding to fix, but a prompt
+/// that left it out would let the session report the review satisfied.
+fn skipped_prompt(skipped: &[Skipped]) -> String {
+  if skipped.is_empty() {
+    String::new()
+  } else {
+    format!(
+      "\nThe review could not read {} path(s) and judged nothing about \
+       them: {}.  Say so in your report rather than treating the review as \
+       complete.\n",
+      skipped.len(),
+      skipped
+        .iter()
+        .map(|entry| entry.path.as_str())
+        .collect::<Vec<_>>()
+        .join(", "),
+    )
   }
 }

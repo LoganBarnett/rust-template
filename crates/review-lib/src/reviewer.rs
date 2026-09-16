@@ -3,6 +3,7 @@
 //! The packet is assembled here rather than left to the reviewer to gather,
 //! so nothing about the scope depends on what the tree under review says.
 
+use crate::disk::{self, Content};
 use crate::error::{panic_detail, ReviewError};
 use crate::markup::Markup;
 use crate::patch;
@@ -19,7 +20,7 @@ use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 use tempfile::NamedTempFile;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 /// Set in the nested reviewer's environment.  A Stop-hook gate that finds it
 /// releases at once, so a review this tool runs never triggers a review of its
@@ -186,31 +187,47 @@ fn untracked_sections(
   worktree: &Worktree,
   stale: &[String],
 ) -> Result<String, ReviewError> {
-  worktree
-    .untracked_files()?
-    .into_iter()
-    .filter(|path| path != LICENSE && stale.contains(path))
-    .map(|path| untracked_block(worktree.root(), &path))
-    .collect()
+  worktree.untracked_files().map(|paths| {
+    paths
+      .into_iter()
+      .filter(|path| path != LICENSE && stale.contains(path))
+      .map(|path| untracked_block(worktree.root(), &path))
+      .collect()
+  })
 }
 
-fn untracked_block(root: &Path, path: &str) -> Result<String, ReviewError> {
-  std::fs::read(root.join(path))
-    .map_err(|source| ReviewError::UntrackedFileRead {
-      path: PathBuf::from(path),
-      source,
-    })
-    .map(|bytes| {
+/// One untracked path as the reviewer sees it.  A path that cannot be read by
+/// the time the packet is built, though it was readable when it was hashed
+/// moments earlier, is marked rather than dropped, so the reviewer knows there
+/// was something there.
+fn untracked_block(root: &Path, path: &str) -> String {
+  disk::read(root, path).map_or_else(
+    |error| {
+      warn!(path, %error, "could not read the untracked path for the packet");
       block(
         &format!("UNTRACKED FILE: {path}"),
-        &String::from_utf8(bytes).unwrap_or_else(|error| {
-          format!(
-            "(binary content, {} bytes; not shown)",
-            error.as_bytes().len()
-          )
-        }),
+        &format!("(could not be read: {error}; not shown)"),
       )
-    })
+    },
+    |content| content_block(path, content),
+  )
+}
+
+/// An untracked path's content as a packet block.  A link is its target, as
+/// git stores it; a path that vanished contributes nothing.
+fn content_block(path: &str, content: Content) -> String {
+  match content {
+    Content::Missing => String::new(),
+    Content::Link(target) => {
+      block(&format!("UNTRACKED SYMLINK: {path}"), &target.to_string_lossy())
+    }
+    Content::File(bytes) => block(
+      &format!("UNTRACKED FILE: {path}"),
+      &String::from_utf8(bytes).unwrap_or_else(|error| {
+        format!("(binary content, {} bytes; not shown)", error.as_bytes().len())
+      }),
+    ),
+  }
 }
 
 /// Run the reviewer over the packet and read back its verdict.  Anything

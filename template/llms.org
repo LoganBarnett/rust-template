@@ -541,6 +541,39 @@ the most expressive available.  Maximum expressivity is the wrong default.
 Reach for the narrowest construct that fits; escalate to ~match~ or a loop only
 when the combinator form distorts the meaning.
 
+*** Functional Style
+
+Rust is an imperative language at its core, but we can still leverage functional
+principals where possible, and Rust does a lot to assist with this.
+
+Code should be written in functional style whenever possible.  Imperative style
+will be an inevitable part of working in an imperative language like Rust, but
+you can perform practically all of the data manipulation that the imperative
+bits need in a functional section.  The imperative bits are effectively
+quarantined to where it is absolutely necessary, and then reasoning about them
+becomes easy, since the imperative part of them is laid bare and not
+intermingled with data manipulation.  Typical imperative surfaces are external
+APIs, touching disk, writing to the network, emitting output, and so on.
+
+Imperative smells:
++ Early returns :: While these can be handled by just using branching ~if/else~
+  sections, having a lot of them outlines a possible need to sharpen the data
+  structure via another type in an earlier stage of execution, or moving logic
+  branches into their own functions.  A function should generally be viewed as
+  "what is this returning" and not "what alterations are being made".  An early
+  return is basically saying "no further alterations", whereas branches are
+  saying "these are the possible ways in which results are produced".
++ List building :: Adding elements to a list is firmly in imperative territory.
+  It's a sure sign that a compositor isn't being used (such as a ~filter~).
+  Rust optimizes its calls quite a bit, so you're fine to chain ~filter~
+  expressions along and that sort of thing.
++ Long lived variables :: Long living variables, especially those marked as
+  ~mut~, are frequent trademarks of imperative functions that are probably too
+  long and doing too much.  Not all ~mut~ variables are culprits but many are.
+  Keep in mind that a long lived variable carries its own cognitive load - you
+  have to be aware that it could be used at any point in the function past its
+  declaration, all the way to the end of scope.
+
 *** Code Structure
 
 **** Files and modules

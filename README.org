@@ -233,7 +233,7 @@ Environment-variable names follow ~<app>_<flag>~ in lowercase — POSIX §8.1
 reserves the lowercase namespace for applications, and a per-app prefix avoids
 collisions with other processes' variables.  See
 [[file:crates/foundation/USAGE.org::*Environment variables][=USAGE.org= → Environment variables]] for the full rule, the POSIX citation, and
-the bare-~env~ vs.  ~env = "literal"~ distinction in the ~MergeConfig~ derive.
+the ~no_env~ opt-out and ~env = "literal"~ override in the ~MergeConfig~ derive.
 
 ** Semantic error types
 

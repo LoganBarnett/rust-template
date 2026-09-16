@@ -48,6 +48,12 @@ pub enum GitFailure {
   DiffRender(#[source] Box<std::io::Error>),
   #[error("could not hash the content: {0}")]
   Hash(#[source] Box<gix::hash::hasher::Error>),
+  #[error("could not stat the working-tree path {path:?}: {source}")]
+  WorktreeStat {
+    path: PathBuf,
+    #[source]
+    source: Box<std::io::Error>,
+  },
 }
 
 /// `?` conversions into the boxed variants; `#[from]` would take the box
@@ -147,26 +153,8 @@ pub enum ReviewError {
     #[source]
     source: std::io::Error,
   },
-  #[error(
-    "could not read the untracked file {path:?} for the review packet: \
-     {source}"
-  )]
-  UntrackedFileRead {
-    path: PathBuf,
-    #[source]
-    source: std::io::Error,
-  },
   #[error("could not hash the changed files' content: {0}")]
   Fingerprint(#[source] GitFailure),
-  #[error(
-    "could not read {path:?} to hash its content for the review record: \
-     {source}"
-  )]
-  FingerprintRead {
-    path: PathBuf,
-    #[source]
-    source: std::io::Error,
-  },
   #[error("could not read the review record at {path:?}: {source}")]
   RecordRead {
     path: PathBuf,

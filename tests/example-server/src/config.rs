@@ -11,11 +11,7 @@ pub struct Config {
   pub log_level: LogLevel,
   #[merge_config(common)]
   pub log_format: LogFormat,
-  #[merge_config(
-    cli_only,
-    env,
-    default = "\"https://example.com\".to_string()"
-  )]
+  #[merge_config(cli_only, default = "\"https://example.com\".to_string()")]
   pub base_url: String,
 }
 

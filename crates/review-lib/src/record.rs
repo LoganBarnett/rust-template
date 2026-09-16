@@ -1,10 +1,12 @@
 //! The review record: what has been judged, and what was said about it.
 //!
-//! A clean verdict is cached; a finding is not.  A finding is a claim about a
-//! file that the rest of the tree can invalidate, so any file carrying one is
-//! re-reviewed alongside whatever changed — otherwise a finding whose fix
-//! belongs in a different file could never clear, because the file it names
-//! never moves.
+//! A verdict is cached either way.  A clean one holds until the file moves; a
+//! finding stands against the file it names until that file moves or the
+//! caller clears the priors, whatever the reviewer says or does not say about
+//! it in between.  A file carrying one still rides along into the next round,
+//! so the change is judged in the context of what stands against it and the
+//! reviewer can add to it, but its silence about a finding it was told not to
+//! repeat takes nothing away.
 //!
 //! The record lives at the repository root under a name a contributor can
 //! find, rather than in a temporary directory keyed by a hash.  It is
@@ -218,6 +220,33 @@ impl Record {
       .is_some_and(|reviewed| !reviewed.findings.is_empty())
   }
 
+  /// The record with every finding recorded for `key` forgotten, along with
+  /// the rounds that produced them, and how many were forgotten.  The clean
+  /// verdicts stay, so an unchanged clean file is still reused; a file that
+  /// carried a finding is no longer recorded at all, which is what puts it
+  /// back in front of the reviewer with nothing to anchor it.
+  pub fn without_priors(self, key: &str) -> (Self, usize) {
+    let forgotten = self.standing(key).count();
+    (
+      Self {
+        schema: self.schema,
+        seq: self.seq,
+        reviews: self
+          .reviews
+          .into_iter()
+          .map(|(name, bucket)| {
+            if name == key {
+              (name, without_findings(bucket))
+            } else {
+              (name, bucket)
+            }
+          })
+          .collect(),
+      },
+      forgotten,
+    )
+  }
+
   /// The findings in force across the whole change set.
   pub fn standing(&self, key: &str) -> Standing {
     self
@@ -232,65 +261,84 @@ impl Record {
       })
   }
 
-  /// Fold one round's result into this comparison's bucket.
+  /// The record with one round's result folded into this comparison's
+  /// bucket.
   pub fn absorb(
-    &mut self,
+    self,
     key: &str,
     root: &Path,
     blobs: &BTreeMap<String, Option<String>>,
     stale: &[String],
     fresh: Vec<Finding>,
-  ) {
+  ) -> Self {
     let previous = self.bucket(key).cloned().unwrap_or_default();
     let (scoped, unscoped) = attribute(root, blobs, fresh);
     let round = previous.rounds + 1;
-    self.seq += 1;
-    self.reviews.insert(
-      key.to_string(),
-      Bucket {
-        seq: self.seq,
-        rounds: round,
-        files: rebuilt(&previous, blobs, stale, &scoped),
-        transcript: trimmed(
-          previous.transcript,
-          Round {
-            round,
-            reviewed: stale.to_vec(),
-            findings: scoped
-              .values()
-              .flatten()
-              .chain(unscoped.iter())
-              .cloned()
-              .collect(),
+    let seq = self.seq + 1;
+    Self {
+      schema: self.schema,
+      seq,
+      reviews: self
+        .reviews
+        .into_iter()
+        .chain(std::iter::once((
+          key.to_string(),
+          Bucket {
+            seq,
+            rounds: round,
+            files: rebuilt(&previous, blobs, stale, &scoped),
+            transcript: trimmed(
+              previous.transcript,
+              Round {
+                round,
+                reviewed: stale.to_vec(),
+                findings: scoped
+                  .values()
+                  .flatten()
+                  .chain(unscoped.iter())
+                  .cloned()
+                  .collect(),
+              },
+            ),
+            unscoped,
           },
-        ),
-        unscoped,
-      },
-    );
-    self.evict();
+        )))
+        .collect(),
+    }
+    .evicted()
   }
 
-  /// Keep only the most recently written comparisons.
-  fn evict(&mut self) {
-    if self.reviews.len() > BUCKETS {
-      let keep: BTreeSet<String> = self
+  /// The record holding only the most recently written comparisons.
+  fn evicted(self) -> Self {
+    let keep: BTreeSet<String> = self
+      .reviews
+      .iter()
+      .map(|(key, bucket)| (bucket.seq, key.clone()))
+      .collect::<BTreeSet<_>>()
+      .into_iter()
+      .rev()
+      .take(BUCKETS)
+      .map(|(_, key)| key)
+      .collect();
+    Self {
+      schema: self.schema,
+      seq: self.seq,
+      reviews: self
         .reviews
-        .iter()
-        .map(|(key, bucket)| (bucket.seq, key.clone()))
-        .collect::<BTreeSet<_>>()
         .into_iter()
-        .rev()
-        .take(BUCKETS)
-        .map(|(_, key)| key)
-        .collect();
-      self.reviews.retain(|key, _| keep.contains(key));
+        .filter(|(key, _)| keep.contains(key))
+        .collect(),
     }
   }
 
   /// What the reviewer already said about this comparison, marked against
-  /// what still stands, so it does not ask twice.  Empty until a round has
-  /// run.
-  pub fn history(&self, key: &str) -> String {
+  /// what still stands and whether each file has moved since, so it does not
+  /// ask twice.  Empty until a round has run.
+  pub fn history(
+    &self,
+    key: &str,
+    blobs: &BTreeMap<String, Option<String>>,
+  ) -> String {
     self.bucket(key).map_or_else(String::new, |bucket| {
       if bucket.transcript.is_empty() {
         String::new()
@@ -302,27 +350,35 @@ impl Record {
           bucket
             .transcript
             .iter()
-            .map(|round| render_round(round, &standing))
+            .map(|round| render_round(round, &standing, bucket, blobs))
             .collect::<String>()
         )
       }
     })
   }
 
-  /// Write the record, replacing only this run's bucket so a concurrent run's
-  /// other comparisons survive.  The write is a rename over a temporary file
-  /// in the same directory, so a reader never sees a half-written document and
-  /// a crash never leaves one.
-  pub fn store(&self, path: &Path, key: &str) -> Result<(), ReviewError> {
+  /// The record, written so that only this run's bucket replaces what is on
+  /// disk and a concurrent run's other comparisons survive.  The write is a
+  /// rename over a temporary file in the same directory, so a reader never
+  /// sees a half-written document and a crash never leaves one.
+  pub fn store(self, path: &Path, key: &str) -> Result<Self, ReviewError> {
     let dir = path.parent().unwrap_or(Path::new("."));
-    let merged = Self::load(path).map(|mut on_disk| {
-      if let Some(bucket) = self.bucket(key) {
-        on_disk.reviews.insert(key.to_string(), bucket.clone());
+    let merged = Self::load(path).map(|on_disk| {
+      Self {
+        schema: SCHEMA,
+        seq: on_disk.seq.max(self.seq),
+        reviews: on_disk
+          .reviews
+          .into_iter()
+          .chain(
+            self
+              .bucket(key)
+              .cloned()
+              .map(|bucket| (key.to_string(), bucket)),
+          )
+          .collect(),
       }
-      on_disk.schema = SCHEMA;
-      on_disk.seq = on_disk.seq.max(self.seq);
-      on_disk.evict();
-      on_disk
+      .evicted()
     })?;
     let mut file = tempfile::Builder::new()
       // The temporary file shares the record's name prefix so the same
@@ -346,7 +402,7 @@ impl Record {
       .map_err(persist)?;
     file
       .persist(path)
-      .map(|_| ())
+      .map(|_| self)
       .map_err(|error| persist(error.error))
   }
 
@@ -403,8 +459,10 @@ fn attribute(
 }
 
 /// Every changed path's entry, built from this round rather than edited into
-/// the last one: a stale path the reviewer said nothing about is recorded
-/// clean, which is how a file leaves the flagged set, and a path that has left
+/// the last one.  A judged path that moved and that the reviewer said nothing
+/// about is recorded clean, which is how a file leaves the flagged set; one
+/// that has not moved keeps what stood against it, since the reviewer is told
+/// not to repeat those and its silence is not a verdict.  A path that has left
 /// the change set is simply not rebuilt, which is how it is pruned.
 fn rebuilt(
   previous: &Bucket,
@@ -422,7 +480,7 @@ fn rebuilt(
         if judged.contains(path.as_str()) {
           FileReview {
             blob: blob.clone(),
-            findings: found,
+            findings: judged_findings(previous.files.get(path), blob, found),
           }
         } else {
           reused(previous.files.get(path), blob, found)
@@ -430,6 +488,38 @@ fn rebuilt(
       )
     })
     .collect()
+}
+
+/// The bucket with its clean verdicts and nothing else.
+fn without_findings(bucket: Bucket) -> Bucket {
+  Bucket {
+    seq: bucket.seq,
+    files: bucket
+      .files
+      .into_iter()
+      .filter(|(_, review)| review.findings.is_empty())
+      .collect(),
+    ..Bucket::default()
+  }
+}
+
+/// A judged path's findings: what this round reported, on top of what already
+/// stood when the path has not moved since it was last judged.  A finding the
+/// reviewer repeats regardless is kept once.
+fn judged_findings(
+  kept: Option<&FileReview>,
+  blob: &Option<String>,
+  found: Vec<Finding>,
+) -> Vec<Finding> {
+  let carried: Vec<Finding> = kept
+    .filter(|entry| entry.blob == *blob)
+    .map(|entry| entry.findings.clone())
+    .unwrap_or_default();
+  let fresh: Vec<Finding> = found
+    .into_iter()
+    .filter(|finding| !carried.iter().any(|stood| same(stood, finding)))
+    .collect();
+  carried.into_iter().chain(fresh).collect()
 }
 
 /// A path this round did not judge keeps what it was judged on.  It can still
@@ -481,7 +571,12 @@ fn summary(bucket: &Bucket) -> String {
   format!("Round {} of this review so far.{note}\n", bucket.rounds)
 }
 
-fn render_round(round: &Round, standing: &Standing) -> String {
+fn render_round(
+  round: &Round,
+  standing: &Standing,
+  bucket: &Bucket,
+  blobs: &BTreeMap<String, Option<String>>,
+) -> String {
   let shown = round
     .findings
     .iter()
@@ -489,11 +584,7 @@ fn render_round(round: &Round, standing: &Standing) -> String {
     .map(|finding| {
       format!(
         "  [{}] {}:{}  {} ({})\n        fix: {}\n",
-        if still_stands(finding, standing) {
-          "still stands"
-        } else {
-          "addressed"
-        },
+        mark(finding, standing, bucket, blobs),
         finding.path,
         finding.line,
         finding.convention,
@@ -531,9 +622,47 @@ fn still_stands(finding: &Finding, standing: &Standing) -> bool {
     .attributed
     .iter()
     .chain(standing.unscoped.iter())
-    .any(|current| {
-      current.path == finding.path && current.convention == finding.convention
-    })
+    .any(|current| same(current, finding))
+}
+
+/// Whether two findings are the same one across rounds; see `still_stands`
+/// for why this is the comparison.
+fn same(a: &Finding, b: &Finding) -> bool {
+  a.path == b.path && a.convention == b.convention
+}
+
+/// How the reviewer should treat a historical finding: `addressed` once it no
+/// longer stands, `re-judge` while its file has moved since it was judged, and
+/// `carried forward` while the file has not, in which case the record keeps
+/// the finding without the reviewer's help.
+fn mark(
+  finding: &Finding,
+  standing: &Standing,
+  bucket: &Bucket,
+  blobs: &BTreeMap<String, Option<String>>,
+) -> &'static str {
+  if !still_stands(finding, standing) {
+    "addressed"
+  } else if moved(bucket, blobs, &finding.path) {
+    "re-judge"
+  } else {
+    "carried forward"
+  }
+}
+
+/// Whether a path's content differs from what it was last judged on.  A path
+/// the record never judged, or one no longer in the change set, counts as
+/// moved: neither has a verdict to carry.
+fn moved(
+  bucket: &Bucket,
+  blobs: &BTreeMap<String, Option<String>>,
+  path: &str,
+) -> bool {
+  bucket
+    .files
+    .get(path)
+    .zip(blobs.get(path))
+    .is_none_or(|(kept, blob)| kept.blob != *blob)
 }
 
 /// A finding's path as the change set spells it.  A reviewer may answer with a
@@ -576,7 +705,7 @@ mod tests {
   fn a_record_from_another_schema_rebuilds_quietly() {
     let parsed = Record::parse(Path::new("review.json"), r#"{"schema":99}"#);
     assert!(
-      parsed.is_ok_and(|record| record.reviews.is_empty()),
+      parsed.is_ok_and(|rebuilt| rebuilt.reviews.is_empty()),
       "a version this build predates is not an error",
     );
   }
@@ -594,23 +723,21 @@ mod tests {
 
   #[test]
   fn an_unchanged_tree_is_never_stale() {
-    let mut record = Record::empty();
     let content = blobs(&[("a.rs", Some("aaa"))]);
-    record.absorb(
+    let judged = Record::empty().absorb(
       "head:x",
       Path::new("/r"),
       &content,
       &["a.rs".to_string()],
       vec![],
     );
-    assert!(record.partition("head:x", &content).stale.is_empty());
+    assert!(judged.partition("head:x", &content).stale.is_empty());
   }
 
   #[test]
   fn a_flagged_file_rides_along_with_whatever_changed() {
-    let mut record = Record::empty();
     let first = blobs(&[("a.rs", Some("aaa")), ("b.rs", Some("bbb"))]);
-    record.absorb(
+    let flagged = Record::empty().absorb(
       "head:x",
       Path::new("/r"),
       &first,
@@ -620,15 +747,14 @@ mod tests {
     // Only b.rs moved, but a.rs carries a finding whose fix may well live in
     // b.rs, so it must be judged again too.
     let second = blobs(&[("a.rs", Some("aaa")), ("b.rs", Some("CHANGED"))]);
-    let partition = record.partition("head:x", &second);
+    let partition = flagged.partition("head:x", &second);
     assert_eq!(partition.stale, vec!["a.rs".to_string(), "b.rs".to_string()],);
   }
 
   #[test]
   fn only_the_changed_file_is_stale_when_nothing_is_flagged() {
-    let mut record = Record::empty();
     let first = blobs(&[("a.rs", Some("aaa")), ("b.rs", Some("bbb"))]);
-    record.absorb(
+    let clean = Record::empty().absorb(
       "head:x",
       Path::new("/r"),
       &first,
@@ -637,100 +763,95 @@ mod tests {
     );
     let second = blobs(&[("a.rs", Some("aaa")), ("b.rs", Some("CHANGED"))]);
     assert_eq!(
-      record.partition("head:x", &second).stale,
+      clean.partition("head:x", &second).stale,
       vec!["b.rs".to_string()],
     );
   }
 
   #[test]
   fn addressing_a_file_clears_its_findings() {
-    let mut record = Record::empty();
-    let first = blobs(&[("a.rs", Some("aaa"))]);
-    record.absorb(
-      "head:x",
-      Path::new("/r"),
-      &first,
-      &["a.rs".to_string()],
-      vec![finding("a.rs", "comments are sentences")],
-    );
-    assert_eq!(record.standing("head:x").count(), 1);
-    let second = blobs(&[("a.rs", Some("FIXED"))]);
-    record.absorb(
-      "head:x",
-      Path::new("/r"),
-      &second,
-      &["a.rs".to_string()],
-      vec![],
-    );
-    assert!(record.standing("head:x").passes());
-  }
-
-  #[test]
-  fn a_path_that_leaves_the_change_set_is_pruned() {
-    let mut record = Record::empty();
-    record.absorb(
+    let flagged = Record::empty().absorb(
       "head:x",
       Path::new("/r"),
       &blobs(&[("a.rs", Some("aaa"))]),
       &["a.rs".to_string()],
       vec![finding("a.rs", "comments are sentences")],
     );
-    record.absorb(
+    assert_eq!(flagged.standing("head:x").count(), 1);
+    let fixed = flagged.absorb(
       "head:x",
       Path::new("/r"),
-      &blobs(&[("b.rs", Some("bbb"))]),
-      &["b.rs".to_string()],
+      &blobs(&[("a.rs", Some("FIXED"))]),
+      &["a.rs".to_string()],
       vec![],
     );
-    assert!(record.standing("head:x").passes());
+    assert!(fixed.standing("head:x").passes());
+  }
+
+  #[test]
+  fn a_path_that_leaves_the_change_set_is_pruned() {
+    let pruned = Record::empty()
+      .absorb(
+        "head:x",
+        Path::new("/r"),
+        &blobs(&[("a.rs", Some("aaa"))]),
+        &["a.rs".to_string()],
+        vec![finding("a.rs", "comments are sentences")],
+      )
+      .absorb(
+        "head:x",
+        Path::new("/r"),
+        &blobs(&[("b.rs", Some("bbb"))]),
+        &["b.rs".to_string()],
+        vec![],
+      );
+    assert!(pruned.standing("head:x").passes());
   }
 
   #[test]
   fn a_finding_outside_the_change_set_is_kept_apart() {
-    let mut record = Record::empty();
-    record.absorb(
+    let judged = Record::empty().absorb(
       "head:x",
       Path::new("/r"),
       &blobs(&[("a.rs", Some("aaa"))]),
       &["a.rs".to_string()],
       vec![finding("elsewhere.rs", "unrelated")],
     );
-    let standing = record.standing("head:x");
+    let standing = judged.standing("head:x");
     assert!(standing.attributed.is_empty());
     assert_eq!(standing.unscoped.len(), 1);
   }
 
   #[test]
   fn an_out_of_scope_finding_retires_after_one_round() {
-    let mut record = Record::empty();
-    record.absorb(
-      "head:x",
-      Path::new("/r"),
-      &blobs(&[("a.rs", Some("aaa"))]),
-      &["a.rs".to_string()],
-      vec![finding("elsewhere.rs", "unrelated")],
-    );
-    record.absorb(
-      "head:x",
-      Path::new("/r"),
-      &blobs(&[("a.rs", Some("CHANGED"))]),
-      &["a.rs".to_string()],
-      vec![],
-    );
-    assert!(record.standing("head:x").passes());
+    let retired = Record::empty()
+      .absorb(
+        "head:x",
+        Path::new("/r"),
+        &blobs(&[("a.rs", Some("aaa"))]),
+        &["a.rs".to_string()],
+        vec![finding("elsewhere.rs", "unrelated")],
+      )
+      .absorb(
+        "head:x",
+        Path::new("/r"),
+        &blobs(&[("a.rs", Some("CHANGED"))]),
+        &["a.rs".to_string()],
+        vec![],
+      );
+    assert!(retired.standing("head:x").passes());
   }
 
   #[test]
   fn a_finding_path_is_normalized_against_the_root() {
-    let mut record = Record::empty();
-    record.absorb(
+    let judged = Record::empty().absorb(
       "head:x",
       Path::new("/r"),
       &blobs(&[("a.rs", Some("aaa"))]),
       &["a.rs".to_string()],
       vec![finding("/r/a.rs", "absolute"), finding("./a.rs", "dotted")],
     );
-    let standing = record.standing("head:x");
+    let standing = judged.standing("head:x");
     assert_eq!(
       standing.attributed.len(),
       2,
@@ -741,17 +862,18 @@ mod tests {
 
   #[test]
   fn the_transcript_is_bounded_and_says_what_it_dropped() {
-    let mut record = Record::empty();
-    (0..TRANSCRIPT_ROUNDS + 2).for_each(|round| {
-      record.absorb(
-        "head:x",
-        Path::new("/r"),
-        &blobs(&[("a.rs", Some(&format!("blob{round}")))]),
-        &["a.rs".to_string()],
-        vec![finding("a.rs", "comments are sentences")],
-      );
-    });
-    let history = record.history("head:x");
+    let long_running =
+      (0..TRANSCRIPT_ROUNDS + 2).fold(Record::empty(), |so_far, round| {
+        so_far.absorb(
+          "head:x",
+          Path::new("/r"),
+          &blobs(&[("a.rs", Some(&format!("blob{round}")))]),
+          &["a.rs".to_string()],
+          vec![finding("a.rs", "comments are sentences")],
+        )
+      });
+    let history =
+      long_running.history("head:x", &blobs(&[("a.rs", Some("blob0"))]));
     assert!(history.contains("2 earlier round(s) omitted"));
     assert_eq!(
       history.matches("Round ").count(),
@@ -762,29 +884,114 @@ mod tests {
 
   #[test]
   fn history_marks_what_was_addressed() {
-    let mut record = Record::empty();
-    record.absorb(
+    let fixed = Record::empty()
+      .absorb(
+        "head:x",
+        Path::new("/r"),
+        &blobs(&[("a.rs", Some("aaa"))]),
+        &["a.rs".to_string()],
+        vec![finding("a.rs", "comments are sentences")],
+      )
+      .absorb(
+        "head:x",
+        Path::new("/r"),
+        &blobs(&[("a.rs", Some("FIXED"))]),
+        &["a.rs".to_string()],
+        vec![],
+      );
+    assert!(fixed
+      .history("head:x", &blobs(&[("a.rs", Some("FIXED"))]))
+      .contains("[addressed]"));
+  }
+
+  #[test]
+  fn a_finding_on_an_unmoved_file_survives_the_reviewers_silence() {
+    let first = blobs(&[("a.rs", Some("aaa")), ("b.rs", Some("bbb"))]);
+    // b.rs moved, a.rs rode along flagged, and the reviewer, told not to
+    // repeat what is carried forward, said nothing.
+    let second = blobs(&[("a.rs", Some("aaa")), ("b.rs", Some("CHANGED"))]);
+    let carried = Record::empty()
+      .absorb(
+        "head:x",
+        Path::new("/r"),
+        &first,
+        &["a.rs".to_string(), "b.rs".to_string()],
+        vec![finding("a.rs", "comments are sentences")],
+      )
+      .absorb(
+        "head:x",
+        Path::new("/r"),
+        &second,
+        &["a.rs".to_string(), "b.rs".to_string()],
+        vec![],
+      );
+    assert_eq!(carried.standing("head:x").count(), 1);
+  }
+
+  #[test]
+  fn a_repeated_finding_is_kept_once() {
+    let first = blobs(&[("a.rs", Some("aaa")), ("b.rs", Some("bbb"))]);
+    let second = blobs(&[("a.rs", Some("aaa")), ("b.rs", Some("CHANGED"))]);
+    let repeated = Record::empty()
+      .absorb(
+        "head:x",
+        Path::new("/r"),
+        &first,
+        &["a.rs".to_string(), "b.rs".to_string()],
+        vec![finding("a.rs", "comments are sentences")],
+      )
+      .absorb(
+        "head:x",
+        Path::new("/r"),
+        &second,
+        &["a.rs".to_string(), "b.rs".to_string()],
+        vec![finding("a.rs", "comments are sentences")],
+      );
+    assert_eq!(repeated.standing("head:x").count(), 1);
+  }
+
+  #[test]
+  fn history_says_which_findings_to_re_judge() {
+    let first = blobs(&[("a.rs", Some("aaa")), ("b.rs", Some("bbb"))]);
+    let flagged = Record::empty().absorb(
       "head:x",
       Path::new("/r"),
-      &blobs(&[("a.rs", Some("aaa"))]),
-      &["a.rs".to_string()],
+      &first,
+      &["a.rs".to_string(), "b.rs".to_string()],
+      vec![
+        finding("a.rs", "comments are sentences"),
+        finding("b.rs", "no unwrap"),
+      ],
+    );
+    let second = blobs(&[("a.rs", Some("aaa")), ("b.rs", Some("CHANGED"))]);
+    let history = flagged.history("head:x", &second);
+    assert!(history.contains("[carried forward] a.rs"), "{history}");
+    assert!(history.contains("[re-judge] b.rs"), "{history}");
+  }
+
+  #[test]
+  fn clearing_priors_forgets_findings_but_keeps_clean_verdicts() {
+    let content = blobs(&[("a.rs", Some("aaa")), ("b.rs", Some("bbb"))]);
+    let flagged = Record::empty().absorb(
+      "head:x",
+      Path::new("/r"),
+      &content,
+      &["a.rs".to_string(), "b.rs".to_string()],
       vec![finding("a.rs", "comments are sentences")],
     );
-    record.absorb(
-      "head:x",
-      Path::new("/r"),
-      &blobs(&[("a.rs", Some("FIXED"))]),
-      &["a.rs".to_string()],
-      vec![],
-    );
-    assert!(record.history("head:x").contains("[addressed]"));
+    let (cleared, forgotten) = flagged.without_priors("head:x");
+    assert_eq!(forgotten, 1);
+    assert!(cleared.standing("head:x").passes());
+    assert!(cleared.history("head:x", &content).is_empty());
+    let partition = cleared.partition("head:x", &content);
+    assert_eq!(partition.stale, vec!["a.rs".to_string()]);
+    assert_eq!(partition.reused, vec!["b.rs".to_string()]);
   }
 
   #[test]
   fn buckets_do_not_share_verdicts() {
-    let mut record = Record::empty();
     let content = blobs(&[("a.rs", Some("aaa"))]);
-    record.absorb(
+    let head_judged = Record::empty().absorb(
       "head:x",
       Path::new("/r"),
       &content,
@@ -792,28 +999,27 @@ mod tests {
       vec![],
     );
     assert!(
-      !record.partition("branch:y", &content).stale.is_empty(),
+      !head_judged.partition("branch:y", &content).stale.is_empty(),
       "a head verdict must not satisfy a branch request",
     );
   }
 
   #[test]
   fn only_the_most_recent_comparisons_survive() {
-    let mut record = Record::empty();
     let content = blobs(&[("a.rs", Some("aaa"))]);
-    (0..BUCKETS + 2).for_each(|n| {
-      record.absorb(
+    let crowded = (0..BUCKETS + 2).fold(Record::empty(), |so_far, n| {
+      so_far.absorb(
         &format!("head:{n}"),
         Path::new("/r"),
         &content,
         &["a.rs".to_string()],
         vec![],
-      );
+      )
     });
-    assert_eq!(record.reviews.len(), BUCKETS);
-    assert!(record
+    assert_eq!(crowded.reviews.len(), BUCKETS);
+    assert!(crowded
       .reviews
       .contains_key(&format!("head:{}", BUCKETS + 1)));
-    assert!(!record.reviews.contains_key("head:0"));
+    assert!(!crowded.reviews.contains_key("head:0"));
   }
 }

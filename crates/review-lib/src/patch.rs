@@ -7,6 +7,7 @@
 //! a header carries what a reader needs — which file, and whether it is new,
 //! gone, or renamed — and no `index` line.
 
+use crate::disk;
 use crate::error::{GitFailure, ReviewError};
 use crate::worktree::Worktree;
 use gix::bstr::{BStr, BString, ByteSlice};
@@ -18,6 +19,7 @@ use gix::diff::blob::{Algorithm, Platform, ResourceKind, UnifiedDiff};
 use gix::objs::tree::EntryKind;
 use gix::ObjectId;
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 use tracing::debug;
 
 /// The lines of context around each hunk, as `git diff` prints by default.
@@ -100,9 +102,16 @@ fn file_patch(
       ResourceKind::OldOrSource,
       &repo.objects,
     )?;
+    // The pipeline loads a link's target only when told the entry is a link;
+    // as a blob it would read through to whatever the link points at.
     cache.set_resource(
       ObjectId::null(hash),
-      EntryKind::Blob,
+      disk::kind(worktree.root(), path).map_err(|source| {
+        GitFailure::WorktreeStat {
+          path: PathBuf::from(path),
+          source: Box::new(source),
+        }
+      })?,
       BStr::new(path),
       ResourceKind::NewOrDestination,
       &repo.objects,

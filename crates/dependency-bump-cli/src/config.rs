@@ -1,7 +1,7 @@
 //! Staged configuration for the dependency bumper.
 //!
 //! Built on the foundation `MergeConfig` convention: each field becomes a
-//! `--kebab-case` CLI flag (with an optional config-file and env-var
+//! `--kebab-case` CLI flag (with a config-file and env-var
 //! source), and `#[foundation_main]` resolves the layered `Config` before
 //! `main` runs.
 //!

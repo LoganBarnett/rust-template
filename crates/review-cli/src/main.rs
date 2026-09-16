@@ -11,10 +11,13 @@
 //! mode: nothing to report, something to report, or could not look.  A run
 //! that found something and a run that broke must not look alike, because a
 //! task runner reports both as a failed recipe and the code is all that
-//! distinguishes them.
+//! distinguishes them.  A run that looked at most of the change set but could
+//! not read part of it still reports what it found, and exits as one that
+//! could not look, since a gap it passed over in silence would read as a pass.
 
 mod config;
 mod error;
+mod hints;
 mod render;
 
 use config::Config;
@@ -27,7 +30,8 @@ use tracing::error;
 const CONFORMS: u8 = 0;
 /// The review ran and something stands against the changes.
 const FINDINGS: u8 = 1;
-/// The review could not be carried out, so the changes were never judged.
+/// The review could not be carried out in full, so some or all of the changes
+/// were never judged.
 const COULD_NOT_RUN: u8 = 2;
 
 #[foundation_main]
@@ -46,8 +50,11 @@ fn reviewed(config: &Config) -> Result<ExitCode, AppError> {
   // cost a reviewer run to discover.
   render::check(config.format, config.column_wrap)?;
   let outcome = rust_template_review_lib::run(&config.request())?;
+  hints::priors(&outcome);
   render::print(config.format, config.output, config.column_wrap, &outcome)?;
-  Ok(ExitCode::from(if render::found_anything(&outcome) {
+  Ok(ExitCode::from(if render::incomplete(&outcome) {
+    COULD_NOT_RUN
+  } else if render::found_anything(&outcome) {
     FINDINGS
   } else {
     CONFORMS
