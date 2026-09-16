@@ -6,6 +6,10 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+1. Bump synstructure from 0.13.2 to 0.14.0
+2. Bump yoke-derive from 0.8.2 to 0.8.3
+3. Bump zerofrom-derive from 0.1.7 to 0.1.8
+4. Bump zlib-rs from 0.6.7 to 0.6.8
 ** Security
 * v0.124.0
 ** Maintenance
