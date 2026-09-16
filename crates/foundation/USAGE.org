@@ -417,9 +417,9 @@ this macro.  Per-variant arg defaults from the config file remain a possible
 future addition; today, projects that want such defaults should layer them in
 the variant's own ~Args~ struct or via a wrapper script.
 
-The ~subcommand~ kind rejects ~default~, ~required~, ~env~, ~short~, ~parse~,
-~cli_only~, and ~name~.  Those attributes have no meaning for a passthrough
-field — the macro errors at compile time if any are present.
+The ~subcommand~ kind rejects ~default~, ~required~, ~env = "..."~, ~no_env~,
+~short~, ~parse~, ~cli_only~, and ~name~.  Those attributes have no meaning for
+a passthrough field — the macro errors at compile time if any are present.
 
 At most one ~subcommand~ field is permitted per struct.
 
@@ -575,32 +575,46 @@ developer's shell environment, and ~LISTEN~ specifically lives near systemd's
 ~LISTEN_FDS~ / ~LISTEN_PID~ socket-activation contract.  Prefixing with the app
 name sidesteps both.
 
-** ~env~ vs ~env = "literal"~
+** Env by default: ~no_env~ and ~env = "literal"~
 
-The ~MergeConfig~ derive accepts two forms of the ~env~ attribute on merged
-fields:
+Every merged field reads ~<app>_<flag>~ with no attribute at all, where ~flag~
+is the ~name = "..."~ override if present, otherwise the field identifier.
+There is nothing to write for the common case:
 
-- *Bare ~env~* — derive the name as ~<app>_<flag>~, where ~flag~ is the ~name =
-  "..."~ override if present, otherwise the field identifier. Use this whenever
-  the derivation gives the right answer.
+#+begin_src rustic :results none :exports code
+#[merge_config(required)]
+pub base_url: String, // → reads `<app>_base_url`
+#+end_src
 
-#+begin_src rustic :results none :exports code #[merge_config(env, required)]
-pub base_url: String, // → reads `<app>_base_url` #+end_src
+Two attributes deviate from that.  Each is the attention-getter on its field, so
+leave a comment beside it that explains *why* it deviates:
+
+- *~no_env~* — the field reads nothing from the environment.  Reserved for a
+  value that must come only from the command line or the config file: a secret
+  provisioned through a credential file, or a name that would collide with a
+  variable some other tool already owns.
+
+#+begin_src rustic :results none :exports code
+// The token is provisioned through the credential file only, so a stray
+// variable in a developer's shell can never stand in for it.
+#[merge_config(no_env, default = "String::new()")]
+pub api_token: String,
+#+end_src
 
 - *~env = "literal"~* — use the literal verbatim, with no prefixing.  Reserved
   for genuine deviations: a name imposed by an external contract, or the rare
-  case where the derived form is wrong.  When you reach for the literal form,
-  leave a comment beside it that explains *why* it deviates — the explicit form
-  is now the attention-getter, so it should earn the attention.
+  case where the derived form is wrong.
 
-#+begin_src rustic :results none :exports code // External: matches the legacy
-`MYORG_LICENCE_KEY` contract used // by every other tool in the suite; do not
-rename without updating // those callers.  #[merge_config(env =
-"MYORG_LICENCE_KEY", required)] pub licence_key: String, #+end_src
+#+begin_src rustic :results none :exports code
+// External: matches the legacy `MYORG_LICENCE_KEY` contract used by every
+// other tool in the suite; do not rename without updating those callers.
+#[merge_config(env = "MYORG_LICENCE_KEY", required)]
+pub licence_key: String,
+#+end_src
 
-Omit the attribute entirely on fields that should *not* read from the
-environment (subcommand selectors, secrets you want to source only from a
-credential file, etc.).
+A bare ~env~ with no value is a compile error, because it would be a no-op that
+reads as meaningful; the message names the fix.  ~subcommand~ fields never read
+the environment and reject both attributes.
 
 ** Consequences for tooling
 
@@ -608,8 +622,9 @@ A field's env-var name is no longer a literal string in the source — it is
 derived at macro expansion.  Two ways to recover the spelling:
 
 - Run the binary with ~--help~.  Clap prints each flag's env-var name in the
-  right-hand column ("[env: ~my_app_listen~]"), so a user trying to find the
-  right variable to set has the answer in front of them with no source dive.
+  right-hand column ("[env: ~my_app_listen~]"), and since every merged flag
+  carries one, that listing is the complete inventory — a user trying to find
+  the right variable to set has the answer in front of them with no source dive.
 - ~cargo expand~ shows the expanded ~CliRaw~ if you need to confirm exactly what
   clap sees, or want to grep the post-expansion form.
 

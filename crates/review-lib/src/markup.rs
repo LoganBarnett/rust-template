@@ -69,6 +69,14 @@ impl Markup {
     }
   }
 
+  /// A plain list item, for a line that is neither a judgement nor a fix.
+  pub fn item(self, text: &str) -> String {
+    match self {
+      Self::Plain => format!("  {text}"),
+      Self::Markdown | Self::Org => format!("- {text}"),
+    }
+  }
+
   /// An item nested under a checkbox.  The fix belongs to the judgement above
   /// it rather than standing beside it, and nesting is what says so — a reader
   /// ticking off findings sees one box per judgement, not two lines that might

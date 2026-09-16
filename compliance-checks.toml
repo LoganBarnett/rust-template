@@ -1400,6 +1400,15 @@ kind = "section-exists"
 target = "llms.org"
 section = ["General code guidelines", "Authoring Comments and Documentation", "Content", "Anti Pattern: Inventory"]
 
+# The functional-style rule and the three smells it names, so a spawn keeps
+# the guidance the reviewer judges imperative code against.
+[[check]]
+id = "llms-functional-style-section"
+description = "llms.org carries the \"Functional Style\" section under the Rust guidelines."
+kind = "section-exists"
+target = "llms.org"
+section = ["General code guidelines", "Rust", "Functional Style"]
+
 # ---------------------------------------------------------------------------
 # CONTRIBUTING.org: file plus major headings a spawn must keep.
 # ---------------------------------------------------------------------------

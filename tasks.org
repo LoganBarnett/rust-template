@@ -1224,7 +1224,8 @@ Struct attributes:
 Field attributes:
 - ~common~ — log_level / log_format; resolved via ~resolve_log_settings~ against
   ~CommonConfigFile~
-- ~env~ — derived env-var name ~<app>_<flag>~ (lowercase, POSIX §8.1)
+- ~no_env~ — opt out of the env-var source (the default reads ~<app>_<flag>~,
+  lowercase, POSIX §8.1)
 - ~env = "literal"~ — explicit env-var name (rare; for non-derivable contracts)
 - ~name = "field"~ — CLI/file field name (defaults to struct field name)
 - ~short = 'x'~ — short flag for clap
@@ -1269,13 +1270,12 @@ pub struct Config {
     pub log_level: LogLevel,
     #[merge_config(common)]
     pub log_format: LogFormat,
-    #[merge_config(name = "listen", env,
+    #[merge_config(name = "listen",
                    default = "\"127.0.0.1:3000\".to_string()", parse)]
     pub listen_address: ListenerAddress,
-    #[merge_config(env,
-                   default = "std::path::PathBuf::from(\"frontend/public\")")]
+    #[merge_config(default = "std::path::PathBuf::from(\"frontend/public\")")]
     pub frontend_path: std::path::PathBuf,
-    #[merge_config(env, required)]
+    #[merge_config(required)]
     pub base_url: String,
     #[merge_config(skip)]
     pub oidc: Option<OidcConfig>,

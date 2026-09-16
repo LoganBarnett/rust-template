@@ -89,6 +89,36 @@ pub enum Output {
   LlmPrompt,
 }
 
+/// What to do with the findings recorded from earlier passes.
+#[derive(
+  Debug,
+  Clone,
+  Copy,
+  Default,
+  PartialEq,
+  Eq,
+  clap::ValueEnum,
+  serde::Deserialize,
+)]
+#[serde(rename_all = "kebab-case")]
+pub enum Priors {
+  /// Carry each one forward until the file it names changes.
+  #[default]
+  Keep,
+  /// Forget them and judge the files that carried them afresh, so a finding
+  /// you disagree with is put to the reviewer again rather than repeated.
+  Clear,
+}
+
+impl From<Priors> for rust_template_review_lib::Priors {
+  fn from(priors: Priors) -> Self {
+    match priors {
+      Priors::Keep => Self::Keep,
+      Priors::Clear => Self::Clear,
+    }
+  }
+}
+
 #[derive(Debug, Clone, MergeConfig)]
 #[merge_config(app_name = "review")]
 pub struct Config {
@@ -105,34 +135,39 @@ pub struct Config {
   /// The markup the report and the reviewer's prose are written in.
   #[merge_config(default = "Format::Md")]
   pub format: Format,
+  /// What to do with the findings recorded from earlier passes: `keep` carries
+  /// them forward until the file they name changes; `clear` forgets them and
+  /// judges those files afresh.
+  #[merge_config(default = "Priors::Keep")]
+  pub priors: Priors,
   /// Reflow the report to this many columns; zero, the default, leaves it
   /// unwrapped.  Only `--format org` can be reflowed, and only at 80: the
   /// reflow is org-fmt's, whose wrap column is fixed.
-  #[merge_config(env, default = "0")]
+  #[merge_config(default = "0")]
   pub column_wrap: u32,
   /// Model the nested reviewer runs on; empty leaves the CLI's default.
-  #[merge_config(env, default = "String::new()")]
+  #[merge_config(default = "String::new()")]
   pub reviewer_model: String,
   /// Agentic turn budget for the nested reviewer, so a review that wanders
   /// cannot run without bound.
-  #[merge_config(env, default = "40")]
+  #[merge_config(default = "40")]
   pub reviewer_max_turns: u32,
   /// Wall-clock deadline for the nested reviewer, in seconds.  The review
   /// stops it and fails rather than reporting a tree it never finished
   /// judging.
-  #[merge_config(env, default = "780")]
+  #[merge_config(default = "780")]
   pub reviewer_timeout_secs: u64,
   /// Where the review record lives; empty means the repository root.
-  #[merge_config(env, default = "String::new()")]
+  #[merge_config(default = "String::new()")]
   pub record_file: String,
   /// Test seam: a shell command run in place of the reviewer.  It is fed the
   /// packet on stdin and must print the same JSON envelope `claude --print
   /// --output-format json` does.
-  #[merge_config(env, default = "String::new()")]
+  #[merge_config(default = "String::new()")]
   pub reviewer_cmd: String,
   /// Test seam: a file holding a newline-separated change set, used in place
   /// of the git read so the pass can be exercised without a real tree.
-  #[merge_config(env, default = "String::new()")]
+  #[merge_config(default = "String::new()")]
   pub git_files_file: String,
 }
 
@@ -152,6 +187,7 @@ impl Config {
         markup: self.format.into(),
         command: set(&self.reviewer_cmd),
       },
+      priors: self.priors.into(),
       record_file: set(&self.record_file).map(PathBuf::from),
       git_files_fixture: set(&self.git_files_file).map(PathBuf::from),
     }

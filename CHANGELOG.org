@@ -3,8 +3,28 @@
 
 * Upcoming
 ** Added
+1. Every =MergeConfig= merged field now reads its value from the =<app>_<flag>=
+   environment variable by default; a new =no_env= field attribute opts a field
+   out, and =env = "name"= still overrides the spelling.  Run the binary with
+   =--help= to see each flag's variable.  Existing config structs need the edit
+   under Breaking.
+2. The review takes =--priors clear= (or =review_priors=clear=) to forget the
+   findings recorded for the comparison and put the files that carried them back
+   to the reviewer.  No action needed.
+3. =llms.org= gains a Functional Style section naming the imperative smells to
+   refactor away; the next compliance sync brings it into existing spawns.
 ** Fixes
+1. The review no longer fails on a symlink in the change set; a link is judged
+   as its target path, the way git stores it.  No action needed.
+2. A path the review cannot read no longer stops the pass: it is named in the
+   report, retried next pass, and the run exits 2.  No action needed.
+3. A finding against a file that has not changed since it was reported now
+   stands until that file changes.  No action needed.
 ** Breaking
+1. The bare =env= attribute on a =MergeConfig= field is now a compile error,
+   because it is the default.  Delete =env= from every =#[merge_config(...)]= in
+   your config structs (keep any =env = "name"= override), and add =no_env= to
+   any field that previously had no =env= and must not read the environment.
 ** Maintenance
 ** Security
 * v0.126.0

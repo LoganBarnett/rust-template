@@ -11,7 +11,7 @@
 // level here — panicking is the failure signal a test wants.
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use tempfile::TempDir;
 
@@ -147,6 +147,21 @@ impl Repo {
   fn commit(&self, message: &str) {
     self.git(&["add", "--all"]);
     self.git(&["commit", "--message", message]);
+  }
+
+  /// A symlink at `path` pointing at `target`.
+  #[cfg(unix)]
+  fn symlink(&self, path: &str, target: &Path) {
+    std::os::unix::fs::symlink(target, self.dir().join(path))
+      .expect("to create the symlink");
+  }
+
+  /// A directory in the case's scratch space, outside the repository so it
+  /// never joins the change set itself.
+  fn scratch_dir(&self, name: &str) -> PathBuf {
+    let dir = self.work().join(name);
+    std::fs::create_dir_all(&dir).expect("the scratch directory");
+    dir
   }
 
   /// A reviewer stand-in that reports `findings` and leaves a trace of what it
@@ -527,6 +542,22 @@ fn each_format_writes_its_own_markup() {
 }
 
 #[test]
+fn the_format_is_read_from_the_environment() {
+  let repo = Repo::new();
+  repo.write("src.rs", "fn main() {}\n");
+  let reviewer = repo.reviewer(&[finding("src.rs", "comments are sentences")]);
+  let report = stdout(&repo.review_env(
+    &reviewer,
+    &["--diff", "head"],
+    &[("review_format", "org")],
+  ));
+  assert!(
+    report.contains("- [ ] =line 1="),
+    "the format comes from the environment when no flag names it:\n{report}",
+  );
+}
+
+#[test]
 fn a_format_switch_does_not_reuse_the_other_markup() {
   let repo = Repo::new();
   repo.write("src.rs", "fn main() {}\n");
@@ -776,4 +807,143 @@ fn origin_head_names_the_default_branch() {
     stderr(&output),
   );
   assert!(repo.packet().contains("+++ b/src.rs"), "{}", repo.packet());
+}
+
+#[cfg(unix)]
+#[test]
+fn a_symlink_to_a_directory_is_reviewed_as_its_target() {
+  let repo = Repo::new();
+  let target = repo.scratch_dir("target");
+  repo.symlink("link", &target);
+  let output = repo.review(&repo.reviewer(&[]), &["--diff", "head"]);
+  assert!(output.status.success(), "{}", stderr(&output));
+  let packet = repo.packet();
+  assert!(packet.contains("UNTRACKED SYMLINK: link"), "{packet}");
+  assert!(
+    packet.contains(&target.to_string_lossy().into_owned()),
+    "the link is judged as its target, not read through:\n{packet}",
+  );
+  assert!(
+    packet.contains("new file mode 120000"),
+    "the diff shows a link arriving:\n{packet}",
+  );
+  // The record keys the link on its target, so an unchanged link is not
+  // judged twice: a reviewer that would fail if it ran proves that.
+  let again = repo.review("exit 1", &["--diff", "head"]);
+  assert!(again.status.success(), "{}", stderr(&again));
+  assert_eq!(repo.calls(), 1);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_committed_symlink_that_is_retargeted_diffs_its_targets() {
+  let repo = Repo::new();
+  let one = repo.scratch_dir("one");
+  let two = repo.scratch_dir("two");
+  repo.symlink("link", &one);
+  repo.commit("add the link");
+  std::fs::remove_file(repo.dir().join("link")).expect("to drop the link");
+  repo.symlink("link", &two);
+  let output = repo.review(&repo.reviewer(&[]), &["--diff", "head"]);
+  assert!(output.status.success(), "{}", stderr(&output));
+  let packet = repo.packet();
+  assert!(packet.contains(&format!("-{}", one.display())), "{packet}");
+  assert!(packet.contains(&format!("+{}", two.display())), "{packet}");
+}
+
+#[cfg(unix)]
+#[test]
+fn an_unreadable_path_is_skipped_and_flags_the_run() {
+  use std::os::unix::fs::PermissionsExt;
+  let repo = Repo::new();
+  repo.write("src.rs", "fn main() {}\n");
+  repo.write("secret.txt", "hidden\n");
+  let secret = repo.dir().join("secret.txt");
+  std::fs::set_permissions(&secret, std::fs::Permissions::from_mode(0o000))
+    .expect("to lock the file");
+  if std::fs::read(&secret).is_ok() {
+    // Root reads anything, so there is no unreadable file to exercise here.
+    return;
+  }
+  let output = repo.review(&repo.reviewer(&[]), &["--diff", "head"]);
+  assert_eq!(
+    output.status.code(),
+    Some(2),
+    "a review with a gap in it is not a pass:\n{}",
+    stderr(&output),
+  );
+  let report = stdout(&output);
+  assert!(report.contains("secret.txt"), "the report names the gap:\n{report}");
+  assert!(report.contains("No findings."), "the rest was judged:\n{report}");
+  let packet = repo.packet();
+  assert!(packet.contains("src.rs"), "{packet}");
+  assert!(
+    !packet.contains("secret.txt"),
+    "an unreadable path never reaches the reviewer:\n{packet}",
+  );
+  assert_eq!(repo.calls(), 1);
+  let files = repo.record()["reviews"]
+    .as_object()
+    .expect("bucketed reviews")
+    .values()
+    .next()
+    .expect("a bucket")["files"]
+    .clone();
+  assert!(files.get("src.rs").is_some(), "{files}");
+  assert!(
+    files.get("secret.txt").is_none(),
+    "a path never judged is not recorded as judged:\n{files}",
+  );
+}
+
+#[test]
+fn a_finding_left_alone_still_stands_after_the_next_pass() {
+  let repo = Repo::new();
+  repo.write("first.rs", "fn a() {}\n");
+  repo.write("second.rs", "fn b() {}\n");
+  repo.review(
+    &repo.reviewer(&[
+      finding("first.rs", "comments are sentences"),
+      finding("second.rs", "no unwrap"),
+    ]),
+    &["--diff", "head"],
+  );
+  // Only first.rs is addressed.  The reviewer is told not to repeat what is
+  // carried forward, so it says nothing, and second.rs must keep its finding.
+  repo.write("first.rs", "// Fixed.\nfn a() {}\n");
+  let output = repo.review(&repo.reviewer(&[]), &["--diff", "head"]);
+  assert_eq!(output.status.code(), Some(1), "{}", stdout(&output));
+  let report = stdout(&output);
+  assert!(
+    report.contains("no unwrap"),
+    "the untouched finding stands:\n{report}"
+  );
+  assert!(
+    !report.contains("comments are sentences"),
+    "the addressed finding is gone:\n{report}",
+  );
+  let packet = repo.packet();
+  assert!(packet.contains("[carried forward] second.rs"), "{packet}");
+  assert!(packet.contains("[re-judge] first.rs"), "{packet}");
+}
+
+#[test]
+fn clearing_priors_puts_a_standing_finding_back_to_the_reviewer() {
+  let repo = Repo::new();
+  repo.write("src.rs", "fn main() {}\n");
+  repo.review(
+    &repo.reviewer(&[finding("src.rs", "comments are sentences")]),
+    &["--diff", "head"],
+  );
+  // Nothing changed, so with priors kept the finding would simply stand.
+  // Cleared, the file goes back to the reviewer, whose fresh verdict is the
+  // whole answer.
+  let output =
+    repo.review(&repo.reviewer(&[]), &["--diff", "head", "--priors", "clear"]);
+  assert!(output.status.success(), "{}", stdout(&output));
+  assert!(stdout(&output).contains("No findings."), "{}", stdout(&output));
+  assert_eq!(repo.calls(), 2, "the reviewer judged the file again");
+  let packet = repo.packet();
+  assert!(packet.contains("src.rs"), "{packet}");
+  assert!(!packet.contains("REVIEW HISTORY"), "fresh eyes:\n{packet}");
 }

@@ -13,7 +13,7 @@ use tokio_listener::ListenerAddress;
 ///
 /// Env-var names are written out long-hand here because this struct is
 /// raw clap (flattened in via `extra_cli`), not a `MergeConfig` field —
-/// the macro's bare-`env` derivation does not reach inside `extra_cli`
+/// the macro's automatic env derivation does not reach inside `extra_cli`
 /// types.  Names follow the same `<app>_<flag>` convention the macro
 /// uses elsewhere; if you rename the project, update the prefix here.
 #[derive(Debug, clap::Args)]
@@ -56,14 +56,13 @@ pub struct Config {
   /// Unix socket, or sd-listen to inherit from systemd.
   #[merge_config(
     name = "listen",
-    env,
     default = "\"127.0.0.1:3000\".to_string()",
     parse
   )]
   pub listen_address: ListenerAddress,
   /// Base URL of the service (e.g. https://example.com), used to
   /// construct the OIDC redirect URI.
-  #[merge_config(env, required)]
+  #[merge_config(required)]
   pub base_url: String,
   #[merge_config(skip)]
   pub oidc: Option<OidcConfig>,

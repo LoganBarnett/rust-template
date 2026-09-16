@@ -6,6 +6,7 @@
 //! render the result; everything else lives here.
 
 pub mod base;
+pub mod disk;
 pub mod error;
 pub mod fingerprint;
 pub mod markup;
@@ -20,7 +21,7 @@ pub use base::{Base, DiffMode};
 pub use error::ReviewError;
 pub use markup::Markup;
 pub use record::Standing;
-pub use review::{run, Outcome, Request};
+pub use review::{run, Outcome, Priors, PriorsApplied, Request, Skipped};
 pub use reviewer::Finding;
 
 // Re-exported so the front-end takes every leaf type its staged config names
