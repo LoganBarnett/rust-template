@@ -6,6 +6,10 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+1. Bump cfg-if from 1.0.4 to 1.0.5
+2. Bump rustix from 1.1.4 to 1.1.5
+3. Bump syn from 3.0.5 to 3.0.6
+4. Bump unicode-ident from 1.0.24 to 1.0.26
 ** Security
 * v0.125.0
 ** Maintenance
