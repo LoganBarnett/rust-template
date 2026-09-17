@@ -3,6 +3,12 @@
 
 * Upcoming
 ** Added
+** Fixes
+** Breaking
+** Maintenance
+** Security
+* v0.127.0
+** Added
 1. Every =MergeConfig= merged field now reads its value from the =<app>_<flag>=
    environment variable by default; a new =no_env= field attribute opts a field
    out, and =env = "name"= still overrides the spelling.  Run the binary with
@@ -25,8 +31,6 @@
    because it is the default.  Delete =env= from every =#[merge_config(...)]= in
    your config structs (keep any =env = "name"= override), and add =no_env= to
    any field that previously had no =env= and must not read the environment.
-** Maintenance
-** Security
 * v0.126.0
 ** Maintenance
 1. Bump cfg-if from 1.0.4 to 1.0.5
