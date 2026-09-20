@@ -6,6 +6,7 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+1. Bump rand from 0.10.2 to 0.10.3
 ** Security
 * v0.128.0
 ** Maintenance
