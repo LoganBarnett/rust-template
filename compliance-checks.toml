@@ -1400,6 +1400,35 @@ kind = "section-exists"
 target = "llms.org"
 section = ["General code guidelines", "Authoring Comments and Documentation", "Content", "Anti Pattern: Inventory"]
 
+[[check]]
+id = "llms-comments-anti-pattern-buried-problem"
+description = "The comment conventions name the buried-problem anti-pattern."
+kind = "section-exists"
+target = "llms.org"
+section = ["General code guidelines", "Authoring Comments and Documentation", "Content", "Anti Pattern: Buried Problem"]
+
+# A spawn that keeps the heading and guts the body would pass the section
+# check, so the rule itself — the opening is a falsifiable claim — is asserted
+# as a phrase.
+[[check]]
+id = "llms-comments-buried-problem-falsifiable-opening"
+description = "The buried-problem anti-pattern requires a surprise comment to open with a falsifiable statement."
+kind = "mention-present"
+target = "llms.org"
+section = ["General code guidelines", "Authoring Comments and Documentation", "Content", "Anti Pattern: Buried Problem"]
+contains = "is a falsifiable statement about the world"
+
+# A spawn carrying the earlier mechanism-first tombstone template passes the
+# section check unchanged, so the reworded template's lead is asserted as a
+# phrase.
+[[check]]
+id = "llms-comments-tombstone-leads-with-fact"
+description = "The tombstone template puts the fact that breaks the obvious approach first."
+kind = "mention-present"
+target = "llms.org"
+section = ["General code guidelines", "Authoring Comments and Documentation", "Content", "Anti Pattern: Historical / Tombstone Verbiage"]
+contains = "the fact that breaks the obvious approach comes first"
+
 # The functional-style rule and the three smells it names, so a spawn keeps
 # the guidance the reviewer judges imperative code against.
 [[check]]
