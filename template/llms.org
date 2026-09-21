@@ -116,9 +116,11 @@ These rules apply to comments and documentation roughly the same.
 
 Historical verbiage are such as "We used to do X, but now we do Y".  We should
 only provide such prose in the _surprising_ case.  These would be better thought
-of as "One would typically reach for X, but it fails because of Y, so instead we
-do Z".  This is the only case in which we use historical prose that refers to
-prior code that no longer exists.
+of as "Y, so the usual X does not work; instead we do Z": the fact that breaks
+the obvious approach comes first, as a claim a reader can check, and the
+deviation follows (see "Anti Pattern: Buried Problem").  This is the only case
+in which we use historical prose that refers to prior code that no longer
+exists.
 
 The easy test for this is "If you would have gotten this right on the first
 pass, would this have still needed this prose?".  If the answer is no, then do
@@ -147,6 +149,53 @@ that takes inventory must be updated.  Same goes if you add a W activity.  The
 simple answer is to not write this prose at all.  If you find yourself writing
 these remarks, they are virtually always wrong, and instead an even briefer
 summary must be written instead, or the comment must be removed entirely.
+
+**** Anti Pattern: Buried Problem
+
+A comment that justifies a surprise — a workaround, a deviation from the obvious
+approach, a step nobody would expect — opens with the problem.  The first
+sentence (or the first clause, when the sentence is short) is a falsifiable
+statement about the world: what goes wrong, or which external fact forces the
+deviation.  The mechanism and the fix follow.
+
+The anti-pattern is the comment written in discovery order: the mechanism first,
+then its consequence, with the problem itself arriving in a trailing "so",
+"since", or "because" clause, or inside a parenthetical.  A reviewer cannot
+evaluate any of it until they reach that clause, so they hold every moving part
+in their head and then read the whole thing again.  The tells:
+
+- The problem sits at the end, in a trailing "so", "since", or "because" clause,
+  or in a parenthetical.
+- The opening sentence takes inventory of the moving parts before saying why
+  they matter.
+- The opening asserts intent ("this is deliberate") or passes judgement
+  ("deliberately simple") rather than stating a fact that could be false.
+
+Bad — the problem (a leaked key) is a relative clause in the middle, and the fix
+is the last three words:
+
+#+begin_example
+reqwest's error text carries the request URL, which for a v3 key
+includes the key itself; the endpoint field already names the call,
+so every wrapped reqwest error drops its URL.
+#+end_example
+
+Good — the first sentence is the problem, and it can be checked on its own:
+
+#+begin_example
+A wrapped reqwest error would leak the API key: reqwest's message
+includes the request URL, and a v3 key travels in the URL.  The endpoint
+field already names the call, so the URL is dropped.
+#+end_example
+
+Falsifiable is the test.  The opening claim is the one thing a reviewer has to
+verify, and it is the deletion condition for the code beneath it: when the claim
+stops holding, the workaround goes.  A statement of intent gives the reader
+neither.
+
+This applies wherever a surprise is justified — a code comment, a doc comment, a
+passage in ~README.org~ or under ~docs/~.  It does not apply to summaries, whose
+first sentence is the outcome (see "How to Summarize").
 
 **** How to Summarize
 
@@ -181,9 +230,11 @@ recipient.  So now our script looks like:
 5. Fire the nuke.
 
 Okay that's an odd step, and because it's an odd step, it would require a
-comment _immediately adjacent_ to that specific functionality.  Since this has
-no great impact on how our ~nuke-fire.sh~ script works, we should leave it out
-of the summary.
+comment _immediately adjacent_ to that specific functionality.  That comment
+opens with the fact that forces the step (the recipient's silo rejects an
+unsigned tip), not with a description of the signing; see "Anti Pattern: Buried
+Problem".  Since this has no great impact on how our ~nuke-fire.sh~ script
+works, we should leave it out of the summary.
 
 ** Version Control
 *** Commit Messages
