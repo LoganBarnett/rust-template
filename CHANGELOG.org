@@ -3,15 +3,17 @@
 
 * Upcoming
 ** Added
+** Fixes
+** Breaking
+** Maintenance
+** Security
+* v0.131.0
+** Added
 1. =llms.org= gains a "Buried Problem" comment anti-pattern: a comment that
    justifies a surprise now opens with a falsifiable statement of the problem,
    and the tombstone template leads with the fact that breaks the obvious
    approach.  Three compliance checks assert both, so the next compliance sync
    brings them into existing spawns.
-** Fixes
-** Breaking
-** Maintenance
-** Security
 * v0.130.0
 ** Maintenance
 1. Bump hyper-rustls from 0.27.9 to 0.27.10
