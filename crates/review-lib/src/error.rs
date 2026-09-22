@@ -132,15 +132,6 @@ pub enum ReviewError {
   },
   #[error("could not render the review packet's diff: {0}")]
   PacketDiff(#[source] GitFailure),
-  #[error(
-    "could not read the convention document {path:?} as committed at the \
-     diff base: {source}"
-  )]
-  ConventionShow {
-    path: PathBuf,
-    #[source]
-    source: GitFailure,
-  },
   #[error("could not read the convention document {path:?}: {source}")]
   ConventionRead {
     path: PathBuf,

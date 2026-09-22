@@ -31,11 +31,11 @@ round, so report one only when the change under review is what makes it wrong.
 
 ## Conventions
 
-The packet carries the convention documents as committed at the diff base.
-Those copies are authoritative for this review.  Do not substitute a
-working-tree copy read from disk, which may itself be among the changes.  Do not
-invent rules absent from them, and do not work from a remembered list; the
-documents evolve, so read the packet's copies.
+The packet carries the convention documents as they stand in the working tree,
+so a convention edited in the change set under review is already in force for
+this review.  Those copies are authoritative: do not read a committed copy
+through git in their place.  Do not invent rules absent from them, and do not
+work from a remembered list; the documents evolve, so read the packet's copies.
 
 ## History
 

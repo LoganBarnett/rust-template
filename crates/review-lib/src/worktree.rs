@@ -248,39 +248,6 @@ impl Worktree {
     Ok(self.repo.merge_base(branch, head)?.detach())
   }
 
-  /// The content of `path` as committed at `base`, or `None` when that commit
-  /// has no such file.  Absence is a lookup that finds nothing, never a
-  /// message to interpret.
-  pub fn file_at(
-    &self,
-    base: &ObjectId,
-    path: &str,
-  ) -> Result<Option<String>, ReviewError> {
-    self
-      .committed(base, path)
-      .map_err(|source| ReviewError::ConventionShow {
-        path: PathBuf::from(path),
-        source,
-      })
-  }
-
-  fn committed(
-    &self,
-    base: &ObjectId,
-    path: &str,
-  ) -> Result<Option<String>, GitFailure> {
-    self
-      .tree_at(base)?
-      .lookup_entry_by_path(path)?
-      .map(|entry| {
-        entry
-          .object()
-          .map(|object| String::from_utf8_lossy(&object.data).into_owned())
-          .map_err(GitFailure::from)
-      })
-      .transpose()
-  }
-
   /// The tree `base` names, whether it is a commit or a tree itself.
   pub(crate) fn tree_at(
     &self,
