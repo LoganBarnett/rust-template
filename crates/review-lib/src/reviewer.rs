@@ -32,7 +32,7 @@ const SCHEMA: &str = r#"{"type":"object","properties":{"findings":{"type":"array
 
 /// The convention documents, README first so what the project is frames the
 /// rest, with the template's emitted copies last.  A spawn has the first three
-/// only; a path absent at the diff base is skipped.
+/// only; a path absent from the working tree is skipped.
 const CONVENTION_PATHS: [&str; 6] = [
   "README.org",
   "CONTRIBUTING.org",
@@ -84,7 +84,7 @@ pub struct Scope<'a> {
   /// The repository, read for the conventions, the diff, and the untracked
   /// files regardless of the working directory the tool was run from.
   pub worktree: &'a Worktree,
-  /// The object the conventions and the diff come from.
+  /// The object the diff is taken against.
   pub base: &'a ObjectId,
   /// The paths this round judges; the diff is restricted to them.
   pub stale: &'a [String],
@@ -103,12 +103,8 @@ pub fn packet(scope: &Scope) -> Result<String, ReviewError> {
        below.  Files judged on an earlier round and unchanged since are \
        deliberately absent.\n\n"
         .to_string(),
-      format!(
-        "CONVENTIONS (as committed at {})\n{}\n\n",
-        scope.base,
-        "-".repeat(40)
-      ),
-      conventions(scope.worktree, scope.base)?,
+      format!("CONVENTIONS (working tree)\n{}\n\n", "-".repeat(40)),
+      conventions(scope.worktree)?,
       global_instructions()?,
       history_section(scope.history),
       format!(
@@ -150,19 +146,27 @@ fn block(label: &str, body: &str) -> String {
   )
 }
 
-fn conventions(
-  worktree: &Worktree,
-  base: &ObjectId,
-) -> Result<String, ReviewError> {
+/// The convention documents as the working tree holds them, each as a packet
+/// block; a path the tree lacks contributes nothing.  A copy read at the diff
+/// base lacks any edit the change set under review makes to it, so the tree is
+/// read even though the diff is taken against the base.
+fn conventions(worktree: &Worktree) -> Result<String, ReviewError> {
   CONVENTION_PATHS
     .iter()
-    .map(|path| {
-      worktree.file_at(base, path).map(|document| {
-        document.map(|text| block(&format!("CONVENTIONS: {path}"), &text))
-      })
-    })
+    .map(|path| convention(worktree.root(), path))
     .collect::<Result<Vec<_>, _>>()
     .map(|blocks| blocks.into_iter().flatten().collect())
+}
+
+fn convention(root: &Path, path: &str) -> Result<Option<String>, ReviewError> {
+  match std::fs::read_to_string(root.join(path)) {
+    Ok(text) => Ok(Some(block(&format!("CONVENTIONS: {path}"), &text))),
+    Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
+    Err(source) => Err(ReviewError::ConventionRead {
+      path: root.join(path),
+      source,
+    }),
+  }
 }
 
 /// The user's global instructions, which the conventions defer to on matters

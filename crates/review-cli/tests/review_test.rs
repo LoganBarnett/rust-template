@@ -513,18 +513,51 @@ fn a_reviewer_that_fails_is_never_a_pass() {
 }
 
 #[test]
-fn the_packet_carries_the_conventions_as_committed() {
+fn the_packet_carries_the_conventions_from_the_working_tree() {
   let repo = Repo::new();
   repo.write("README.org", "#+title: Case\nThe committed copy.\n");
   repo.commit("record a convention");
   repo.write("README.org", "#+title: Case\nThe working copy.\n");
   repo.review(&repo.reviewer(&[]), &["--diff", "head"]);
   let packet = repo.packet();
-  assert!(packet.contains("CONVENTIONS: README.org"));
+  // The diff section carries both copies of the edited line, so only the
+  // conventions block is judged.
+  let conventions = packet
+    .split("----- BEGIN CONVENTIONS: README.org -----")
+    .nth(1)
+    .and_then(|rest| {
+      rest.split("----- END CONVENTIONS: README.org -----").next()
+    })
+    .expect("a README.org conventions block");
   assert!(
-    packet.contains("The committed copy."),
-    "conventions come from the diff base, not the tree under review:\n{packet}",
+    conventions.contains("The working copy."),
+    "a convention edited in the change set is in force for its review:\n{packet}",
   );
+  assert!(
+    !conventions.contains("The committed copy."),
+    "the committed copy is not what the reviewer is handed:\n{packet}",
+  );
+}
+
+#[test]
+fn a_convention_that_cannot_be_read_fails_the_review() {
+  let repo = Repo::new();
+  repo.write("src.rs", "fn main() {}\n");
+  // A directory where a document should be is not "absent": the read fails
+  // with something other than not-found, and that has to surface rather than
+  // silently review without the document.
+  repo.write("llms.org/nested.org", "#+title: Wrong place\n");
+  let output = repo.review(&repo.reviewer(&[]), &["--diff", "head"]);
+  assert!(
+    !output.status.success(),
+    "an unreadable convention document must fail the review",
+  );
+  assert!(
+    stderr(&output).contains("convention document"),
+    "the failure names the convention document:\n{}",
+    stderr(&output),
+  );
+  assert_eq!(repo.calls(), 0, "the reviewer must not run without the packet");
 }
 
 #[test]
@@ -657,19 +690,13 @@ fn a_wrapped_report_carries_no_colour() {
 }
 
 #[test]
-fn a_convention_the_base_lacks_is_skipped_in_any_locale() {
+fn a_convention_the_working_tree_lacks_is_skipped() {
   let repo = Repo::new();
   repo.write("src.rs", "fn main() {}\n");
   // The stub carries README.org and nothing else, so every other convention
-  // path is absent at the base; an absent document is skipped rather than
-  // failing the review.  The French locale stays as a guard:
-  // should a read of git's translated messages ever creep back, this case
-  // goes red wherever fr_FR is installed.
-  let output = repo.review_env(
-    &repo.reviewer(&[]),
-    &["--diff", "head"],
-    &[("LC_ALL", "fr_FR.UTF-8"), ("LANG", "fr_FR.UTF-8")],
-  );
+  // path is absent; an absent document is skipped rather than failing the
+  // review.
+  let output = repo.review(&repo.reviewer(&[]), &["--diff", "head"]);
   assert!(
     output.status.success(),
     "an absent convention document must not fail the review: {}",
@@ -677,7 +704,7 @@ fn a_convention_the_base_lacks_is_skipped_in_any_locale() {
   );
   assert!(
     repo.packet().contains("CONVENTIONS: README.org"),
-    "the conventions the base does carry still reach the packet",
+    "the conventions the tree does carry still reach the packet",
   );
 }
 
