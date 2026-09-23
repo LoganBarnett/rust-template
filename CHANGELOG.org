@@ -4,12 +4,14 @@
 * Upcoming
 ** Added
 ** Fixes
-1. A convention edited in a change set now governs the review of that change
-   set: the review reads =llms.org= and its siblings from the working tree
-   rather than the diff base.  No action needed.
 ** Breaking
 ** Maintenance
 ** Security
+* v0.132.0
+** Fixes
+1. A convention edited in a change set now governs the review of that change
+   set: the review reads =llms.org= and its siblings from the working tree
+   rather than the diff base.  No action needed.
 * v0.131.0
 ** Added
 1. =llms.org= gains a "Buried Problem" comment anti-pattern: a comment that
