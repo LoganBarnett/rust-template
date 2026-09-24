@@ -22,11 +22,6 @@ use std::time::{Duration, Instant};
 use tempfile::NamedTempFile;
 use tracing::{debug, info, warn};
 
-/// Set in the nested reviewer's environment.  A Stop-hook gate that finds it
-/// releases at once, so a review this tool runs never triggers a review of its
-/// own.
-pub const NESTED_ENV: &str = "RUST_TEMPLATE_REVIEW_NESTED";
-
 /// The verdict's shape, enforced by the CLI's structured output.
 const SCHEMA: &str = r#"{"type":"object","properties":{"findings":{"type":"array","items":{"type":"object","properties":{"path":{"type":"string"},"line":{"type":"integer"},"convention":{"type":"string"},"document":{"type":"string"},"fix":{"type":"string"}},"required":["path","line","convention","document","fix"]}}},"required":["findings"]}"#;
 
@@ -252,7 +247,6 @@ pub fn review(options: &Options, packet: &str) -> Result<Verdict, ReviewError> {
     source,
   };
   let mut child = command
-    .env(NESTED_ENV, "1")
     .stdin(Stdio::piped())
     .stdout(Stdio::piped())
     .stderr(Stdio::piped())

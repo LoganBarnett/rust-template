@@ -479,3 +479,32 @@ be:
 #+begin_quote
 1. Dependabot bumps merge on their own again.  No action needed.
 #+end_quote
+
+* Code review
+
+The project ships an on-demand code review: =just review= sends the current
+change set to a nested reviewer that judges it against the project's convention
+documents and your own =~/.claude/CLAUDE.md=, and reports what stands.  Claude
+Code users are expected to run it before opening a pull request, and to address
+what it reports:
+
+#+begin_src sh :results none :exports code
+just review --diff branch
+#+end_src
+
+=--diff branch= judges everything the branch would land against the default
+branch, committed or not; =--diff head= narrows that to the uncommitted work in
+progress.  The dev shell provides the tool, but the reviewer it drives is your
+own =claude= install, which must be on =PATH=.
+
+A run that found something and a run that broke must not look alike, so the exit
+code tells them apart: 0 means the changes conform, 1 means the review ran and
+something stands against them, and 2 means it could not judge the tree in full.
+=just= reports both 1 and 2 as a failed recipe, so read the code: a 1 with
+findings printed above it is the tool working, not breaking.
+
+Verdicts are recorded per file in =review.json= (ignored by git), so a re-run
+judges only the files that changed since; pass =--priors clear= to judge the
+recorded files afresh.  =--help= covers the rest.
+
+Nothing in CI runs the review on your behalf.

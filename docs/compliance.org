@@ -186,8 +186,9 @@ revisions pinned in =Cargo.lock= and =flake.lock= must agree with each other
 (=foundation-pins-agree=) and with the template =HEAD=
 (=foundation-pins-current=), and the Claude settings the template emits,
 including the absence of the retired review Stop hook
-(=review-gate-hook-retired=).  Rust facts are read from the parsed syntax tree,
-and YAML / JSON / TOML facts from the parsed value tree, narrowing to a
+(=review-gate-hook-retired=) and of the gate binary it ran
+(=review-stop-package-retired=).  Rust facts are read from the parsed syntax
+tree, and YAML / JSON / TOML facts from the parsed value tree, narrowing to a
 substring match only at the leaf.
 
 It is the first step of both processes above (see
@@ -250,12 +251,15 @@ This additive freedom is distinct from the opt-out below.  Presence checks make
 for the other case — deliberately /violating/ a required rule — which must be
 declared with a reason so the deviation stays honest.
 
-=yaml-path-not-contains= is the one forbidding kind, and it earns its place
-narrowly: it names a /superseded/ value at a pointer a spawn may otherwise set
-freely, so an absent pointer passes and an unrelated value passes.  Reach for it
-only to retire something the template used to emit — never to fence off values a
-spawn is entitled to choose, which is what a presence check on the wanted value
-already does better.
+Two kinds forbid rather than require, and each earns its place narrowly.
+=yaml-path-not-contains= names a /superseded/ value at a pointer a spawn may
+otherwise set freely, so an absent pointer passes and an unrelated value passes.
+=dev-shell-package-absent= names a package the foundation flake used to expose
+and no longer does; a shell that still pulls it stops evaluating on the next
+foundation bump, so a shell that does not evaluate /fails/ rather than passing
+vacuously.  Reach for either only to retire something the template used to emit
+— never to fence off values a spawn is entitled to choose, which is what a
+presence check on the wanted value already does better.
 
 ** A propagated change needs a check
 

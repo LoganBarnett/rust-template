@@ -33,6 +33,7 @@ The short version, in page order; each has its own section below.
 - Staged configuration
 - Semantic error types
 - Nix development shell
+- On-demand code review
 
 ** Server
 
@@ -250,6 +251,12 @@ formatters, =just=, and every other project dependency in a single command.  No
 global installs, no version drift between contributors, no "works on my
 machine."
 
+** On-demand code review
+
+=just review= judges the current change set against the project's own
+conventions and reports what stands.  Every generated project ships it;
+[[file:CONTRIBUTING.org][=CONTRIBUTING.org=]] says when to run it.
+
 * Prerequisites
 
 - [[https://nixos.org/download.html][Nix]] with flakes enabled.
@@ -456,6 +463,7 @@ The object key under =templateSpawns= is the project name (=--name=).  Running
 | [[file:docs/getting-started.org][docs/getting-started.org]]          | Development workflow and first steps.              |
 | [[file:docs/customizing.org][docs/customizing.org]]              | Adapting the template for your project.            |
 | [[file:docs/compliance.org][docs/compliance.org]]               | Compliance audits and forward-porting updates.     |
+| [[file:docs/maintenance.org][docs/maintenance.org]]              | Maintainer tooling, such as clearing a Dependabot backlog. |
 | [[file:CONTRIBUTING.org][CONTRIBUTING.org]]                  | Contributing to this template repository.          |
 | [[file:template/README.org][template/README.org]]               | Full feature list and architecture of emitted projects. |
 
@@ -508,35 +516,10 @@ git cherry-pick <commit-hash>   # cherry-pick specific improvements
 
 Or merge selectively and resolve conflicts, preserving your customizations.
 
-* Combining a Dependabot backlog
+* Maintenance
 
-The [[*Dependabot with guarded auto-merge][guarded auto-merge]] keeps a steady trickle of dependency PRs merging on their
-own.  When that trickle becomes a /backlog/ instead — a machine slept for a
-week, or bumps outpaced the merge queue — =just dependabot-combine= clears it in
-one shot: it gathers every open Dependabot PR whose checks are green, rolls
-their bumps onto one branch, opens a single combined PR, and merges it once that
-PR passes.  Failing or unvalidated bumps are left alone.
-
-You should not need this often.  It is the escape hatch for when the PRs have
-piled up and you are allergic to toil.  Every project generated from the
-template ships the same command in its dev shell.
-
-Run it inside the Nix dev shell (the command lives there).  With no arguments it
-targets the GitHub repo of the current checkout, so run it from within that
-repo; or point it at any repo from anywhere with =--repo=, which needs no local
-checkout — the tool clones the target fresh into a throwaway directory under
-=$TMPDIR= and does all its work there:
-
-#+begin_src sh :exports code
-nix develop                                # or: direnv allow
-just dependabot-combine                    # the current checkout's repo
-just dependabot-combine --repo owner/name  # any repo, from anywhere
-#+end_src
-
-=--dry-run= lists the PRs it would combine and stops before touching anything;
-=--no-merge= opens the combined PR but leaves the merge to you; =--help= covers
-the rest.  If a run fails it leaves that throwaway clone in place and prints the
-path, so the half-finished state is there to inspect rather than swept away.
+Maintainers: the tooling for keeping a project healthy after it is running —
+clearing a Dependabot backlog, for one — lives in [[file:docs/maintenance.org][=docs/maintenance.org=]].
 
 * LLM instructions
 
