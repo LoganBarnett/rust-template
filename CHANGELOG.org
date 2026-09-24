@@ -3,6 +3,12 @@
 
 * Upcoming
 ** Added
+** Fixes
+** Breaking
+** Maintenance
+** Security
+* v0.133.0
+** Added
 1. Spawned projects now receive the on-demand code review as =just review=, and
    =CONTRIBUTING.org= asks Claude Code users to run =just review --diff branch=
    before opening a pull request; the next compliance sync brings it into
@@ -16,8 +22,6 @@
    stops evaluating on its next foundation bump.  Delete that entry (the new
    =review= entry replaces it); a compliance check now flags a shell that still
    carries it.
-** Maintenance
-** Security
 * v0.132.0
 ** Fixes
 1. A convention edited in a change set now governs the review of that change
