@@ -92,7 +92,7 @@ reqwest13 = { package = "reqwest", version = "0.13", default-features = false, f
 # otherwise).  `ring` also unifies onto the shared rustls, keeping aws-lc-rs out
 # of the graph entirely.
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"], optional = true }
-jsonwebtoken = { version = "10", optional = true }
+jsonwebtoken = { version = "11", optional = true }
 
 # Unix-only server dependencies: systemd's journal logging
 # (tracing-journald) and its readiness/watchdog protocol (sd-notify).  Both are
@@ -111,7 +111,7 @@ serde_json = "1.0"
 openidconnect = { version = "3", features = ["reqwest"] }
 http-body-util = "0.1"
 axum = "0.8"
-jsonwebtoken = "10"
+jsonwebtoken = "11"
 
 # Integration tests that exercise the MergeConfig derive use the
 # clap-driven CliRaw / ConfigFileRaw / Config pipeline, which is only
