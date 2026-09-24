@@ -63,13 +63,6 @@
         name = "rust-template-dependency-bump-cli";
         binary = "rust-template-dependency-bump-cli";
       };
-      # The retired Stop hook's gate.  Nothing consumes it now that spawns no
-      # longer receive the hook; it is still built while the question of
-      # re-pointing it at review-lib or dropping it is open (see tasks.org).
-      review-stop = {
-        name = "rust-template-review-stop";
-        binary = "rust-template-review-stop";
-      };
       # CRATE:review-cli:begin
       # The on-demand code review a contributor runs when a piece of work is
       # done; `just review` drives it from source.
@@ -352,6 +345,13 @@
             rustToolchain = (pkgsFor system).rust-bin.stable.latest.default;
             changelog-roller = changelog-roller.packages.${system}.default;
             org-fmt = org-fmt.packages.${system}.default;
+          };
+          # The on-demand code review (crates/review-cli), exposed under a name
+          # free of the `rust-template` literal so a spawn can pull it from
+          # foundation.packages.<system>.review into its dev shell and run it
+          # as `just review` rather than carry a copy that drifts.
+          review = (pkgsFor system).callPackage ./nix/review.nix {
+            review-cli = cratePackages.review-cli;
           };
         }
     );

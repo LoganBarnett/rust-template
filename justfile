@@ -5,7 +5,7 @@
 # same scripts as a matrix in .github/workflows/ci.yml rather than through
 # this recipe, so a new script must be added in both places to gate
 # everywhere — here for local runs and there for CI.
-test: test-integration test-formatters ci-test test-review-stop
+test: test-integration test-formatters ci-test
 
 # Crate-add and project-emission integration tests.
 #
@@ -33,14 +33,6 @@ test-formatters:
 # the other emission tests evaluate the flake but never build the crates.
 ci-test:
   ./ci-test.sh
-
-# Code-review Stop hook gate tests.
-#
-# Runs the review-stop crate's tests: the black-box suite drives the gate
-# binary through every release and block branch with crafted transcripts
-# and a faked working-tree file list.
-test-review-stop *args:
-  cargo test --package rust-template-review-stop {{args}}
 
 # Audit every registered spawn against the compliance manifest.
 #
@@ -85,7 +77,8 @@ dependency-bump *args:
 # exercised directly; `--help` documents the flags.
 #
 # Exit code 1 means the review ran and found something; 2 means it could not
-# run at all.  `just` reports either as a failed recipe, so read the code: a 1
-# with findings printed above it is the tool working, not breaking.
+# judge the tree in full.  `just` reports either as a failed recipe, so read
+# the code: a 1 with findings printed above it is the tool working, not
+# breaking.
 review *args:
   cargo run --quiet --package rust-template-review-cli -- {{args}}

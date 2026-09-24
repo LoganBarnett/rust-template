@@ -22,3 +22,7 @@ frontend/public/elm.js
 # file — that one stays ignored below.
 !.claude/
 .claude/settings.local.json
+
+# The review tool's per-file review record.  It is machine-local state about an
+# uncommitted working tree.
+review.json*

@@ -758,6 +758,38 @@ kind = "justfile-recipe"
 recipe = "dependency-bump"
 
 # ---------------------------------------------------------------------------
+# On-demand code review — `just review` judges the current change set against
+# the project's conventions, and CONTRIBUTING.org asks Claude Code users to run
+# it before opening a pull request.  The tool is a package on the foundation
+# flake, not a per-spawn copy, so these checks assert the spawn wires that
+# package into its dev shell, exposes the recipe, and ignores the record the
+# tool writes.  The reviewer the tool drives is the contributor's own `claude`
+# install, which nothing here provides or checks for.
+# ---------------------------------------------------------------------------
+
+[[check]]
+id = "review-flake-includes-package"
+description = "The spawn's flake must pull the review package from the foundation flake into its dev shell."
+kind = "dev-shell-package"
+package = "review"
+
+[[check]]
+id = "review-justfile-recipe"
+description = "The spawn's justfile must expose the code review as the review recipe."
+kind = "justfile-recipe"
+recipe = "review"
+
+# The record is machine-local state about an uncommitted tree, and the tool
+# warns on every run while it is not ignored; the trailing glob also covers the
+# review.json.* temp file its atomic write leaves briefly.
+[[check]]
+id = "review-record-gitignored"
+description = "The spawn's .gitignore ignores the review tool's review.json record and its review.json.* temp file."
+kind = "file-contains"
+target = ".gitignore"
+contains = "review.json*"
+
+# ---------------------------------------------------------------------------
 # Dependabot config (.github/dependabot.yml) — always emitted.
 # ---------------------------------------------------------------------------
 
@@ -1593,6 +1625,21 @@ target = "CONTRIBUTING.org"
 section = ["Changelog conventions"]
 contains = "Lead with the impact"
 
+[[check]]
+id = "contributing-code-review-section"
+description = "CONTRIBUTING.org documents the on-demand code review."
+kind = "section-exists"
+target = "CONTRIBUTING.org"
+section = ["Code review"]
+
+[[check]]
+id = "contributing-code-review-pre-pr-command"
+description = "CONTRIBUTING.org's code-review section names the command Claude Code users run before opening a pull request."
+kind = "mention-present"
+target = "CONTRIBUTING.org"
+section = ["Code review"]
+contains = "just review --diff branch"
+
 # ── Pre-seeded CHANGELOG.org Upcoming scaffold ───────────────────────
 # A fresh emission seeds the Upcoming section with the documented
 # Added/Fixes/Breaking subheadings.  The subheading checks scope to the
@@ -1697,9 +1744,10 @@ contains = '"autoMemoryEnabled": false'
 # task completion, which Claude Code gives no way to tell apart, and its cost
 # fell on every turn.  A spawn that keeps the script keeps paying that, so its
 # removal is enforced rather than merely no longer emitted.  The registration in
-# .claude/settings.json is the other half; no check kind asserts a JSON path is
-# absent, so that half is unchecked and a spawn syncing settings.json from the
-# template is what clears it.
+# .claude/settings.json is the second half; no check kind asserts a JSON path
+# is absent, so that half is unchecked and a spawn syncing settings.json from
+# the template is what clears it.  The gate binary the hook ran is the third,
+# asserted below (review-stop-package-retired).
 [[check]]
 id = "review-gate-hook-retired"
 description = "The retired review-stop.sh Stop hook is absent; it reviewed on every turn end rather than at task completion, so a spawn must not keep it."
@@ -1714,6 +1762,17 @@ id = "review-gate-agent-retired"
 description = "The retired template-compliance subagent definition is absent; nothing invokes it, so a spawn must not keep the stale agent."
 kind = "file-absent"
 path = ".claude/agents/template-compliance.md"
+
+# The foundation flake no longer exposes the retired gate binary, so a spawn
+# whose dev shell still pulls foundation.packages.<system>.review-stop stops
+# evaluating on its next foundation bump.  The package is the one thing the
+# hook's retirement left behind in a spawn's flake, so its absence is asserted
+# by evaluating the shell rather than left to the bump to surface.
+[[check]]
+id = "review-stop-package-retired"
+description = "The spawn's dev shell no longer pulls the retired review-stop gate binary; the foundation flake has dropped it, so a shell that still does breaks on the next foundation bump."
+kind = "dev-shell-package-absent"
+package = "rust-template-review-stop"
 
 # ---------------------------------------------------------------------------
 # Darwin (launchd) service log paths.

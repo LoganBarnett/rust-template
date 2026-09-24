@@ -261,6 +261,16 @@ pub enum CheckKind {
     shell: Option<String>,
     package: String,
   },
+  /// `nix eval` of the spawn's devShell has no build input whose derivation
+  /// name is `package`: the inverse of DevShellPackage, sharing its probe.  A
+  /// spawn that keeps pulling a package the foundation flake has since dropped
+  /// stops evaluating on its next foundation bump, so this exists to retire a
+  /// package the template used to put in the shell.  A shell that does not
+  /// evaluate fails rather than passes: it is broken, not clean.
+  DevShellPackageAbsent {
+    shell: Option<String>,
+    package: String,
+  },
   /// `nix eval` the flake output attrset `<output>.<system>` (the host
   /// double when `system` is `None`) and confirm it exposes a required
   /// attribute: with `suffix` set, any attribute whose name ends with it (a
@@ -663,6 +673,13 @@ impl RawCheck {
         require_flake_ident(&id, &kind, "package", &package)?;
         CheckKind::DevShellPackage { shell, package }
       }
+      "dev-shell-package-absent" => {
+        let package = require(&id, &kind, "package", package)?;
+        // Interpolated into the same predicate as dev-shell-package's, so it
+        // is held to the same bare-identifier rule.
+        require_flake_ident(&id, &kind, "package", &package)?;
+        CheckKind::DevShellPackageAbsent { shell, package }
+      }
       // `attr` doubles as the exact-name selector here; `suffix` selects by
       // name suffix.  Exactly one must be set — a suffix for the per-crate
       // package outputs, an exact name for a fixed output like a flake check.
@@ -832,6 +849,26 @@ mod tests {
         assert_eq!(shell.as_deref(), Some("ci"));
         assert_eq!(var, "RUST_TEMPLATE_SHELL");
         assert_eq!(value, "ci");
+      }
+      other => panic!("wrong kind: {other:?}"),
+    }
+  }
+
+  #[test]
+  fn validates_a_dev_shell_package_absent_check() {
+    let toml = r#"
+            [[check]]
+            id = "x"
+            description = "d"
+            kind = "dev-shell-package-absent"
+            package = "rust-template-review-stop"
+        "#;
+    let raw: RawManifest = toml::from_str(toml).unwrap();
+    let check = raw.check.into_iter().next().unwrap().validate().unwrap();
+    match check.kind {
+      CheckKind::DevShellPackageAbsent { shell, package } => {
+        assert!(shell.is_none());
+        assert_eq!(package, "rust-template-review-stop");
       }
       other => panic!("wrong kind: {other:?}"),
     }

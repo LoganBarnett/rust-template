@@ -6,8 +6,7 @@
 # expected to edit; anything else signals a human touched the PR and the flow
 # stays out of it.  The predicate is pure — it reads a newline-delimited file
 # list on stdin and prints the paths outside the allowlist — so this test drives
-# every branch by feeding crafted file lists, with no live PR required (the same
-# injectable-input approach the review-stop crate's gate tests use).
+# every branch by feeding crafted file lists, with no live PR required.
 #
 # The load-bearing case is a workspace-member manifest
 # (crates/<name>/Cargo.toml): the original allowlist anchored Cargo.toml to the

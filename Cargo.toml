@@ -7,7 +7,6 @@ members = [
     "crates/compliance-cli",
     "crates/dependency-bump-lib",
     "crates/dependency-bump-cli",
-    "crates/review-stop",
     "crates/review-lib",
     "crates/review-cli",
     # CRATE_MEMBERS

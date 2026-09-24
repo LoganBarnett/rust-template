@@ -256,6 +256,9 @@ pub fn run_check(check: &Check, ctx: &SpawnContext) -> Verdict {
     CheckKind::DevShellPackage { shell, package } => {
       dev_shell_package(ctx.dir, shell.as_deref(), package)
     }
+    CheckKind::DevShellPackageAbsent { shell, package } => {
+      dev_shell_package_absent(ctx.dir, shell.as_deref(), package)
+    }
     CheckKind::FlakeOutputPresent {
       output,
       system,
@@ -1368,8 +1371,65 @@ fn dev_shell_package(
   shell: Option<&str>,
   package: &str,
 ) -> Verdict {
-  let attr =
-    format!("devShells.{}.{}", nix_system(), shell.unwrap_or("default"));
+  dev_shell_has_package(dir, shell, package).map_or_else(
+    |verdict| verdict,
+    |found| {
+      if found {
+        Verdict::Pass
+      } else {
+        Verdict::Fail {
+          detail: format!(
+            "{} has no build input named \"{package}\"",
+            dev_shell_attr(shell)
+          ),
+        }
+      }
+    },
+  )
+}
+
+/// The inverse of dev_shell_package: Pass when the devShell has no build input
+/// named `package`; Fail when it still does.  A shell that does not evaluate
+/// is a Fail here too, not a vacuous Pass: the spawn this check hunts is one
+/// still pulling a package the foundation flake has dropped, and that spawn's
+/// shell is exactly the one that no longer evaluates.
+fn dev_shell_package_absent(
+  dir: &Path,
+  shell: Option<&str>,
+  package: &str,
+) -> Verdict {
+  dev_shell_has_package(dir, shell, package).map_or_else(
+    |verdict| verdict,
+    |found| {
+      if found {
+        Verdict::Fail {
+          detail: format!(
+            "{} still has a build input named \"{package}\"",
+            dev_shell_attr(shell)
+          ),
+        }
+      } else {
+        Verdict::Pass
+      }
+    },
+  )
+}
+
+/// The flake attribute path of the spawn's devShell on this host.
+fn dev_shell_attr(shell: Option<&str>) -> String {
+  format!("devShells.{}.{}", nix_system(), shell.unwrap_or("default"))
+}
+
+/// Whether the spawn's devShell carries a build input named `package`: the
+/// probe both dev-shell-package kinds share.  An unrunnable nix is an engine
+/// `Error`, a shell that does not evaluate (absent, or the flake broken) is a
+/// `Fail`, and anything but a bare boolean back is an `Error`.
+fn dev_shell_has_package(
+  dir: &Path,
+  shell: Option<&str>,
+  package: &str,
+) -> Result<bool, Verdict> {
+  let attr = dev_shell_attr(shell);
   // `package` is a manifest-validated bare identifier (require_flake_ident), so
   // interpolating it into the predicate stays injection-free.  mkShell routes
   // `packages` into nativeBuildInputs and `buildInputs` into buildInputs, so
@@ -1380,7 +1440,7 @@ fn dev_shell_package(
      ((shell.buildInputs or []) ++ (shell.nativeBuildInputs or []))"
   );
   // Every argument is long-form; the applied function prints a bare boolean.
-  let evaluated = match Command::new("nix")
+  let evaluated = Command::new("nix")
     .args([
       "eval",
       "--extra-experimental-features",
@@ -1390,30 +1450,24 @@ fn dev_shell_package(
       &apply,
     ])
     .output()
-  {
-    Ok(evaluated) => evaluated,
-    Err(error) => {
-      return Verdict::Error {
-        detail: format!("could not run nix eval for {attr}: {error}"),
-      }
-    }
-  };
+    .map_err(|error| Verdict::Error {
+      detail: format!("could not run nix eval for {attr}: {error}"),
+    })?;
   if !evaluated.status.success() {
-    return Verdict::Fail {
+    Err(Verdict::Fail {
       detail: format!(
         "{attr} did not evaluate (shell absent or flake broken): {}",
         String::from_utf8_lossy(&evaluated.stderr).trim()
       ),
-    };
-  }
-  match String::from_utf8_lossy(&evaluated.stdout).trim() {
-    "true" => Verdict::Pass,
-    "false" => Verdict::Fail {
-      detail: format!("{attr} has no build input named \"{package}\""),
-    },
-    other => Verdict::Error {
-      detail: format!("{attr} check returned unexpected \"{other}\""),
-    },
+    })
+  } else {
+    match String::from_utf8_lossy(&evaluated.stdout).trim() {
+      "true" => Ok(true),
+      "false" => Ok(false),
+      other => Err(Verdict::Error {
+        detail: format!("{attr} check returned unexpected \"{other}\""),
+      }),
+    }
   }
 }
 
@@ -1815,7 +1869,7 @@ fn foundation_feature_present(dir: &Path, feature: &str) -> bool {
 /// Source-like files that still mention the bare `rust-template` literal,
 /// excluding the expected foundation references and the GitHub URL.  Lockfiles
 /// are excluded by extension (`.lock` is not in the scanned set); the
-/// provenance file is excluded by name.
+/// provenance file and the review tool's record are excluded by name.
 fn stale_literals(dir: &Path) -> Vec<String> {
   const SCANNED: [&str; 6] = ["rs", "toml", "nix", "yml", "yaml", "json"];
   let mut files = Vec::new();
@@ -1827,7 +1881,13 @@ fn stale_literals(dir: &Path) -> Vec<String> {
       continue;
     }
     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-    if name == "rust-template.json" {
+    // A spawn that has run `just review` would be flagged for its review
+    // record: review.json (and the review.json.* temp file its atomic write
+    // leaves briefly) carries the reviewer's prose, which quotes conventions
+    // that name rust-template.  It is machine-local, gitignored state rather
+    // than emitted content, so it is skipped by name; the name pairs with
+    // RECORD_PREFIX in crates/review-lib/src/worktree.rs.
+    if name == "rust-template.json" || name.starts_with("review.json") {
       continue;
     }
     let FileRead::Found(text) = read_file(&path) else {
@@ -2231,6 +2291,19 @@ mod tests {
       line_present(dir.path(), "absent.org", "@README.org"),
       Verdict::Fail { .. }
     ));
+  }
+
+  #[test]
+  fn stale_literals_skips_the_review_record_by_name() {
+    let dir = tempfile::tempdir().unwrap();
+    let prose = "{\"fix\": \"rust-template asks for a why-comment\"}\n";
+    for name in ["review.json", "review.json.tmp1", "other.json"] {
+      std::fs::write(dir.path().join(name), prose).unwrap();
+    }
+    // The record and its temp file are machine-local state, not emitted
+    // content; the sibling with the same text is the stale literal the check
+    // exists to catch.
+    assert_eq!(stale_literals(dir.path()), vec!["other.json".to_string()]);
   }
 
   #[cfg(unix)]

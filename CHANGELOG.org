@@ -3,8 +3,19 @@
 
 * Upcoming
 ** Added
+1. Spawned projects now receive the on-demand code review as =just review=, and
+   =CONTRIBUTING.org= asks Claude Code users to run =just review --diff branch=
+   before opening a pull request; the next compliance sync brings it into
+   existing spawns.  The reviewer it drives is your own =claude= install.
 ** Fixes
+1. The stale-literal compliance check no longer flags a spawn's =review.json=
+   review record.  No action needed.
 ** Breaking
+1. The retired =review-stop= gate binary is gone from the foundation flake, so a
+   spawn whose dev shell still pulls =foundation.packages.<system>.review-stop=
+   stops evaluating on its next foundation bump.  Delete that entry (the new
+   =review= entry replaces it); a compliance check now flags a shell that still
+   carries it.
 ** Maintenance
 ** Security
 * v0.132.0
