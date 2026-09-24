@@ -6,12 +6,14 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+** Security
+* v0.134.0
+** Maintenance
 1. Bump faster-hex from 0.10.0 to 0.10.1
 2. Bump thiserror from 2.0.20 to 2.0.21
 3. Bump thiserror-impl from 2.0.20 to 2.0.21
 4. Bump zerocopy from 0.8.57 to 0.8.58
 5. Bump zerocopy-derive from 0.8.57 to 0.8.58
-** Security
 * v0.133.0
 ** Added
 1. Spawned projects now receive the on-demand code review as =just review=, and
