@@ -6,6 +6,9 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+** Security
+* v0.135.0
+** Maintenance
 1. Bump cc from 1.4.7 to 1.5.0
 2. Bump encoding_rs from 0.8.41 to 0.8.42
 3. Bump find-msvc-tools from 0.1.13 to 0.1.14
@@ -21,7 +24,6 @@
 13. Bump wasm-bindgen-macro-support from 0.2.128 to 0.2.129
 14. Bump wasm-bindgen-shared from 0.2.128 to 0.2.129
 15. Bump web-sys from 0.3.105 to 0.3.106
-** Security
 * v0.134.0
 ** Maintenance
 1. Bump faster-hex from 0.10.0 to 0.10.1
