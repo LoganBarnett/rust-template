@@ -6,6 +6,21 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+1. Bump cc from 1.4.7 to 1.5.0
+2. Bump encoding_rs from 0.8.41 to 0.8.42
+3. Bump find-msvc-tools from 0.1.13 to 0.1.14
+4. Bump headers from 0.4.1 to 0.4.2
+5. Bump hyper-util from 0.1.20 to 0.1.21
+6. Bump js-sys from 0.3.105 to 0.3.106
+7. Bump rustls-platform-verifier from 0.7.0 to 0.7.1
+8. Bump rustls-platform-verifier-android from 0.1.1 to 0.2.0
+9. Bump smallvec from 1.16.1 to 1.16.2
+10. Bump wasm-bindgen from 0.2.128 to 0.2.129
+11. Bump wasm-bindgen-futures from 0.4.78 to 0.4.79
+12. Bump wasm-bindgen-macro from 0.2.128 to 0.2.129
+13. Bump wasm-bindgen-macro-support from 0.2.128 to 0.2.129
+14. Bump wasm-bindgen-shared from 0.2.128 to 0.2.129
+15. Bump web-sys from 0.3.105 to 0.3.106
 ** Security
 * v0.134.0
 ** Maintenance
