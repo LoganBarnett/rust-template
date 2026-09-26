@@ -28,6 +28,12 @@ pub struct Config {
   /// Workspace to bump (default: the current directory).
   #[merge_config(default = "\".\".to_string()")]
   pub workspace_dir: String,
+  /// The actions/runner-images README whose "Available Images" table names
+  /// the newest GitHub-hosted Ubuntu runner image the workflows may pin.
+  #[merge_config(
+    default = "\"https://raw.githubusercontent.com/actions/runner-images/main/README.md\".to_string()"
+  )]
+  pub runner_images_readme_url: String,
   /// Preview what would move without touching anything.
   #[merge_config(default = "false")]
   pub dry_run: bool,

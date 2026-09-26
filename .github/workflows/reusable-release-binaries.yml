@@ -23,7 +23,7 @@ jobs:
   # whole workflow can short-circuit when a project ships no release binaries.
   crates:
     name: Resolve release binaries
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       list: ${{ steps.read.outputs.list }}
       any: ${{ steps.read.outputs.any }}
@@ -53,19 +53,19 @@ jobs:
           # CI.  Sourcing the row here keeps the opt-in single-sourced with the
           # flag the emitted flake.nix reads.
           base='[
-            {"system":"x86_64-linux","runner":"ubuntu-latest","suffix":"-gnu","label":"x86_64-linux-gnu"},
-            {"system":"x86_64-linux","runner":"ubuntu-latest","suffix":"-musl","label":"x86_64-linux-musl"},
+            {"system":"x86_64-linux","runner":"ubuntu-24.04","suffix":"-gnu","label":"x86_64-linux-gnu"},
+            {"system":"x86_64-linux","runner":"ubuntu-24.04","suffix":"-musl","label":"x86_64-linux-musl"},
             {"system":"aarch64-linux","runner":"ubuntu-24.04-arm","suffix":"-gnu","label":"aarch64-linux-gnu"},
             {"system":"aarch64-linux","runner":"ubuntu-24.04-arm","suffix":"-musl","label":"aarch64-linux-musl"},
-            {"system":"x86_64-linux","runner":"ubuntu-latest","suffix":"-x86_64-darwin","label":"x86_64-darwin"},
-            {"system":"x86_64-linux","runner":"ubuntu-latest","suffix":"-aarch64-darwin","label":"aarch64-darwin"},
-            {"system":"x86_64-linux","runner":"ubuntu-latest","suffix":"-x86_64-windows","label":"x86_64-windows"},
-            {"system":"x86_64-linux","runner":"ubuntu-latest","suffix":"-aarch64-windows","label":"aarch64-windows"}
+            {"system":"x86_64-linux","runner":"ubuntu-24.04","suffix":"-x86_64-darwin","label":"x86_64-darwin"},
+            {"system":"x86_64-linux","runner":"ubuntu-24.04","suffix":"-aarch64-darwin","label":"aarch64-darwin"},
+            {"system":"x86_64-linux","runner":"ubuntu-24.04","suffix":"-x86_64-windows","label":"x86_64-windows"},
+            {"system":"x86_64-linux","runner":"ubuntu-24.04","suffix":"-aarch64-windows","label":"aarch64-windows"}
           ]'
           # x86_64 only — aarch64 MSVC cannot build C dependencies (see
           # mkWindowsMsvcCrossPackages); arm64 Windows uses the gnullvm rows.
           msvc='[
-            {"system":"x86_64-linux","runner":"ubuntu-latest","suffix":"-x86_64-windows-msvc","label":"x86_64-windows-msvc"}
+            {"system":"x86_64-linux","runner":"ubuntu-24.04","suffix":"-x86_64-windows-msvc","label":"x86_64-windows-msvc"}
           ]'
           if [ "$(jq --raw-output '."windows-msvc" // false' rust-template.json)" = "true" ]; then
             targets=$(jq --compact-output --argjson m "$msvc" '. + $m' <<<"$base")
@@ -81,7 +81,7 @@ jobs:
     name: Create release
     needs: crates
     if: needs.crates.outputs.any == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:

@@ -33,3 +33,32 @@ just dependabot-combine --repo owner/name  # any repo, from anywhere
 =--no-merge= opens the combined PR but leaves the merge to you; =--help= covers
 the rest.  A failed run's half-finished clone is the evidence for diagnosing it,
 so the tool leaves it in place and prints the path rather than sweeping it away.
+
+* Runner image pinning and bumps
+
+GitHub redefines the =ubuntu-latest= runner label on its own schedule (it has
+announced a move from Ubuntu 24.04 to 26.04 for October 2026), so a workflow
+that floats on it changes image under every branch at once, with no pull request
+to show for it.  The reusable workflows therefore pin a versioned label
+(=ubuntu-24.04=, =ubuntu-24.04-arm=), and the scheduled dependency bump advances
+the pin the way it advances a crate: the daily run reads the "Available Images"
+table in the [[https://github.com/actions/runner-images][actions/runner-images]] README, takes the newest generally-available
+Ubuntu image per variant (a =preview= badge in that table excludes a row),
+rewrites the labels, files a =Maintenance= changelog entry, and lands the change
+through the same CI-gated pull request the crate bumps use.  A variant the
+README no longer lists, or lists only older, keeps its pin.
+
+Every spawned project runs on these workflows via =@main=, so the pin and its
+advance reach the whole fleet from this repo; a spawn's own workflows carry no
+runner label and need nothing configured.  The engine still runs the same scan
+in a spawn and, finding no versioned label, skips the lookup.
+
+To see what the next run would do:
+
+#+begin_src sh :exports code
+just dependency-bump --dry-run true
+#+end_src
+
+An unreachable README degrades to a warning — the crate bumps must never wait on
+GitHub's README — and =test-runner-labels.sh= fails CI if a =-latest= label
+sneaks back into a workflow.

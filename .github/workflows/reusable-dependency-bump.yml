@@ -8,10 +8,11 @@ name: Dependency bump (reusable)
 # built from crates/dependency-bump-*) owns the working-tree
 # transformation: `cargo update` across the workspace, hold re-pinning from
 # the workspace manifest's `[workspace.metadata.dependency-bump]` table,
-# Security/Maintenance classification via `cargo audit`, and the CHANGELOG
-# entries.  This workflow owns everything with a remote side effect: the
-# commit, the branch push, the PR, the CI dispatch, the merge, and the
-# publish dispatch.
+# Security/Maintenance classification via `cargo audit`, the advance of the
+# pinned GitHub-hosted runner labels to the newest GA Ubuntu image in the
+# actions/runner-images README, and the CHANGELOG entries.  This workflow
+# owns everything with a remote side effect: the commit, the branch push,
+# the PR, the CI dispatch, the merge, and the publish dispatch.
 #
 # Everything runs on GITHUB_TOKEN — no PAT, no per-project setup.  That
 # shapes the flow in two documented ways:
@@ -70,7 +71,7 @@ jobs:
     concurrency:
       group: dependency-bump
       cancel-in-progress: false
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       # Push the bump branch and its commit.
       contents: write

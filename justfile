@@ -5,7 +5,7 @@
 # same scripts as a matrix in .github/workflows/ci.yml rather than through
 # this recipe, so a new script must be added in both places to gate
 # everywhere — here for local runs and there for CI.
-test: test-integration test-formatters ci-test
+test: test-integration test-formatters ci-test test-runner-labels
 
 # Crate-add and project-emission integration tests.
 #
@@ -34,6 +34,15 @@ test-formatters:
 ci-test:
   ./ci-test.sh
 
+# Floating-runner-label guard.
+#
+# Fails when any workflow selects a GitHub-hosted runner by a `-latest`
+# label.  The labels are pinned so the image changes only through the
+# scheduled dependency bump's CI-gated pull request, never under every
+# branch at once.
+test-runner-labels:
+  ./test-runner-labels.sh
+
 # Audit every registered spawn against the compliance manifest.
 #
 # Runs the Rust compliance checker (crates/compliance-cli) against the
@@ -59,7 +68,8 @@ dependabot-combine *args:
 #
 # The working-tree half of the scheduled dependency-bump flow: runs `cargo
 # update` across the workspace, classifies each bump against `cargo audit`,
-# and composes the CHANGELOG entries — then stops.  Nothing is committed or
+# advances the pinned GitHub-hosted runner labels in the workflows, and
+# composes the CHANGELOG entries — then stops.  Nothing is committed or
 # pushed; review the diff and commit yourself.  The scheduled workflow
 # (.github/workflows/dependency-bump.yml) runs the same engine and owns the
 # branch/PR/merge half.  Runs from source (like `just compliance`) so local

@@ -185,6 +185,11 @@
       # package output so `just dependency-bump` works here the same way it
       # does in a spawn.
       self.packages.${system}.dependency-bump
+      # The dependency bumper fetches the actions/runner-images README through
+      # curl.  `just dependency-bump` runs the crate from source, outside the
+      # packaged wrapper that carries its own curl, and the engine's fetch test
+      # spawns curl too, so the dev shell provides it.
+      pkgs.curl
     ];
   in {
     devShells = forAllSystems (system: let
@@ -209,6 +214,11 @@
       ci = mkCiShell {
         pkgs = pkgsFor system;
         inherit system;
+        buildInputs = [
+          # The dependency-bump engine's fetch test spawns curl, and the
+          # reusable CI's `test` job runs `cargo test` inside this shell.
+          (pkgsFor system).curl
+        ];
       };
     });
 

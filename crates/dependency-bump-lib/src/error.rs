@@ -48,6 +48,21 @@ pub enum DependencyBumpError {
   },
   #[error("re-pinning held package {package} exited with {status}")]
   HoldRepinFailedError { package: String, status: ExitStatus },
+  #[error("could not list the workflows directory {path}: {source}")]
+  WorkflowDirReadError {
+    path: PathBuf,
+    source: std::io::Error,
+  },
+  #[error("could not read the workflow {path}: {source}")]
+  WorkflowFileReadError {
+    path: PathBuf,
+    source: std::io::Error,
+  },
+  #[error("could not write the runner-label rewrite to {path}: {source}")]
+  WorkflowRewriteError {
+    path: PathBuf,
+    source: std::io::Error,
+  },
   #[error("could not run changelog-roller for the {package} bump: {source}")]
   ChangelogInsertSpawnError {
     package: String,
