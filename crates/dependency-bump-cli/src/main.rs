@@ -29,6 +29,7 @@ pub fn main(config: Config) -> Result<ExitCode, AppError> {
     changelog_file: config.changelog.clone(),
     report_file: (!config.report_file.is_empty())
       .then(|| PathBuf::from(&config.report_file)),
+    runner_images_readme_url: config.runner_images_readme_url.clone(),
     dry_run: config.dry_run,
   })?;
 
@@ -36,6 +37,9 @@ pub fn main(config: Config) -> Result<ExitCode, AppError> {
     println!("Held (not bumped): {} — {}", hold.package, hold.reason);
   });
   if config.dry_run {
+    outcome.planned_runner_bumps.iter().for_each(|bump| {
+      println!("Would bump {} from {} to {}", bump.name, bump.from, bump.to);
+    });
     println!("(--dry-run: nothing touched; cargo's preview is above.)");
   } else if outcome.bumps.is_empty() {
     println!(

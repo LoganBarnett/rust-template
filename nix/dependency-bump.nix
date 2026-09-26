@@ -16,6 +16,9 @@
   # Classifies bumps: an advisory against the pre-update lockfile files the
   # bump under Security instead of Maintenance.
   cargo-audit,
+  # Fetches the actions/runner-images README, whose "Available Images" table
+  # names the newest GA Ubuntu image the pinned runner labels may advance to.
+  curl,
   # Inserts the composed changelog entries so CI's changelog gate passes.
   changelog-roller,
   # Normalises the composed entries the way a local pre-commit treefmt would,
@@ -28,6 +31,7 @@ writeShellApplication {
     git
     rustToolchain
     cargo-audit
+    curl
     changelog-roller
     org-fmt
   ];

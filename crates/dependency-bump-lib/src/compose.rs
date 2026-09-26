@@ -3,6 +3,7 @@
 
 use crate::audit::Advisories;
 use crate::lockfile::Bump;
+use crate::runners::{self, RunnerBump};
 use std::fmt;
 
 /// The changelog heading a bump files under.
@@ -50,9 +51,24 @@ pub fn entry(bump: &Bump, advisories: &Advisories) -> Entry {
   )
 }
 
+/// Composes the entry for a runner-image advance.  Always Maintenance: a
+/// runner image has no advisory database to classify it against.
+pub fn runner_entry(bump: &RunnerBump) -> Entry {
+  Entry {
+    heading: Heading::Maintenance,
+    body: format!(
+      "Bump the {} from {} to {}",
+      bump.variant,
+      runners::release(bump.from),
+      runners::release(bump.to)
+    ),
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::runners::Variant;
 
   fn bump() -> Bump {
     Bump {
@@ -80,6 +96,20 @@ mod tests {
     assert_eq!(
       composed.body,
       "Bump time from 0.3.20 to 0.3.36 (RUSTSEC-2020-0071)"
+    );
+  }
+
+  #[test]
+  fn a_runner_advance_files_under_maintenance() {
+    let composed = runner_entry(&RunnerBump {
+      variant: Variant::Arm,
+      from: 24,
+      to: 26,
+    });
+    assert_eq!(composed.heading, Heading::Maintenance);
+    assert_eq!(
+      composed.body,
+      "Bump the GitHub-hosted Ubuntu arm runner image from 24.04 to 26.04"
     );
   }
 }

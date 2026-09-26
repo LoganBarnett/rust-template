@@ -159,6 +159,12 @@ or workflow YAML — unexpected files block the merge with a warning.
 Dependencies stay current without rubber-stamping changes that touch application
 code.
 
+The scheduled dependency bump (=just dependency-bump=, run daily by the
+=dependency-bump= workflow) also advances the GitHub-hosted runner image the CI
+workflows pin, so =ubuntu-latest= never floats under CI: a newer generally
+available Ubuntu image arrives as a CI-gated pull request instead of changing
+the image under every branch at once.
+
 *** Changelog enforcement
 
 Non-dependabot PRs must include a changelog entry.  The =changelog-roller= tool

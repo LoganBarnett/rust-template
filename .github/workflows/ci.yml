@@ -40,7 +40,7 @@ jobs:
   # each surfaces as its own named check.
   template-tests:
     name: Template test (${{ matrix.script }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -49,6 +49,7 @@ jobs:
           - test-formatters.sh
           - ci-test.sh
           - test-dependabot-allowlist.sh
+          - test-runner-labels.sh
     steps:
       - uses: actions/checkout@v7
 
@@ -72,7 +73,7 @@ jobs:
   # crate.  Only x86_64-linux produces the cross output, hence ubuntu.
   darwin-cross-fixture:
     name: Darwin cross fixture build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
@@ -102,7 +103,7 @@ jobs:
   # x86_64-linux produces the portable output, hence ubuntu.
   gnu-portable-fixture:
     name: Gnu portable fixture build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
@@ -134,7 +135,7 @@ jobs:
   # both Windows arches cross-build here off one toolchain.
   windows-cross-fixture:
     name: Windows cross fixture build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 

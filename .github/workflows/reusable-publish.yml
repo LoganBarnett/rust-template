@@ -22,7 +22,7 @@ on:
 jobs:
   publish:
     name: Bump version and publish
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
       # Required for the crates.io trusted-publishing OIDC exchange:

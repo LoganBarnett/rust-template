@@ -5,9 +5,10 @@
 //! crates index directly, so no bot PR, comment command, or GitHub product
 //! surface is involved.  The engine owns the working-tree transformation —
 //! audit-informed classification, the whole-workspace update, hold
-//! re-pinning, changelog composition, and the TSV report — while the
-//! scheduled workflow (reusable-dependency-bump.yml) owns everything with a
-//! remote side effect: branch, commit, PR, CI dispatch, merge.
+//! re-pinning, the runner-label advance, changelog composition, and the TSV
+//! report — while the scheduled workflow (reusable-dependency-bump.yml) owns
+//! everything with a remote side effect: branch, commit, PR, CI dispatch,
+//! merge.
 //!
 //! Policy lives in the workspace manifest under
 //! `[workspace.metadata.dependency-bump]`; see [`holds`] for the v1 hold
@@ -19,6 +20,7 @@ mod error;
 mod holds;
 mod lockfile;
 mod run;
+mod runners;
 
 pub use audit::Advisories;
 pub use compose::{Entry, Heading};
