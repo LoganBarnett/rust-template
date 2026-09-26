@@ -3,16 +3,19 @@
 
 * Upcoming
 ** Added
+** Fixes
+** Breaking
+** Maintenance
+** Security
+* v0.136.0
+** Added
 1. The scheduled dependency bump now also advances the pinned GitHub-hosted
    Ubuntu runner image, landing it through the same CI-gated pull request as a
    crate bump.  No action needed.
-** Fixes
-** Breaking
 ** Maintenance
 1. The reusable CI workflows pin =ubuntu-24.04= instead of floating on
    =ubuntu-latest=, so GitHub's label migrations no longer change the image
    under every branch at once.  No action needed.
-** Security
 * v0.135.0
 ** Maintenance
 1. Bump cc from 1.4.7 to 1.5.0
