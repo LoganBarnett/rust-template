@@ -3,6 +3,12 @@
 
 * Upcoming
 ** Added
+** Fixes
+** Breaking
+** Maintenance
+** Security
+* v0.137.0
+** Added
 1. Servers are now checked to see if they use the Nix service helpers.
 2. Every flake check a spawn exposes now runs on every push. Spawns should sync
    compliance.
@@ -33,7 +39,6 @@
 ** Maintenance
 1. ~just ci-test~ builds the spawn against the working-tree foundation,
    uncommitted changes included.  No action needed.
-** Security
 * v0.136.0
 ** Added
 1. The scheduled dependency bump now also advances the pinned GitHub-hosted

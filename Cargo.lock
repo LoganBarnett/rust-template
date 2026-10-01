@@ -3631,7 +3631,7 @@ dependencies = [
 
 [[package]]
 name = "rust-template-compliance-cli"
-version = "0.136.0"
+version = "0.137.0"
 dependencies = [
  "clap",
  "owo-colors",
@@ -3647,7 +3647,7 @@ dependencies = [
 
 [[package]]
 name = "rust-template-compliance-lib"
-version = "0.136.0"
+version = "0.137.0"
 dependencies = [
  "orgize",
  "rnix",
@@ -3666,7 +3666,7 @@ dependencies = [
 
 [[package]]
 name = "rust-template-cross-fixture"
-version = "0.136.0"
+version = "0.137.0"
 dependencies = [
  "ring",
  "rust-template-foundation",
@@ -3675,7 +3675,7 @@ dependencies = [
 
 [[package]]
 name = "rust-template-dependency-bump-cli"
-version = "0.136.0"
+version = "0.137.0"
 dependencies = [
  "clap",
  "rust-template-dependency-bump-lib",
@@ -3687,7 +3687,7 @@ dependencies = [
 
 [[package]]
 name = "rust-template-dependency-bump-lib"
-version = "0.136.0"
+version = "0.137.0"
 dependencies = [
  "rust-template-foundation",
  "serde",
@@ -3700,7 +3700,7 @@ dependencies = [
 
 [[package]]
 name = "rust-template-foundation"
-version = "0.136.0"
+version = "0.137.0"
 dependencies = [
  "aide",
  "axum",
@@ -3735,7 +3735,7 @@ dependencies = [
 
 [[package]]
 name = "rust-template-foundation-derive"
-version = "0.136.0"
+version = "0.137.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3744,7 +3744,7 @@ dependencies = [
 
 [[package]]
 name = "rust-template-review-cli"
-version = "0.136.0"
+version = "0.137.0"
 dependencies = [
  "clap",
  "org-fmt-lib",
@@ -3761,7 +3761,7 @@ dependencies = [
 
 [[package]]
 name = "rust-template-review-lib"
-version = "0.136.0"
+version = "0.137.0"
 dependencies = [
  "gix",
  "rust-template-foundation",
