@@ -183,11 +183,10 @@ jobs:
           #
           # Windows binaries ship as .zip — the format Windows users expect —
           # with the .exe kept inside and the redundant suffix dropped from the
-          # asset name; every other target ships as .tar.gz.  Both follow the
-          # symlink the foundation packages expose at bin/<binary> (a link into
-          # a separate wrapper-derivation store path): tar needs --dereference
-          # or it archives a ~170-byte dangling link instead of the binary,
-          # while zip follows symlinks and stores the real bytes by default.
+          # asset name; every other target ships as .tar.gz.  A bin/<binary>
+          # that is a symlink into another store path would ship as a
+          # ~170-byte dangling link: tar archives a symlink as a link unless
+          # told to dereference, while zip follows symlinks by default.
           case "${{ matrix.target.label }}" in
             *windows*)
               asset="${binary%.exe}-${{ inputs.tag }}-${{ matrix.target.label }}.zip"

@@ -71,11 +71,13 @@
   };
 
   baseUrl = lib.mkOption {
-    type = lib.types.str;
+    type = lib.types.nullOr lib.types.str;
+    default = null;
     example = "https://example.com";
     description = ''
-      Public base URL of the service, used to construct the OIDC redirect
-      URI ("<baseUrl>/auth/callback").
+      Public base URL of the service, required only with the OIDC options:
+      the provider redirects the browser to "<baseUrl>/auth/callback", which
+      only the deployment knows.  Leave null when OIDC is off.
     '';
   };
 

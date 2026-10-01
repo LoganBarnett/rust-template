@@ -53,13 +53,13 @@ echo "Spawning test project (cli + server) at $SPAWN ..."
     --description "CI coverage test scratch" \
     > /dev/null
 
-# Redirect the foundation dependency at the on-disk rust-template and relock so
-# Cargo.lock pins the working-tree revision instead of the stale placeholder the
-# template ships.  `git = "file://..."` is a local git source cargo can resolve
-# offline, and `cargo generate-lockfile` rewrites the whole lock around it.
+# The spawn must build against foundation changes that are not yet committed.
+# Don't use git source, because that requires any changes to be committed.  We
+# do make changes to do local plumbing (don't look at current versions, look at
+# our version).
 echo "Pointing foundation at the on-disk rust-template ..."
 sed --in-place \
-    "s|git = \"https://github.com/LoganBarnett/rust-template.git\"|git = \"file://$SCRIPT_DIR\"|" \
+    "s|git = \"https://github.com/LoganBarnett/rust-template.git\"|path = \"$SCRIPT_DIR/crates/foundation\"|" \
     "$SPAWN/Cargo.toml"
 ( cd "$SPAWN" && nix develop "$SCRIPT_DIR" --command cargo generate-lockfile )
 

@@ -4,6 +4,9 @@
 //! flow: a failing or erroring check never aborts the run, so one broken spawn
 //! cannot hide the state of the others.  The outcome variants serialize
 //! directly into the JSON report.
+//!
+//! A new check kind goes in a submodule under `check/`, as `nix_call` and
+//! `module_evaluates` do, rather than in this file.
 
 use crate::manifest::{Check, CheckKind};
 use crate::org;
@@ -13,6 +16,9 @@ use serde::Serialize;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+
+mod module_evaluates;
+mod nix_call;
 
 /// A check's verdict: the result of running one check against one spawn.
 #[derive(Debug, Clone, Serialize)]
@@ -282,6 +288,25 @@ pub fn run_check(check: &Check, ctx: &SpawnContext) -> Verdict {
       option,
       value,
     ),
+    CheckKind::NixCallPresent { function, target } => {
+      nix_call::nix_call_present(ctx.dir, function, target.as_deref())
+    }
+    CheckKind::DarwinModuleEvaluates { module } => {
+      module_evaluates::module_evaluates(
+        ctx.dir,
+        ctx.template_dir,
+        "darwin-module-evaluates.nix",
+        module,
+      )
+    }
+    CheckKind::NixosModuleEvaluates { module } => {
+      module_evaluates::module_evaluates(
+        ctx.dir,
+        ctx.template_dir,
+        "nixos-module-evaluates.nix",
+        module,
+      )
+    }
   }
 }
 
@@ -611,9 +636,7 @@ fn file_matches_template(
 }
 
 fn glob_present(dir: &Path, glob: &str) -> Verdict {
-  let mut files = Vec::new();
-  walk_files(dir, &mut files);
-  let matched = files.iter().any(|path| {
+  let matched = walk_files(dir).iter().any(|path| {
     path
       .strip_prefix(dir)
       .ok()
@@ -793,9 +816,7 @@ fn structured_path(
 /// rule (e.g. every crate deferring to a workspace dependency).  Skips when the
 /// spawn has no crate manifests; fails naming each crate that diverges.
 fn crate_toml_path_equals(dir: &Path, pointer: &str, value: &str) -> Verdict {
-  let mut files = Vec::new();
-  walk_files(dir, &mut files);
-  let mut manifests: Vec<PathBuf> = files
+  let mut manifests: Vec<PathBuf> = walk_files(dir)
     .into_iter()
     .filter(|path| {
       path
@@ -1665,33 +1686,23 @@ fn flake_output_present(
 }
 
 /// Run one of the template's compliance helper expressions (a file under
-/// `nix/compliance/` taking an attrset of string arguments) and return the
-/// string it printed.  `subject` names whatever the caller is asserting about,
-/// for the diagnostics.
+/// `nix/compliance/`) and classify what it printed into a `Verdict`.  `subject`
+/// names whatever the caller is asserting about, for the diagnostics.
 ///
-/// Some facts about a spawn can only be reached by evaluating Nix — an option
-/// default means running the module system, the spawn's own nixpkgs and all.
-/// Rather than build such an expression as Rust string concatenation, the
-/// expression lives in a reviewable `.nix` file that can be run by hand from
-/// the shell, and this function is only the plumbing.
+/// Uses a `.nix` file to avoid having Rust gymnastics to evaluate a lot of Nix
+/// stuff.
 ///
-/// nix-instantiate rather than `nix eval`: only the former applies `--argstr`
-/// to a file that evaluates to a function — `nix eval --file` hands back the
-/// uncalled lambda.  Passing parameters as arguments rather than splicing them
-/// into an expression is also what frees callers from the bare-identifier rule
-/// the `nix eval` kinds need (see `require_flake_ident`); there is no
-/// expression for a value to escape into.
-///
-/// A helper that cannot be run at all is an engine `Error`.  One that exits
-/// non-zero, or prints something other than the JSON string it promises, is a
-/// `Fail` against `subject` — the spawn's flake is what usually breaks there.
+/// A helper that cannot be run at all, or that prints something other than the
+/// JSON string it promises, is an engine `Error`: that is the helper's bug.
+/// One that exits non-zero is a `Fail` against `subject`, since the spawn's
+/// flake is what usually breaks there.
 fn nix_helper(
   template_dir: &Path,
   helper: &str,
   subject: &str,
   args: &[(&str, &OsStr)],
-) -> Result<String, Verdict> {
-  let evaluated = Command::new("nix-instantiate")
+) -> Verdict {
+  Command::new("nix-instantiate")
     .args([
       "--eval",
       "--strict",
@@ -1706,32 +1717,72 @@ fn nix_helper(
     .output()
     .map_err(|error| Verdict::Error {
       detail: format!("could not run nix-instantiate for {subject}: {error}"),
-    })?;
-  if !evaluated.status.success() {
-    return Err(Verdict::Fail {
-      detail: format!(
-        "{subject} did not evaluate: {}",
-        String::from_utf8_lossy(&evaluated.stderr).trim()
-      ),
-    });
-  }
-  // The helper prints a JSON string, so parsing it back is what strips the
-  // quoting and any escapes its reason text picked up.
-  let printed = String::from_utf8_lossy(&evaluated.stdout);
-  serde_json::from_str::<String>(printed.trim()).map_err(|error| {
-    Verdict::Error {
-      detail: format!(
-        "{subject} helper returned unreadable output \"{}\": {error}",
-        printed.trim()
-      ),
-    }
-  })
+    })
+    .and_then(|evaluated| {
+      if evaluated.status.success() {
+        // The helper prints a JSON string, so parsing it back is strips the
+        // quoting and any escapes its reason text.
+        let printed = String::from_utf8_lossy(&evaluated.stdout);
+        serde_json::from_str::<String>(printed.trim()).map_err(|error| {
+          Verdict::Error {
+            detail: format!(
+              "{subject} helper returned unreadable output \"{}\": {error}",
+              printed.trim()
+            ),
+          }
+        })
+      } else {
+        Err(Verdict::Fail {
+          detail: format!(
+            "{subject} did not evaluate: {}",
+            nix_diagnosis(&String::from_utf8_lossy(&evaluated.stderr))
+          ),
+        })
+      }
+    })
+    .map_or_else(
+      |verdict| verdict,
+      |reported| helper_verdict(subject, &reported),
+    )
+}
+
+/// The part of a nix-instantiate transcript worth reporting, which is the
+/// diagnosis a reader can act on.
+fn nix_diagnosis(stderr: &str) -> String {
+  let lines: Vec<&str> = stderr.lines().collect();
+  lines
+    .iter()
+    // nix prints nested errors innermost last, so the actionable message is
+    // the last non-empty `error:` line.
+    .rposition(|line| {
+      line
+        .trim_start()
+        .strip_prefix("error:")
+        .is_some_and(|rest| !rest.trim().is_empty())
+    })
+    .map_or_else(
+      || {
+        lines
+          .iter()
+          // Fetch progress and the dirty-tree warning a git flake reference
+          // emits are noise, not diagnosis.
+          .filter(|line| {
+            !(line.starts_with("fetching ")
+              || line.starts_with("warning: Git tree"))
+          })
+          .copied()
+          .collect::<Vec<_>>()
+          .join("\n")
+      },
+      |start| lines[start..].join("\n"),
+    )
+    .trim()
+    .to_string()
 }
 
 /// Evaluate the spawn's module at `module` and compare the default of the
 /// option at `option` against `expected`.  `module-option-default.nix` does
-/// the reaching-into-the-module part and prints `ok`, `skip: …`, or `fail: …`;
-/// this only classifies that.
+/// the reaching-into-the-module part.
 fn nix_module_option_default(
   dir: &Path,
   template_dir: &Path,
@@ -1750,15 +1801,11 @@ fn nix_module_option_default(
       ("expected", OsStr::new(expected)),
     ],
   )
-  .map_or_else(
-    |verdict| verdict,
-    |reported| module_option_verdict(module, &reported),
-  )
 }
 
-/// Classify what `module-option-default.nix` printed.  Split out from the
-/// subprocess so the mapping is testable on its own.
-fn module_option_verdict(module: &str, reported: &str) -> Verdict {
+/// Classify what a `nix/compliance` helper printed: every helper promises
+/// `ok`, `skip: …`, or `fail: …`.
+fn helper_verdict(module: &str, reported: &str) -> Verdict {
   match reported.split_once(": ") {
     None if reported == "ok" => Verdict::Pass,
     Some(("skip", reason)) => Verdict::Skip {
@@ -1849,10 +1896,8 @@ fn pins(dir: &Path) -> Pins {
 /// Whether some `crates/**/Cargo.toml` enables the named foundation feature.
 /// This mirrors the loose grep the legacy shell check used.
 fn foundation_feature_present(dir: &Path, feature: &str) -> bool {
-  let mut files = Vec::new();
-  walk_files(&dir.join("crates"), &mut files);
   let needle = format!("\"{feature}\"");
-  files
+  walk_files(&dir.join("crates"))
     .into_iter()
     .filter(|path| path.file_name().is_some_and(|name| name == "Cargo.toml"))
     .filter_map(|path| match read_file(&path) {
@@ -1872,10 +1917,8 @@ fn foundation_feature_present(dir: &Path, feature: &str) -> bool {
 /// provenance file and the review tool's record are excluded by name.
 fn stale_literals(dir: &Path) -> Vec<String> {
   const SCANNED: [&str; 6] = ["rs", "toml", "nix", "yml", "yaml", "json"];
-  let mut files = Vec::new();
-  walk_files(dir, &mut files);
   let mut offenders = Vec::new();
-  for path in files {
+  for path in walk_files(dir) {
     let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("");
     if !SCANNED.contains(&extension) {
       continue;
@@ -1914,42 +1957,67 @@ fn stale_literals(dir: &Path) -> Vec<String> {
   offenders
 }
 
-/// Recursively collect files under `root`, skipping VCS and build directories.
-/// Best-effort: unreadable directories and entries are logged and skipped
-/// rather than aborting the walk.
-fn walk_files(root: &Path, out: &mut Vec<PathBuf>) {
-  let entries = match std::fs::read_dir(root) {
-    Ok(entries) => entries,
-    Err(error) => {
+/// The regular files under `root`, recursively, skipping symlinks and the VCS
+/// and build directories.
+///
+/// Best-effort: an unreadable directory or entry is logged and skipped rather
+/// than aborting the walk.
+fn walk_files(root: &Path) -> Vec<PathBuf> {
+  std::fs::read_dir(root).map_or_else(
+    |error| {
       tracing::debug!(
         "skipping unreadable directory {}: {error}",
         root.display()
       );
-      return;
-    }
-  };
-  for entry in entries {
-    let entry = match entry {
-      Ok(entry) => entry,
-      Err(error) => {
-        tracing::debug!(
-          "skipping unreadable entry in {}: {error}",
-          root.display()
-        );
-        continue;
+      Vec::new()
+    },
+    |entries| {
+      entries
+        .filter_map(|entry| {
+          entry.map_or_else(
+            |error| {
+              tracing::debug!(
+                "skipping unreadable entry in {}: {error}",
+                root.display()
+              );
+              None
+            },
+            Some,
+          )
+        })
+        .flat_map(|entry| walk_entry(&entry))
+        .collect()
+    },
+  )
+}
+
+/// What one entry contributes to the walk.
+fn walk_entry(entry: &std::fs::DirEntry) -> Vec<PathBuf> {
+  // A `result` symlink into the store would otherwise be walked as the
+  // spawn's source.  `Path::is_dir` follows symlinks; the entry's own type
+  // does not, so a symlink is skipped whatever it points at.
+  entry.file_type().map_or_else(
+    |error| {
+      tracing::debug!(
+        "skipping entry of unknown type {}: {error}",
+        entry.path().display()
+      );
+      Vec::new()
+    },
+    |kind| {
+      let skipped_dir = kind.is_dir()
+        && [".git", "target", ".direnv"]
+          .iter()
+          .any(|skip| entry.file_name() == *skip);
+      if kind.is_symlink() || skipped_dir {
+        Vec::new()
+      } else if kind.is_dir() {
+        walk_files(&entry.path())
+      } else {
+        vec![entry.path()]
       }
-    };
-    let path = entry.path();
-    if path.is_dir() {
-      let name = entry.file_name();
-      if name == ".git" || name == "target" || name == ".direnv" {
-        continue;
-      }
-      walk_files(&path, out);
-    } else {
-      out.push(path);
-    }
-  }
+    },
+  )
 }
 
 fn relative_display(base: &Path, path: &Path) -> String {
@@ -2085,22 +2153,19 @@ mod tests {
   }
 
   #[test]
-  fn module_option_verdict_maps_each_helper_outcome() {
+  fn helper_verdict_maps_each_helper_outcome() {
     let module = "darwinModules.server";
-    assert!(matches!(module_option_verdict(module, "ok"), Verdict::Pass));
+    assert!(matches!(helper_verdict(module, "ok"), Verdict::Pass));
     // A spawn with no such module output is not drift — it has nothing to
     // check — so it skips rather than failing the fleet.
     assert!(matches!(
-      module_option_verdict(
-        module,
-        "skip: flake exposes no darwinModules.server"
-      ),
+      helper_verdict(module, "skip: flake exposes no darwinModules.server"),
       Verdict::Skip { .. }
     ));
     // The helper's reason carries through as the failure detail, so the report
     // names the actual default rather than just "mismatch".
     assert!(matches!(
-      module_option_verdict(
+      helper_verdict(
         module,
         "fail: services.app-server.logPathStdout defaults to \"/x\"",
       ),
@@ -2109,7 +2174,7 @@ mod tests {
     // Anything the helper is not documented to print is an engine problem, not
     // a verdict about the spawn.
     assert!(matches!(
-      module_option_verdict(module, "who knows"),
+      helper_verdict(module, "who knows"),
       Verdict::Error { .. }
     ));
   }
@@ -2261,6 +2326,28 @@ mod tests {
     syn::visit::visit_item_fn(&mut visitor, run);
     assert!(visitor.methods.contains("with_state"));
     assert!(visitor.methods.contains("listen"));
+  }
+
+  #[test]
+  fn nix_diagnosis_starts_at_the_last_error_message() {
+    // A `\` line continuation strips the next line's leading whitespace, so
+    // `\x20` carries the indentation.
+    let transcript = "fetching path input 'path:/spawn'\n\
+      error:\n\
+      \x20      … while calling the 'seq' builtin\n\
+      \n\
+      \x20      error: The option `launchd.servers' does not exist.\n\
+      \x20      - In `<unknown-file>':\n";
+    assert!(nix_diagnosis(transcript)
+      .starts_with("error: The option `launchd.servers'"));
+  }
+
+  #[test]
+  fn nix_diagnosis_keeps_a_messageless_transcript_minus_fetch_chatter() {
+    assert_eq!(
+      nix_diagnosis("fetching git input 'git+file:///t'\nsomething odd\n"),
+      "something odd"
+    );
   }
 
   #[test]

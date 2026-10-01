@@ -228,6 +228,38 @@ output = "checks"
 system = "x86_64-linux"
 attr = "windowsSmoke"
 
+# The release-outputs check proves each release-suffixed package ships one
+# native executable under bin/, not a wrapper script.  Gated to x86_64-linux
+# like the wine check, so the x86_64-linux checks set is evaluated explicitly.
+[[check]]
+id = "flake-release-outputs-check"
+description = "The flake exposes the releaseOutputs check on x86_64-linux so every release package is proven to ship a native executable, not a wrapper script."
+kind = "flake-output-present"
+output = "checks"
+system = "x86_64-linux"
+attr = "releaseOutputs"
+
+[[check]]
+id = "flake-darwin-service-eval-check"
+description = "The flake exposes the darwinServiceEvaluates check, so the spawn's own CI evaluates its darwin module inside a full nix-darwin configuration."
+kind = "flake-output-present"
+output = "checks"
+attr = "darwinServiceEvaluates"
+
+[[check]]
+id = "flake-nixos-service-eval-check"
+description = "The flake exposes the nixosServiceEvaluates check, so the spawn's own CI evaluates its NixOS module inside a full NixOS configuration."
+kind = "flake-output-present"
+output = "checks"
+attr = "nixosServiceEvaluates"
+
+[[check]]
+id = "flake-workspace-tests-check"
+description = "The flake exposes the workspace-tests check, so `nix flake check` in CI runs every member's unit tests under Nix."
+kind = "flake-output-present"
+output = "checks"
+attr = "workspace-tests"
+
 [[check]]
 id = "server-foundation-auth-feature"
 description = "A server-crate spawn enables the foundation \"auth\" feature."
@@ -862,6 +894,14 @@ kind = "json-seq-contains"
 target = ".github/branch-protection.json"
 pointer = "required_status_checks.contexts"
 value = "ci / Formatting"
+
+[[check]]
+id = "branch-protection-json-context-flake-checks"
+description = "Branch protection must require the 'ci / Flake checks' status check, so a failing flake check blocks a merge."
+kind = "json-seq-contains"
+target = ".github/branch-protection.json"
+pointer = "required_status_checks.contexts"
+value = "ci / Flake checks"
 
 [[check]]
 id = "branch-protection-json-no-force-pushes"
@@ -1824,3 +1864,35 @@ when_crates_contains = "server"
 module = "darwinModules.server"
 option = "healthCheck.logPathStderr"
 value = "/var/log/@service@-healthcheck-stderr.log"
+
+# ---------------------------------------------------------------------------
+# Service modules: the foundation helper is called, and the module evaluates
+# inside a full configuration.
+# ---------------------------------------------------------------------------
+[[check]]
+id = "darwin-module-calls-foundation-helper"
+description = "Some .nix file calls the foundation's mkDarwinService, so a fix to the darwin service module reaches the spawn on its next foundation bump."
+kind = "nix-call-present"
+when_crates_contains = "server"
+function = "mkDarwinService"
+
+[[check]]
+id = "nixos-module-calls-foundation-helper"
+description = "Some .nix file calls the foundation's mkNixosService, so a fix to the NixOS service module reaches the spawn on its next foundation bump."
+kind = "nix-call-present"
+when_crates_contains = "server"
+function = "mkNixosService"
+
+[[check]]
+id = "darwin-module-evaluates"
+description = "The darwin module evaluates inside a full nix-darwin configuration with the service enabled, so every launchd option it sets exists and it defines its health-check daemon."
+kind = "darwin-module-evaluates"
+when_crates_contains = "server"
+module = "darwinModules.server"
+
+[[check]]
+id = "nixos-module-evaluates"
+description = "The NixOS module evaluates inside a full NixOS configuration with the service enabled, so every systemd option it sets exists."
+kind = "nixos-module-evaluates"
+when_crates_contains = "server"
+module = "nixosModules.server"

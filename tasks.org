@@ -988,7 +988,7 @@ is the pragmatic local workaround until that lands.
 mishandles it three ways.  Surfaced while wiring a launchd reload that wants a
 reliable liveness signal (see the user-agent reload task above).
 
-** TODO Fix the health-check URL path: =/health= -> =/healthz=
+** DONE Fix the health-check URL path: =/health= -> =/healthz=
 Every health reference in =nix/= and =template/nix/= points at =/health= (8
 occurrences); the server only serves =/healthz=.  So =healthCheck.url='s default
 (=http://127.0.0.1:${cfg.port}/health=) and the module examples all
@@ -999,7 +999,15 @@ occurrences); the server only serves =/healthz=.  So =healthCheck.url='s default
 - Forward-port the corrected default to spawned projects that inherited the
   broken =/health= (same fleet-walk shape as the trusted-publishing backfill).
 
-** TODO Remove the =healthCheck.enable= option — always run the check
+** DONE Turn the health check on by default
+
+Resolved by flipping ~healthCheck.enable~ to ~true~ and keeping the option as an
+opt-out.  Two more faults surfaced on the way: the probe was a TCP URL while the
+default listener is a Unix socket, so it could never connect, and the kill
+targeted a pid file nothing writes.  The probe now follows the listener and the
+restart goes through ~launchctl kickstart -k~.  The darwin evaluation check
+requires the health-check daemon, so a module without one is out of compliance.
+
 =healthCheck.enable= is a =mkEnableOption= (default =false=), so the liveness
 check is opt-in even though =/healthz= is always present.  Remove the option
 entirely (not merely default it true): there is no good reason to run a server
@@ -1518,7 +1526,7 @@ currently hand-wires it:
 systemd.services.${name}.environment.hyuqueue_server_config =
   toString cfg._generatedConfigFile;
 # Darwin:
-launchd.servers.${name}.serviceConfig
+launchd.daemons.${name}.serviceConfig
   .EnvironmentVariables.hyuqueue_server_config =
   toString cfg._generatedConfigFile;
 #+end_src
@@ -1526,6 +1534,12 @@ launchd.servers.${name}.serviceConfig
 The same two lines, on platform-specific attrset paths.  Can't move to
 ~common.nix= (those paths only exist on their respective platforms).  Belongs in
 the foundation helpers directly.
+
+sonify-health is the second consumer: its hand-rolled darwin and NixOS modules
+render a TOML file the same way and pass it with ~--config~, and adopting the
+foundation helpers — which the ~darwin-module-calls-foundation-helper~ and
+~nixos-module-calls-foundation-helper~ compliance checks now ask for — waits on
+this option.
 
 ** Proposed shape
 

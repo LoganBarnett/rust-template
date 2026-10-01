@@ -126,7 +126,7 @@ jobs:
   # import-library wiring (the winmm link).  The cross-fixture crate carries
   # both; building its Windows attrs here fails the PR if either path regresses.
   # This is the Windows sibling of darwin-cross-fixture / gnu-portable-fixture
-  # above, and complements reusable-ci.yml's release-artifacts leg — which
+  # above, and complements reusable-ci.yml's flake-checks leg — which
   # builds compliance-cli's Windows variants and so covers the llvm-mingw
   # *toolchain* build (the autoPatchelf-on-Linux step) and gnullvm linking, but
   # not the C compiler path this fixture drives.  Repo-specific, like the
@@ -152,3 +152,4 @@ jobs:
           nix build --no-link --print-out-paths \
             '.#packages.x86_64-linux.cross-fixture-x86_64-windows' \
             '.#packages.x86_64-linux.cross-fixture-aarch64-windows'
+

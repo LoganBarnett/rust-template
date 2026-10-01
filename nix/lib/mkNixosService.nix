@@ -13,7 +13,6 @@
 #
 #   services.my-app-server = {
 #     enable = true;
-#     baseUrl = "https://my-app.example.com";
 #   };
 #
 # Generates: systemd service (Type=notify, watchdog), socket unit
@@ -94,6 +93,14 @@ in {
           or leave all three null for unauthenticated admin mode.
         '';
       }
+      {
+        assertion = cfg.oidcIssuer == null || cfg.baseUrl != null;
+        message = ''
+          services.${name}: OIDC needs baseUrl.  The provider redirects the
+          browser to "<baseUrl>/auth/callback", and only the deployment knows
+          that address.
+        '';
+      }
     ];
 
     users.users.${cfg.user} = {
@@ -147,6 +154,8 @@ in {
         {
           "${envPrefix}_log_level" = cfg.logLevel;
           "${envPrefix}_log_format" = cfg.logFormat;
+        }
+        // lib.optionalAttrs (cfg.baseUrl != null) {
           "${envPrefix}_base_url" = cfg.baseUrl;
         }
         // lib.optionalAttrs (cfg.oidcIssuer != null) {

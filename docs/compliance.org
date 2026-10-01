@@ -174,22 +174,9 @@ just compliance --format json        # machine-readable output
 
 Each check is declared in =compliance-checks.toml= with a stable symbolic id
 (e.g. =llms-template-compliance-section=) that is printed on every failure, so a
-result can always be traced back to the manifest.  The checks cover required
-files, foundation dependency and feature wiring, the GitHub Actions machinery
-(the CI, publish, branch-protection, and dependabot-automerge workflows, plus
-=dependabot.yml= and =branch-protection.json=), the foundation-driven =main= and
-=config= wiring (the =foundation_main= entry attribute and the =MergeConfig=
-derive with its helper attribute), the module layout and workspace inheritance,
-the absence of stale =rust-template= literals, the documented sections in
-=llms.org= and =CONTRIBUTING.org=, and the foundation pin agreement: the
-revisions pinned in =Cargo.lock= and =flake.lock= must agree with each other
-(=foundation-pins-agree=) and with the template =HEAD=
-(=foundation-pins-current=), and the Claude settings the template emits,
-including the absence of the retired review Stop hook
-(=review-gate-hook-retired=) and of the gate binary it ran
-(=review-stop-package-retired=).  Rust facts are read from the parsed syntax
-tree, and YAML / JSON / TOML facts from the parsed value tree, narrowing to a
-substring match only at the leaf.
+result can always be traced back to the manifest.  The checks cover various
+project plumbing.  These checks ensure that changes made in ~rust-template~ get
+ported to spawns whose emission pre-dates the new changes.
 
 It is the first step of both processes above (see
 [[*Run the structural checker first]]), but does not replace them.  The checker
@@ -197,7 +184,8 @@ enforces what can be expressed as a structural rule; the diff and emission
 comparisons remain authoritative for everything a static rule cannot capture.  A
 green checker run is necessary, not sufficient, for full compliance.
 
-** Choosing a check kind
+** Authoring checks
+*** Choosing a check kind
 
 Default to /presence/ checks — =section-exists= for a heading, =mention-present=
 for a load-bearing phrase, =file-present= for a required file, and a value check
@@ -220,19 +208,6 @@ an existing byte-match (=rustfmt.toml= today) as a candidate to refine into
 value checks on the settings that actually matter, not a pattern to copy.  If
 content genuinely must match the template exactly, justify why in the change —
 that case is rare, if it arises at all.
-
-Match the check to the /consumer/ of the content, not to the file's syntax.  The
-org and Rust kinds read a parsed tree because the readers of those files —
-people, the assistant, =rustc= — read structure, so a phrase wrapped across
-lines or a fn behind an alias still counts.  When the consumer is line-oriented
-that is the wrong lens: the Claude Code =@path= importer honours a line that is
-exactly =@<file>= and nothing looser, so the import lines in =llms.org= are
-asserted with =line-present=, a raw whole-line match that an org-aware phrase
-check would wrongly pass for an indented or mid-sentence path.  The structural
-half of that convention — each import a paragraph of its own, in a fixed
-relative order — is a genuine org question and gets the org kind,
-=paragraphs-in-order=.  Both stay presence checks: a spawn may add its own
-imports around the required ones.
 
 A file whose contract is /behavioural/ rather than textual, and that already
 ships a test suite, can be checked by running that suite:
@@ -283,7 +258,9 @@ change.
   spawns need not backfill, or it flows in automatically through the foundation
   library or a reusable workflow the spawn references at =@main= — those reach
   every spawn on the next input bump, which =foundation-pins-current= already
-  gates.
+  gates.  A foundation-library change reaches a spawn only if the spawn calls
+  the helper, though: a module that hand-rolls what the helper generates never
+  receives it and still passes every outcome check.
 
 ** Opting out of a check
 

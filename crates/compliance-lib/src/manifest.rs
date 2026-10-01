@@ -303,6 +303,20 @@ pub enum CheckKind {
     option: String,
     value: String,
   },
+  /// Check to see if a function call is made at a file or the whole tree of nix
+  /// files.
+  NixCallPresent {
+    function: String,
+    target: Option<String>,
+  },
+  /// Evaluate the module at the flake output `module` (e.g.
+  /// `darwinModules.server`) inside a full nix-darwin configuration
+  /// (`darwinSystem`) with the service enabled.
+  DarwinModuleEvaluates { module: String },
+  /// Evaluate the module at the flake output `module` (e.g.
+  /// `nixosModules.server`) inside a full nixpkgs configuration
+  /// (`nixosSystem`) with the service enabled.
+  NixosModuleEvaluates { module: String },
 }
 
 /// The TOML shape: every kind-specific field is optional and validated later.
@@ -448,6 +462,33 @@ fn require_flake_ident(
       message: format!(
         "kind '{kind}' parameter '{name}' must be a bare flake attribute name \
          (letters, digits, '.', '_', '-')"
+      ),
+    })
+  }
+}
+
+/// Ensure we are not looking at a dotted path and instead a singular
+/// identifier.
+fn require_nix_ident(
+  id: &str,
+  kind: &str,
+  name: &str,
+  value: &str,
+) -> Result<(), ComplianceError> {
+  let ok = value
+    .chars()
+    .next()
+    .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+    && value
+      .chars()
+      .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '\''));
+  if ok {
+    Ok(())
+  } else {
+    Err(ComplianceError::ManifestInvalid {
+      id: id.to_string(),
+      message: format!(
+        "kind '{kind}' parameter '{name}' must be a single Nix identifier"
       ),
     })
   }
@@ -728,6 +769,19 @@ impl RawCheck {
         module: require(&id, &kind, "module", module)?,
         option: require(&id, &kind, "option", option)?,
         value: require(&id, &kind, "value", value)?,
+      },
+      "nix-call-present" => {
+        let function = require(&id, &kind, "function", function)?;
+        require_nix_ident(&id, &kind, "function", &function)?;
+        CheckKind::NixCallPresent { function, target }
+      }
+      // Reaches through --argstr, so `module` needs no bare-identifier rule.
+      "darwin-module-evaluates" => CheckKind::DarwinModuleEvaluates {
+        module: require(&id, &kind, "module", module)?,
+      },
+      // Reaches through --argstr, so `module` needs no bare-identifier rule.
+      "nixos-module-evaluates" => CheckKind::NixosModuleEvaluates {
+        module: require(&id, &kind, "module", module)?,
       },
       other => {
         return Err(ComplianceError::ManifestInvalid {
@@ -1035,6 +1089,71 @@ mod tests {
     let raw: RawManifest = toml::from_str(toml).unwrap();
     let check = raw.check.into_iter().next().unwrap().validate().unwrap();
     assert!(check.when_foundation_feature.is_none());
+  }
+
+  #[test]
+  fn validates_a_nix_call_present_check() {
+    let toml = r#"
+            [[check]]
+            id = "x"
+            description = "d"
+            kind = "nix-call-present"
+            function = "mkDarwinService"
+        "#;
+    let raw: RawManifest = toml::from_str(toml).unwrap();
+    let check = raw.check.into_iter().next().unwrap().validate().unwrap();
+    match check.kind {
+      CheckKind::NixCallPresent { function, target } => {
+        assert_eq!(function, "mkDarwinService");
+        assert!(target.is_none());
+      }
+      other => panic!("wrong kind: {other:?}"),
+    }
+  }
+
+  #[test]
+  fn nix_call_present_rejects_a_dotted_function() {
+    let toml = r#"
+            [[check]]
+            id = "x"
+            description = "d"
+            kind = "nix-call-present"
+            function = "foundation.lib.mkDarwinService"
+        "#;
+    let raw: RawManifest = toml::from_str(toml).unwrap();
+    let result = raw.check.into_iter().next().unwrap().validate();
+    assert!(matches!(result, Err(ComplianceError::ManifestInvalid { .. })));
+  }
+
+  #[test]
+  fn validates_the_module_evaluation_checks() {
+    let toml = r#"
+            [[check]]
+            id = "d"
+            description = "d"
+            kind = "darwin-module-evaluates"
+            module = "darwinModules.server"
+
+            [[check]]
+            id = "n"
+            description = "n"
+            kind = "nixos-module-evaluates"
+            module = "nixosModules.server"
+        "#;
+    let raw: RawManifest = toml::from_str(toml).unwrap();
+    let kinds: Vec<_> = raw
+      .check
+      .into_iter()
+      .map(|check| check.validate().unwrap().kind)
+      .collect();
+    assert!(matches!(
+      &kinds[0],
+      CheckKind::DarwinModuleEvaluates { module } if module == "darwinModules.server"
+    ));
+    assert!(matches!(
+      &kinds[1],
+      CheckKind::NixosModuleEvaluates { module } if module == "nixosModules.server"
+    ));
   }
 
   #[test]

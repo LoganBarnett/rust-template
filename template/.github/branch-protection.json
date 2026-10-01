@@ -1,7 +1,7 @@
 {
   "required_status_checks": {
     "strict": true,
-    "contexts": ["ci / Test", "ci / Formatting"]
+    "contexts": ["ci / Test", "ci / Formatting", "ci / Flake checks"]
   },
   "enforce_admins": false,
   "required_pull_request_reviews": null,

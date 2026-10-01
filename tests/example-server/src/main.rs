@@ -70,7 +70,6 @@ mod tests {
     let config = ServerRunConfig {
       app_name: "example-server".to_string(),
       listen_address: "127.0.0.1:0".parse().unwrap(),
-      base_url: "https://example.com".to_string(),
       oidc: None,
     };
 

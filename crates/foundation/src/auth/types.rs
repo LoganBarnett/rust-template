@@ -17,6 +17,9 @@ pub struct AuthUser {
 /// happens separately in [`super::discovery::discover_oidc`].
 #[derive(Debug, Clone)]
 pub struct OidcConfig {
+  /// Externally reachable base of the application; the provider redirects
+  /// the browser to `{base_url}/auth/callback`.
+  pub base_url: String,
   pub issuer: String,
   pub client_id: String,
   pub client_secret: String,
