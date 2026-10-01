@@ -44,15 +44,21 @@ pkgs.runCommand "darwin-signatures-adhoc"
     for macho in "$pkg"/bin/*; do
       cp "$macho" candidate
       chmod +w candidate
-      rcodesign sign candidate >/dev/null 2>&1
-      if ! cmp --silent "$macho" candidate; then
+      # Under `set -e`, rcodesign refusing to sign a non-Mach-O would end the
+      # build without a word.  A wrapper script under bin/ is the packaging
+      # bug behind such a refusal, so the refusal is reported by name.
+      if ! rcodesign sign candidate >rcodesign.log 2>&1; then
+        echo "ERROR: $macho is not a Mach-O rcodesign can sign:" >&2
+        cat rcodesign.log >&2
+        status=1
+      elif ! cmp --silent "$macho" candidate; then
         echo "ERROR: $macho is not idempotently ad-hoc signed." >&2
         echo "It was modified after signing (e.g. stripped) or never" \
           "re-signed by mkDarwinCrossPackages; Apple Silicon SIGKILLs" \
           "such a binary with no output." >&2
         status=1
       fi
-      rm --force candidate
+      rm --force candidate rcodesign.log
     done
   done
   test "$status" -eq 0

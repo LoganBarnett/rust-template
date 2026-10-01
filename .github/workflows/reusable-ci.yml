@@ -1,7 +1,7 @@
 name: CI (reusable)
 
-# Every job runs inside `nix develop .#ci --command`, so the toolchain
-# and release binaries (rustfmt, clippy, changelog-roller,
+# Every cargo-driven job runs inside `nix develop .#ci --command`, so the
+# toolchain and release binaries (rustfmt, clippy, changelog-roller,
 # cargo-semver-checks) come from the consumer's dedicated `ci` devShell
 # rather than being reinstalled per-job via `dtolnay/rust-toolchain` or
 # `cargo install`.  That collapses "works locally" and "works in CI" into
@@ -261,8 +261,8 @@ jobs:
             --base "$base" \
             --under Breaking
 
-  release-artifacts:
-    name: Release artifacts build
+  flake-checks:
+    name: Flake checks
     runs-on: ubuntu-24.04
     needs: gate
     if: needs.gate.outputs.run_expensive == 'true'
@@ -332,32 +332,6 @@ jobs:
           done
           nix build --no-link --print-out-paths "${attrs[@]}"
 
-  windows-smoke:
-    name: Windows smoke (wine)
-    runs-on: ubuntu-24.04
-    needs: gate
-    if: needs.gate.outputs.run_expensive == 'true'
-    steps:
-      - uses: actions/checkout@v7
+      - name: Run the flake checks
+        run: nix flake check --print-build-logs
 
-      # Install Nix; restore-only.  `save-store: "false"` keeps this job's
-      # llvm-mingw + Windows-cross + wine closure from evicting the shared
-      # toolchain cache — see `.github/actions/setup-nix` for the rationale.
-      - uses: LoganBarnett/rust-template/.github/actions/setup-nix@main
-        with:
-          save-store: "false"
-
-      # Run the x86_64 Windows cross binaries under wine to prove they run,
-      # not merely link.  The release-artifacts leg above builds the Windows
-      # variants, but a PE can link cleanly and still fail to start — e.g. by
-      # importing a non-system DLL like libunwind.dll, which aborts loading with
-      # STATUS_DLL_NOT_FOUND.  A build gate cannot see that; running the binary
-      # can.  The windowsSmoke check (foundation's mkWindowsSmokeCheck) invokes
-      # each `-x86_64-windows` binary with `--help` under wine on the
-      # x86_64-linux runner.  It exists only on x86_64-linux — wine cannot exec
-      # an aarch64 PE, so those stay build-verified only — and passes trivially
-      # for a spawn that ships no Windows binaries.
-      - name: Run the x86_64 Windows binaries under wine
-        run: |
-          nix build --no-link --print-out-paths \
-            '.#checks.x86_64-linux.windowsSmoke'

@@ -56,7 +56,6 @@ fn test_config(app_name: &str) -> ServerRunConfig {
   ServerRunConfig {
     app_name: app_name.to_string(),
     listen_address: "127.0.0.1:0".parse().unwrap(),
-    base_url: "https://example.com".to_string(),
     oidc: None,
   }
 }

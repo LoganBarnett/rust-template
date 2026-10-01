@@ -11,8 +11,6 @@ pub struct Config {
   pub log_level: LogLevel,
   #[merge_config(common)]
   pub log_format: LogFormat,
-  #[merge_config(cli_only, default = "\"https://example.com\".to_string()")]
-  pub base_url: String,
 }
 
 impl ServerApp for Config {
@@ -23,7 +21,6 @@ impl ServerApp for Config {
         IpAddr::V4(Ipv4Addr::LOCALHOST),
         3000,
       )),
-      base_url: self.base_url.clone(),
       oidc: None,
     }]
   }

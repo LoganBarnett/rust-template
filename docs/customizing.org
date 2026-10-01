@@ -338,7 +338,10 @@ Because ~mkGnuPortablePackages~ threads the flake's ~commonArgs~ through to the
 build (the same as the native and musl variants), a library added to a crate's
 ~buildInputs~ for the native build is linked by the portable build too — no
 extra wiring.  Add the dependency once, in the flake's ~commonArgs~ (or the
-crate's package override), and all three variants pick it up.
+crate's package override), and all three variants pick it up.  That reach is why
+a package override holds build logic only: a runtime wrapper around the binary
+would ship in every release variant in place of the executable, so wrap the
+native package at the consumption site in =flake.nix= instead.
 
 Two caveats specific to the portable build:
 
@@ -413,13 +416,13 @@ specific-crate = "1.0"  # Not in workspace dependencies
 
 * Customizing the CI shell
 
-The reusable CI workflow runs every job inside ~nix develop .#ci --command ...~,
-so the tools CI needs come from a dedicated ~ci~ devShell rather than from
-per-job installs.  That shell is deliberately minimal — the Rust toolchain plus
-the release CLIs the CI jobs invoke — and omits the interactive ~default~ dev
-shell's extras (the Elm toolchain, the treefmt formatter stack, ~just~), so it
-is cheaper to realize.  (The Elm frontend, when a project ships one, is a
-package-build input under ~nix build~, not something any devShell provides.)
+The reusable CI workflow runs every cargo-driven job inside ~nix develop .#ci
+--command ...~, so the tools CI needs come from a dedicated ~ci~ devShell rather
+than from per-job installs.  This is due to needing to shave off some work so we
+can get our full suite run in under an hour.
+
+The Elm frontend is a package-build input under ~nix build~, not something any
+~devShell~ provides.
 
 ** What the baseline provides
 

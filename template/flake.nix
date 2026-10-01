@@ -168,6 +168,15 @@
         nixpkgs.lib.filterAttrs
         (name: _: nixpkgs.lib.hasSuffix "-x86_64-windows" name)
         windowsCrossPackages;
+      # Every release-suffixed output.  Inspected only on x86_64-linux, the
+      # host that builds all of them for a release anyway; see
+      # foundation.lib.mkReleaseOutputsCheck.
+      releasePackages =
+        nixpkgs.lib.filterAttrs
+        (name: _:
+          nixpkgs.lib.any (suffix: nixpkgs.lib.hasSuffix suffix name)
+          ["-gnu" "-musl" "-darwin" "-windows" "-windows-msvc"])
+        packages;
     in {
       inherit packages;
       inherit (rustPackages) apps;
@@ -196,6 +205,24 @@
           windowsSmoke = foundation.lib.mkWindowsSmokeCheck {
             inherit pkgs;
             windowsPackages = windowsX86Packages;
+          };
+          # Every release package ships one native executable under bin/, not
+          # a wrapper script, before an asset is cut from it.
+          releaseOutputs = foundation.lib.mkReleaseOutputsCheck {
+            inherit pkgs releasePackages;
+          };
+        }
+        // {
+          darwinServiceEvaluates = foundation.lib.mkDarwinServiceEvalCheck {
+            inherit pkgs;
+            nix-darwin = foundation.inputs.nix-darwin;
+            name = "rust-template-server";
+            module = self.darwinModules.server;
+          };
+          nixosServiceEvaluates = foundation.lib.mkNixosServiceEvalCheck {
+            inherit pkgs nixpkgs;
+            name = "rust-template-server";
+            module = self.nixosModules.server;
           };
         };
       devShells = {

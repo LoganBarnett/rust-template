@@ -19,6 +19,14 @@
     org-fmt.inputs.nixpkgs.follows = "nixpkgs";
     org-fmt.inputs.rust-overlay.follows = "rust-overlay";
     org-fmt.inputs.crane.follows = "crane";
+    # Pull in nix-darwin so we can do evaluations of service configs on
+    # darwin.
+    nix-darwin = {
+      url = "github:nix-darwin/nix-darwin/nix-darwin-25.11";
+      # nix-darwin refuses to evaluate against a nixpkgs of another release, so
+      # this branch tracks the nixpkgs pin above and the two bump together.
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = {
@@ -28,6 +36,7 @@
     crane,
     changelog-roller,
     org-fmt,
+    nix-darwin,
   } @ inputs: let
     forAllSystems = nixpkgs.lib.genAttrs nixpkgs.lib.systems.flakeExposed;
     overlays = [
@@ -113,6 +122,10 @@
     # cargoTestExtraArgs is set here.
     commonArgsFor = system: {
       src = workspaceSourceFor system;
+      nativeBuildInputs = [
+        # Include curl since crane uses it.
+        (pkgsFor system).curl
+      ];
     };
     rustPackagesFor = system: let
       pkgs = pkgsFor system;
@@ -128,6 +141,9 @@
     mkDarwinSignatureCheck = import ./nix/lib/mkDarwinSignatureCheck.nix;
     mkWindowsCrossPackages = import ./nix/lib/mkWindowsCrossPackages.nix;
     mkWindowsSmokeCheck = import ./nix/lib/mkWindowsSmokeCheck.nix;
+    mkReleaseOutputsCheck = import ./nix/lib/mkReleaseOutputsCheck.nix;
+    mkDarwinServiceEvalCheck = import ./nix/lib/mkDarwinServiceEvalCheck.nix;
+    mkNixosServiceEvalCheck = import ./nix/lib/mkNixosServiceEvalCheck.nix;
     mkWindowsMsvcCrossPackages = import ./nix/lib/mkWindowsMsvcCrossPackages.nix;
     xwinSdk = import ./nix/lib/xwin-sdk.nix;
     devPackages = system: let
@@ -233,6 +249,9 @@
     packages = forAllSystems (
       system: let
         cratePackages = (rustPackagesFor system).packages;
+        complianceCli = (pkgsFor system).callPackage ./nix/compliance-cli.nix {
+          compliance-cli = cratePackages.compliance-cli;
+        };
         muslPackages = mkMuslPackages {
           inherit self crane crates system;
           pkgs = pkgsFor system;
@@ -335,7 +354,10 @@
         // windowsCrossFixturePackages
         // windowsMsvcCrossFixturePackages
         // {
-          default = cratePackages.compliance-cli;
+          # The native package is wrapped so `just` is on its PATH; the cross
+          # variants merged above stay bare builds (see nix/compliance-cli.nix).
+          compliance-cli = complianceCli;
+          default = complianceCli;
           # One-shot Dependabot-backlog combiner, exposed so spawns include it
           # in their dev shell (foundation.packages.<system>.dependabot-combine)
           # rather than carry a copy that drifts.  Only cargo is needed from the
@@ -366,12 +388,20 @@
         }
     );
 
-    apps = forAllSystems (system: (rustPackagesFor system).apps);
+    apps = forAllSystems (
+      system:
+        (rustPackagesFor system).apps
+        // {
+          # mkRustPackages points each app at its own bare build; the wrapped
+          # package is the one that carries `just` (see nix/compliance-cli.nix).
+          compliance-cli = {
+            type = "app";
+            program = "${self.packages.${system}.compliance-cli}/bin/rust-template-compliance-cli";
+          };
+        }
+    );
 
-    # `nix flake check` builds these, which runs the workspace's unit tests
-    # (every member's lib and bin tests, integration tests excluded) and, on
-    # x86_64-linux, verifies the darwin cross binaries are validly signed and
-    # runs the x86_64 Windows cross binaries under wine.
+    # `nix flake check` builds these; each check below documents its own gate.
     checks = forAllSystems (
       system: let
         pkgs = pkgsFor system;
@@ -394,6 +424,15 @@
           lib.filterAttrs
           (name: _: lib.hasSuffix "-x86_64-windows" name)
           self.packages.${system};
+        # Every release-suffixed output.  Inspected only on x86_64-linux, the
+        # host that builds all of them for a release anyway; see
+        # mkReleaseOutputsCheck.
+        releasePackages =
+          lib.filterAttrs
+          (name: _:
+            lib.any (suffix: lib.hasSuffix suffix name)
+            ["-gnu" "-musl" "-darwin" "-windows" "-windows-msvc"])
+          self.packages.${system};
       in
         (rustPackagesFor system).checks
         // lib.optionalAttrs (darwinPackages != {}) {
@@ -403,6 +442,25 @@
           windowsSmoke = mkWindowsSmokeCheck {
             inherit pkgs;
             windowsPackages = windowsX86Packages;
+          };
+          releaseOutputs = mkReleaseOutputsCheck {inherit pkgs releasePackages;};
+        }
+        // {
+          darwinServiceEvaluates = mkDarwinServiceEvalCheck {
+            inherit pkgs nix-darwin;
+            name = "rust-template-server";
+            module = import ./template/nix/modules/darwin-server.nix {
+              inherit self;
+              foundation = self;
+            };
+          };
+          nixosServiceEvaluates = mkNixosServiceEvalCheck {
+            inherit pkgs nixpkgs;
+            name = "rust-template-server";
+            module = import ./template/nix/modules/nixos-server.nix {
+              inherit self;
+              foundation = self;
+            };
           };
         }
     );
@@ -420,6 +478,9 @@
       mkDarwinSignatureCheck = import ./nix/lib/mkDarwinSignatureCheck.nix;
       mkWindowsCrossPackages = import ./nix/lib/mkWindowsCrossPackages.nix;
       mkWindowsSmokeCheck = import ./nix/lib/mkWindowsSmokeCheck.nix;
+      mkReleaseOutputsCheck = import ./nix/lib/mkReleaseOutputsCheck.nix;
+      mkDarwinServiceEvalCheck = import ./nix/lib/mkDarwinServiceEvalCheck.nix;
+      mkNixosServiceEvalCheck = import ./nix/lib/mkNixosServiceEvalCheck.nix;
       mkWindowsMsvcCrossPackages = import ./nix/lib/mkWindowsMsvcCrossPackages.nix;
       xwinSdk = import ./nix/lib/xwin-sdk.nix;
       inherit cargoHuskyHookSnippet mkCiShell;

@@ -3552,6 +3552,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rnix"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bb35cedbeb70e0ccabef2a31bcff0aebd114f19566086300b8f42c725fc2cb5f"
+dependencies = [
+ "rowan",
+]
+
+[[package]]
 name = "rowan"
 version = "0.15.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3641,6 +3650,8 @@ name = "rust-template-compliance-lib"
 version = "0.136.0"
 dependencies = [
  "orgize",
+ "rnix",
+ "rowan",
  "rust-template-foundation",
  "serde",
  "serde_json",

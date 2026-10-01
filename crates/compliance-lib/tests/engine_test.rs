@@ -195,6 +195,15 @@ fn minimal_spawn_yields_expected_outcomes_without_engine_errors() {
     outcome(spawn, "server-foundation-auth-feature"),
     Verdict::Skip { .. }
   ));
+  // Gated on the server role, so a cli-only fixture skips them.
+  for id in [
+    "darwin-module-calls-foundation-helper",
+    "nixos-module-calls-foundation-helper",
+    "darwin-module-evaluates",
+    "nixos-module-evaluates",
+  ] {
+    assert!(matches!(outcome(spawn, id), Verdict::Skip { .. }), "{id}");
+  }
   // No Cargo.lock present, so the pin checks skip rather than error.
   assert!(matches!(
     outcome(spawn, "foundation-pins-agree"),

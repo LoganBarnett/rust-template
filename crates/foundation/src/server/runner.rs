@@ -49,7 +49,6 @@ pub trait ServerApp: CliApp {
 pub struct ServerRunConfig {
   pub app_name: String,
   pub listen_address: ListenerAddress,
-  pub base_url: String,
   pub oidc: Option<OidcConfig>,
 }
 
@@ -102,7 +101,7 @@ impl BaseServerState {
     registry.register(Box::new(request_counter.clone()))?;
 
     let oidc_client = if let Some(oidc) = &config.oidc {
-      Some(auth::discover_oidc(oidc, &config.base_url).await?)
+      Some(auth::discover_oidc(oidc).await?)
     } else {
       info!("OIDC not configured — running unauthenticated");
       None

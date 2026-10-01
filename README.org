@@ -141,9 +141,8 @@ carry dead scaffolding; projects that do not need a server do not ship one.
 
 *** Tests and formatting on every push
 
-The =Test= and =Formatting= jobs run on every push and pull request.  Merges to
-=main= are blocked until both pass.  Catching breakage before merge is table
-stakes — this ensures it actually happens.
+The entire suite of checks and tests are run on every pull request pushed
+commit.  Merges to =main= are blocked until the suite passes.
 
 *** Declarative branch protection
 
@@ -198,15 +197,15 @@ native build is deliberately not published — Nix consumers build it from the
 flake or a binary cache.  See [[file:docs/customizing.org][=docs/customizing.org=]] for how to choose between
 the variants.
 
-The Windows binaries target the =*-pc-windows-gnullvm= triples, so each is a
+The Windows binaries target the =*-pc-windows-gnullvm= triples.  Each is a
 native Windows PE that runs on a stock Windows install with no Cygwin/MSYS2
 layer — a pure-Rust binary needs only the OS Universal CRT (Windows 10+).  They
 ship as =.zip= (the format Windows users expect), and the =x86_64= build is
-smoke-tested under =wine= at release time; the =aarch64= build is build-verified
-only, since no arm64-Windows runner exists to run it.  A project that needs the
-MSVC ABI can opt into an =x86_64-pc-windows-msvc= variant (cross-linked with
-=clang-cl=/=lld-link= against an =xwin=-fetched SDK) by setting one flag in
-=rust-template.json=; the default gnullvm path fetches no Microsoft SDK.
+smoke-tested under =wine= in CI; the =aarch64= build is build-verified only,
+since no arm64-Windows runner exists to run it.
+
+A project that needs the MSVC ABI can opt into an =x86_64-pc-windows-msvc=
+variant by setting one flag in =rust-template.json=.
 
 *** Build provenance attestation
 
@@ -359,8 +358,7 @@ workflows are fully operational:
 
 Branch protection is applied automatically by the =branch-protection= workflow
 on the first push that touches =.github/branch-protection.json= (which the
-initial commit does).  Default required checks are =ci / Test= and =ci /
-Formatting=; adjust the =contexts= list in that JSON file to gate on more.
+initial commit does).
 
 The publish workflow runs on every push to =main=, automatically bumps the minor
 version (=0.1.0= → =0.2.0=, etc.), commits the bump back with =[skip ci]= so it

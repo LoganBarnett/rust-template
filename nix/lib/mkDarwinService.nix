@@ -13,7 +13,6 @@
 #
 #   services.my-app-server = {
 #     enable = true;
-#     baseUrl = "https://my-app.example.com";
 #   };
 #
 # Generates: launchd service with all of the trimmings (e.g. health checks, the
@@ -44,6 +43,12 @@
   execLine =
     "${cfg.package}/bin/${name}"
     + " ${listenArg}";
+
+  healthProbe =
+    # 10 is just arbitrary under the 30 second interval.
+    "/usr/bin/curl --fail --silent --max-time 10"
+    + lib.optionalString (cfg.socket != null) " --unix-socket ${cfg.socket}"
+    + " ${cfg.healthCheck.url}";
 
   sharedOptions = import ./service-options.nix {
     inherit name self cfg lib pkgs;
@@ -135,21 +140,33 @@ in {
       };
 
       healthCheck = {
-        enable =
-          lib.mkEnableOption
-          "periodic health-check agent for the server";
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = ''
+            Run the periodic health-check daemon.  On by default: every server
+            serves `/healthz`, and one that cannot answer it is restarted
+            rather than left running.
+          '';
+        };
 
         url = lib.mkOption {
           type = lib.types.str;
-          default = "http://127.0.0.1:${toString cfg.port}/health";
-          defaultText =
-            lib.literalExpression
-            ''"http://127.0.0.1:''${toString cfg.port}/health"'';
-          example = "http://127.0.0.1:3000/health";
+          default =
+            if cfg.socket != null
+            then "http://localhost/healthz"
+            else "http://127.0.0.1:${toString cfg.port}/healthz";
+          defaultText = lib.literalExpression ''
+            if cfg.socket != null
+            then "http://localhost/healthz"
+            else "http://127.0.0.1:''${toString cfg.port}/healthz"
+          '';
+          example = "http://127.0.0.1:3000/healthz";
           description = ''
-            URL to probe for health.  The agent runs curl against this
-            endpoint every 30 seconds and kills the server if it
-            fails, letting launchd's KeepAlive restart it.
+            URL the health-check daemon probes every 30 seconds.  When the
+            service listens on a Unix socket the request goes over that socket
+            and the URL's host is ignored.  A failed probe restarts the
+            service through launchd.
           '';
         };
 
@@ -189,6 +206,14 @@ in {
           services.${name}: OIDC configuration is partial.
           Set all three of oidcIssuer, oidcClientId, and oidcClientSecretFile,
           or leave all three null for unauthenticated admin mode.
+        '';
+      }
+      {
+        assertion = cfg.oidcIssuer == null || cfg.baseUrl != null;
+        message = ''
+          services.${name}: OIDC needs baseUrl.  The provider redirects the
+          browser to "<baseUrl>/auth/callback", and only the deployment knows
+          that address.
         '';
       }
     ];
@@ -245,7 +270,7 @@ in {
     # downstream replacement is the natural override shape.
     # EnvironmentVariables is per-key mkDefault'd via mapAttrs so the
     # attrset itself can still accept additive contributions.
-    launchd.servers.${name} = {
+    launchd.daemons.${name} = {
       serviceConfig = {
         ProgramArguments = lib.mkDefault (let
           sockSetup =
@@ -275,6 +300,8 @@ in {
           {
             "${envPrefix}_log_level" = cfg.logLevel;
             "${envPrefix}_log_format" = cfg.logFormat;
+          }
+          // lib.optionalAttrs (cfg.baseUrl != null) {
             "${envPrefix}_base_url" = cfg.baseUrl;
           }
           // lib.optionalAttrs (cfg.oidcIssuer != null) {
@@ -288,20 +315,17 @@ in {
       };
     };
 
-    # Optional health-check agent.  Probes the server's health endpoint
-    # every 30 seconds and kills the server process on failure, letting
-    # launchd's KeepAlive trigger a restart.
-    launchd.servers."${name}-healthcheck" =
+    # Probe the health check, and restart on failure.
+    launchd.daemons."${name}-healthcheck" =
       lib.mkIf cfg.healthCheck.enable
       {
         serviceConfig = {
           ProgramArguments = lib.mkDefault [
             "/bin/sh"
             "-c"
-            ''
-              /usr/bin/curl --fail --silent ${cfg.healthCheck.url} \
-                || /bin/kill $(/bin/cat /var/run/${name}/pid)
-            ''
+            "${healthProbe} || /bin/launchctl kickstart -k system/${
+              config.launchd.daemons.${name}.serviceConfig.Label
+            }"
           ];
           StartInterval = lib.mkDefault 30;
           RunAtLoad = lib.mkDefault false;

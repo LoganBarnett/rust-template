@@ -18,11 +18,11 @@ async fn test_config_no_oidc() {
     log_format: None,
     config: None,
     listen: None,
-    base_url: Some("https://example.com".to_string()),
     extra: OidcCliFields {
       oidc_issuer: None,
       oidc_client_id: None,
       oidc_client_secret_file: None,
+      base_url: None,
     },
   };
 
@@ -42,11 +42,11 @@ async fn test_config_full_oidc() {
     log_format: None,
     config: None,
     listen: None,
-    base_url: Some("https://example.com".to_string()),
     extra: OidcCliFields {
       oidc_issuer: Some("https://sso.example.com".to_string()),
       oidc_client_id: Some("my-client".to_string()),
       oidc_client_secret_file: Some(fixture),
+      base_url: Some("https://example.com".to_string()),
     },
   };
 
@@ -66,11 +66,11 @@ async fn test_config_partial_oidc_errors() {
     log_format: None,
     config: None,
     listen: None,
-    base_url: Some("https://example.com".to_string()),
     extra: OidcCliFields {
       oidc_issuer: Some("https://sso.example.com".to_string()),
       oidc_client_id: None,
       oidc_client_secret_file: None,
+      base_url: None,
     },
   };
 
@@ -79,5 +79,32 @@ async fn test_config_partial_oidc_errors() {
   assert!(
     msg.contains("partial OIDC") && msg.contains("missing"),
     "error should describe partial OIDC config, got: {msg}"
+  );
+}
+
+#[tokio::test]
+async fn test_config_oidc_without_base_url_errors() {
+  use rust_template_server::config::{CliRaw, Config, OidcCliFields};
+
+  let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    .join("tests/fixtures/oidc-client-secret");
+
+  let cli = CliRaw {
+    log_level: None,
+    log_format: None,
+    config: None,
+    listen: None,
+    extra: OidcCliFields {
+      oidc_issuer: Some("https://sso.example.com".to_string()),
+      oidc_client_id: Some("my-client".to_string()),
+      oidc_client_secret_file: Some(fixture),
+      base_url: None,
+    },
+  };
+
+  let msg = Config::from_cli_and_file(cli).unwrap_err().to_string();
+  assert!(
+    msg.contains("base_url is required with OIDC"),
+    "error should name base_url, got: {msg}"
   );
 }

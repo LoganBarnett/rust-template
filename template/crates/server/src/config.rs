@@ -30,6 +30,11 @@ pub struct OidcCliFields {
   /// Path to a file containing the OIDC client secret.
   #[arg(long, env = "rust_template_oidc_client_secret_file")]
   pub oidc_client_secret_file: Option<PathBuf>,
+
+  /// Public base URL of the service (e.g. https://example.com), from which
+  /// the OIDC redirect URI is built.  Required with the other OIDC fields.
+  #[arg(long, env = "rust_template_base_url")]
+  pub base_url: Option<String>,
 }
 
 /// OIDC config file fields, flattened into the generated
@@ -39,6 +44,7 @@ pub struct OidcFileFields {
   pub oidc_issuer: Option<String>,
   pub oidc_client_id: Option<String>,
   pub oidc_client_secret_file: Option<PathBuf>,
+  pub base_url: Option<String>,
 }
 
 #[derive(Debug, Clone, MergeConfig)]
@@ -60,10 +66,6 @@ pub struct Config {
     parse
   )]
   pub listen_address: ListenerAddress,
-  /// Base URL of the service (e.g. https://example.com), used to
-  /// construct the OIDC redirect URI.
-  #[merge_config(required)]
-  pub base_url: String,
   #[merge_config(skip)]
   pub oidc: Option<OidcConfig>,
 }
@@ -79,7 +81,6 @@ impl ServerApp for Config {
     vec![ServerRunConfig {
       app_name: Self::app_name().to_string(),
       listen_address: self.listen_address.clone(),
-      base_url: self.base_url.clone(),
       oidc: self.oidc.clone(),
     }]
   }
@@ -105,6 +106,11 @@ impl Config {
       .oidc_client_secret_file
       .clone()
       .or_else(|| file.extra.oidc_client_secret_file.clone());
+    let base_url = cli
+      .extra
+      .base_url
+      .clone()
+      .or_else(|| file.extra.base_url.clone());
 
     match (&oidc_issuer, &oidc_client_id) {
       (None, None) if oidc_secret_file.is_none() => Ok(None),
@@ -128,7 +134,18 @@ impl Config {
             source,
           })?;
 
+        // The provider redirects the browser to `<base_url>/auth/callback`,
+        // and only the deployment knows that address.
+        let base_url = base_url.ok_or_else(|| {
+          ConfigError::Validation(
+            "base_url is required with OIDC: it is where the provider \
+             sends the browser back to"
+              .to_string(),
+          )
+        })?;
+
         Ok(Some(OidcConfig {
+          base_url,
           issuer: issuer.clone(),
           client_id: client_id.clone(),
           client_secret,

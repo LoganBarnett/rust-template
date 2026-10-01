@@ -583,7 +583,7 @@ There is nothing to write for the common case:
 
 #+begin_src rustic :results none :exports code
 #[merge_config(required)]
-pub base_url: String, // → reads `<app>_base_url`
+pub database_url: String, // → reads `<app>_database_url`
 #+end_src
 
 Two attributes deviate from that.  Each is the attention-getter on its field, so
@@ -704,7 +704,7 @@ contributes its own options and config gives full composition with no additional
 plumbing.
 
 Every value the helpers set on ~serviceConfig~ / ~socketConfig~ /
-~launchd.servers.<name>.serviceConfig~ is wrapped in ~lib.mkDefault~, so plain
+~launchd.daemons.<name>.serviceConfig~ is wrapped in ~lib.mkDefault~, so plain
 assignment from a downstream module overrides cleanly.  ~lib.mkForce~ is needed
 only when overriding something the helper sets without ~mkDefault~ — typically
 lists like ~wantedBy~, ~after~, and ~requires~, which the module system merges
@@ -772,5 +772,5 @@ config = lib.mkIf cfg.enable {
 #+end_src
 
 The Darwin equivalent contributes to
-~launchd.servers.<name>.serviceConfig.EnvironmentVariables~ — same shape,
+~launchd.daemons.<name>.serviceConfig.EnvironmentVariables~ — same shape,
 different attribute path.

@@ -3,9 +3,36 @@
 
 * Upcoming
 ** Added
+1. Servers are now checked to see if they use the Nix service helpers.
+2. Every flake check a spawn exposes now runs on every push. Spawns should sync
+   compliance.
+3. Checks have been added to do smoke evaluation of the service options to a
+   config.
+4. Spawns expose a ~releaseOutputs~ flake check that fails when a release
+   package ships anything but one native executable under ~bin/~.  Existing
+   spawns receive it on their next compliance sync.
 ** Fixes
+1. Fixed ~nix-darwin~ services not being valid for the service helper.  Bump
+   foundation.
+2. The stale-literal compliance check no longer follows a ~result~ symlink into
+   the Nix store.  No action needed.
+3. The ~nix-darwin~ health check now works.  No action needed.
+4. ~base_url~ is now only required for OIDC - users trying to get a quick start
+   with a server are no longer bound to figure it out.
+5. The compliance-cli release binaries are binaries again: every non-Windows
+   asset from v0.75.0 through v0.136.0 was a wrapper script.  Download the next
+   release; nothing else to do.
+6. The ~darwinSignatures~ check names a ~bin/~ entry rcodesign cannot sign
+   instead of failing with no output.  No action needed.
 ** Breaking
+1. ~ci / Flake checks~ is a required status check: once compliance sync updates
+   branch protection, a pull request cannot merge with a failing flake check,
+   and ~workspace-tests~ runs under Nix in CI for the first time.  No action
+   beyond the sync.
+2. The darwin health check is on by default.  Ensure using ~/healthz~ to comply.
 ** Maintenance
+1. ~just ci-test~ builds the spawn against the working-tree foundation,
+   uncommitted changes included.  No action needed.
 ** Security
 * v0.136.0
 ** Added

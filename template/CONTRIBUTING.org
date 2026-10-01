@@ -375,7 +375,7 @@ constraints are worth knowing:
    standard library became available; the pinned ~rust-bin.stable.latest~ in the
    emitted ~flake.nix~ satisfies this, so this only matters if you pin an older
    toolchain; and
-2. the release verifies the *x86_64* binary by running it under ~wine~ (the
+2. CI verifies the *x86_64* binary by running it under ~wine~ (the
    ~windowsSmoke~ flake check, gated to ~x86_64-linux~), while the *aarch64*
    binary is build-verified only — no arm64-Windows runner exists, and ~wine~
    cannot execute an arm64 PE.

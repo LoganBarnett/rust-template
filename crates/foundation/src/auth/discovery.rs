@@ -21,12 +21,10 @@ pub enum OidcDiscoveryError {
 
 /// Perform OIDC provider discovery and return a configured `CoreClient`.
 ///
-/// `base_url` is the externally-reachable base of the application (e.g.
-/// `https://example.com`); the redirect URI is constructed as
-/// `{base_url}/auth/callback`.
+/// The redirect URI is `{base_url}/auth/callback`, with `base_url` taken
+/// from the configuration.
 pub async fn discover_oidc(
   config: &OidcConfig,
-  base_url: &str,
 ) -> Result<Arc<CoreClient>, OidcDiscoveryError> {
   let issuer = openidconnect::IssuerUrl::new(config.issuer.clone())
     .map_err(|e| OidcDiscoveryError::InvalidIssuer(e.to_string()))?;
@@ -43,7 +41,7 @@ pub async fn discover_oidc(
 
   let redirect_url = openidconnect::RedirectUrl::new(format!(
     "{}/auth/callback",
-    base_url.trim_end_matches('/')
+    config.base_url.trim_end_matches('/')
   ))
   .map_err(|e| OidcDiscoveryError::InvalidRedirectUri(e.to_string()))?;
 
