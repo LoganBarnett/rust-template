@@ -41,7 +41,7 @@ syn = { version = "2", features = ["full", "visit", "extra-traits"] }
 rnix = "0.11"
 # rnix's `AstNode` is a marker over rowan's trait and rnix does not re-export
 # rowan.
-rowan = "0.15"
+rowan = "0.17"
 # Enables method chaining and reduces superfluous local variables that only
 # exist to name intermediate results.  Prefer .tap() over temporary variables
 # when it improves readability.
