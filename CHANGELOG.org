@@ -6,6 +6,8 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+1. Bump rowan from 0.15.19 to 0.17.0
+   (https://github.com/LoganBarnett/rust-template/pull/162)
 ** Security
 * v0.137.0
 ** Added
