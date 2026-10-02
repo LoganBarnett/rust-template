@@ -38,7 +38,7 @@ yaml-rust2 = "0.12"
 # method-chain traversal.
 syn = { version = "2", features = ["full", "visit", "extra-traits"] }
 # Parses spawn Nix files into a syntax tree for the nix-call-present check.
-rnix = "0.11"
+rnix = "0.14"
 # rnix's `AstNode` is a marker over rowan's trait and rnix does not re-export
 # rowan.
 rowan = "0.15"
