@@ -2985,7 +2985,7 @@ dependencies = [
  "jetscii",
  "memchr",
  "nom",
- "rowan",
+ "rowan 0.15.19",
 ]
 
 [[package]]
@@ -3557,7 +3557,7 @@ version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bb35cedbeb70e0ccabef2a31bcff0aebd114f19566086300b8f42c725fc2cb5f"
 dependencies = [
- "rowan",
+ "rowan 0.15.19",
 ]
 
 [[package]]
@@ -3565,6 +3565,19 @@ name = "rowan"
 version = "0.15.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2441aaccb50f4267d4f0f58b21e0138e96a449f361ed57a2673a83c9bca0772"
+dependencies = [
+ "countme",
+ "hashbrown 0.14.5",
+ "memoffset",
+ "rustc-hash 1.1.0",
+ "text-size",
+]
+
+[[package]]
+name = "rowan"
+version = "0.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "14b574c58582fa59fa43a2feb6608b8744184659f08a2e0117e4b8224d95ed61"
 dependencies = [
  "countme",
  "hashbrown 0.14.5",
@@ -3651,7 +3664,7 @@ version = "0.137.0"
 dependencies = [
  "orgize",
  "rnix",
- "rowan",
+ "rowan 0.17.0",
  "rust-template-foundation",
  "serde",
  "serde_json",
