@@ -1133,16 +1133,24 @@ value = "true"
 # ======== misc-and-docs-sections ========
 [[check]]
 id = "pre-commit-hook-present"
-description = "The cargo-husky pre-commit hook that formats staged files via treefmt is present."
+description = "The cargo-husky pre-commit hook that formats the staged content is present."
 kind = "file-present"
 path = ".cargo-husky/hooks/pre-commit"
 
+# The hook's whole job is to hand over to format-staged.  The line is matched
+# exactly, so a comment that mentions the tool does not satisfy the check.
 [[check]]
-id = "pre-commit-hook-runs-treefmt"
-description = "The pre-commit hook dispatches staged files to treefmt for formatting."
-kind = "file-contains"
+id = "pre-commit-hook-runs-format-staged"
+description = "The pre-commit hook has a line that is exactly the exec of format-staged, the tool that formats only the staged content."
+kind = "line-present"
 target = ".cargo-husky/hooks/pre-commit"
-contains = "treefmt"
+line = 'exec format-staged "$@"'
+
+[[check]]
+id = "dev-shell-provides-format-staged"
+description = "The spawn's flake must pull the format-staged package from the foundation flake into its dev shell, where the pre-commit hook finds it."
+kind = "dev-shell-package"
+package = "format-staged"
 
 [[check]]
 id = "rustfmt-matches-template"

@@ -33,7 +33,7 @@ tempfile = "3"
 # depends on parsing git's output, which is translated under a non-English
 # locale.  Default features are off to keep the network transports out of the
 # build.
-gix = { version = "0.87", default-features = false, features = ["status", "revision", "blob-diff", "parallel", "sha1"] }
+gix = { workspace = true, features = ["status", "revision", "blob-diff", "parallel", "sha1"] }
 
 [lints]
 workspace = true

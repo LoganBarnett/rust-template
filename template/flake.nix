@@ -268,6 +268,9 @@
             # `just review`.  The reviewer it drives is your own `claude`
             # install, which this shell does not provide.
             foundation.packages.${system}.review
+            # The formatter the pre-commit hook runs.  It formats only the
+            # staged content, and leaves unstaged content alone.
+            foundation.packages.${system}.format-staged
             # ABI baseline check used by the reusable CI workflow's `abi`
             # job.  Compares the workspace's current public API against the
             # previous version on crates.io and reports breaking changes;

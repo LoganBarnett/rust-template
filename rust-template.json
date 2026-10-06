@@ -27,6 +27,12 @@
     },
     "review-cli": {
       "release-binary": true
+    },
+    "format-staged-lib": {
+      "release-binary": false
+    },
+    "format-staged-cli": {
+      "release-binary": true
     }
   },
   "apple-frameworks": false

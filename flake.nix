@@ -80,6 +80,14 @@
         binary = "rust-template-review-cli";
       };
       # CRATE:review-cli:end
+      # CRATE:format-staged-cli:begin
+      # The formatter a pre-commit hook runs.  It formats the staged content
+      # and keeps unstaged hunks out of the commit.
+      format-staged-cli = {
+        name = "rust-template-format-staged-cli";
+        binary = "rust-template-format-staged-cli";
+      };
+      # CRATE:format-staged-cli:end
       # CRATE_ENTRIES
     };
     # A build-only regression fixture guarding the zig-linked build paths the
@@ -201,6 +209,8 @@
       # package output so `just dependency-bump` works here the same way it
       # does in a spawn.
       self.packages.${system}.dependency-bump
+      # The pre-commit formatter.
+      self.packages.${system}.format-staged
       # The dependency bumper fetches the actions/runner-images README through
       # curl.  `just dependency-bump` runs the crate from source, outside the
       # packaged wrapper that carries its own curl, and the engine's fetch test
@@ -234,6 +244,8 @@
           # The dependency-bump engine's fetch test spawns curl, and the
           # reusable CI's `test` job runs `cargo test` inside this shell.
           (pkgsFor system).curl
+          # The format-staged tests drive the real treefmt.
+          (pkgsFor system).treefmt
         ];
       };
     });
@@ -384,6 +396,10 @@
           # as `just review` rather than carry a copy that drifts.
           review = (pkgsFor system).callPackage ./nix/review.nix {
             review-cli = cratePackages.review-cli;
+          };
+          # The pre-commit formatter.
+          format-staged = (pkgsFor system).callPackage ./nix/format-staged.nix {
+            format-staged-cli = cratePackages.format-staged-cli;
           };
         }
     );

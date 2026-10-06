@@ -1,31 +1,5 @@
 #!/bin/sh
-# Pre-commit hook: format staged files via treefmt, then re-stage them.
-# treefmt reads treefmt.toml and dispatches each file to the correct
-# language-specific formatter automatically.
+# Pre-commit hook: format the staged content and re-stage it.  The work is
+# done by format-staged, which the dev shell provides.
 
-set -e
-
-# Collect staged filenames (Added, Copied, Modified, or Renamed).
-# Renames must be included — git classifies a `git mv` + content edit
-# as R, not M, so omitting R silently skips the renamed file and the
-# commit captures pre-format content.
-STAGED_FILES=$(git diff --staged --name-only --diff-filter=ACMR || true)
-
-if [ -z "$STAGED_FILES" ]; then
-  exit 0
-fi
-
-echo "Formatting staged files..."
-
-# treefmt accepts paths as positional arguments and only formats those
-# files, using the include patterns in treefmt.toml to select the
-# right formatter for each one.
-# shellcheck disable=SC2086
-treefmt $STAGED_FILES
-
-# Re-stage the files after formatting.
-for f in $STAGED_FILES; do
-  git add "$f"
-done
-
-echo "Staged files formatted and re-staged successfully."
+exec format-staged "$@"

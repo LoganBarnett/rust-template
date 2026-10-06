@@ -13,6 +13,9 @@
 #     -> treefmt errors or skips, file unchanged.
 #   * binary in devShell but no [formatter.X] block in treefmt.toml
 #     -> treefmt never invokes it, file unchanged.
+#
+# The script then commits through the spawn's pre-commit hook.  It asserts
+# that the hook formats and commits only staged content.
 
 set -euo pipefail
 
@@ -168,6 +171,136 @@ for i in "${!FORMATTER_NAMES[@]}"; do
     fi
 done
 
+# ── Pre-commit hook: only staged content is formatted and committed ─────
+HOOK=".cargo-husky/hooks/pre-commit"
+MAIN_RS="crates/cli/src/main.rs"
+LIB_RS="crates/lib/src/lib.rs"
+head_main="$TMPBASE/head-main.rs"
+working_main="$TMPBASE/working-main.rs"
+commit_log="$TMPBASE/hook-commit.log"
+
+# Records one hook assertion.  The first argument is the label.  The rest is
+# the command whose exit status decides the result.
+hook_check() {
+    local label="$1"
+    shift
+    if "$@"; then
+        printf "  PASS %-12s %s\n" "pre-commit" "$label"
+        PASS=$((PASS + 1))
+    else
+        printf "  FAIL %-12s %s\n" "pre-commit" "$label"
+        FAIL=$((FAIL + 1))
+    fi
+}
+
+hook_commit() {
+    if (cd "$SPAWN" && nix develop --command \
+            git commit --quiet --message "hook probe") > "$commit_log" 2>&1; then
+        return 0
+    fi
+    cat "$commit_log"
+    return 1
+}
+
+head_lacks_unstaged_hunk() {
+    ! grep --quiet --fixed-strings -- 'unstaged_probe' "$head_main"
+}
+
+# The two-space indent comes from rustfmt.toml.  It shows the formatter found
+# the project's configuration and not its own defaults.
+head_holds_formatted_staged_hunk() {
+    grep --quiet --fixed-strings --line-regexp -- \
+        'fn staged_probe() {' "$head_main" \
+        && grep --quiet --fixed-strings --line-regexp -- \
+            '  let _x = 1;' "$head_main"
+}
+
+fully_staged_file_is_synced() {
+    grep --quiet --fixed-strings --line-regexp -- \
+        'fn synced_probe() {' "$SPAWN/$LIB_RS" \
+        && [[ -z "$(cd "$SPAWN" && git status --porcelain -- "$LIB_RS")" ]]
+}
+
 echo
-echo "Summary: $PASS passed, $FAIL failed (out of ${#FORMATTER_NAMES[@]})"
+echo "Committing through the spawn's pre-commit hook ..."
+(
+    cd "$SPAWN"
+    git init --quiet --initial-branch main
+    git config user.name "Hook Test"
+    git config user.email "hook-test@example.invalid"
+    git config commit.gpgsign false
+    # A machine-wide core.hooksPath would otherwise decide whether the hook
+    # under test runs at all.
+    git config core.hooksPath "$(dirname "$HOOK")"
+    git add --all
+    git commit --quiet --no-verify --message "baseline"
+
+    # main.rs declares an out-of-line module.  The formatter must resolve it
+    # from the staged tree for the commit to succeed.
+    printf 'fn  staged_probe(  )  {let _x=1;}\n' >> "$MAIN_RS"
+    printf 'fn  synced_probe(  )  {let _z=3;}\n' >> "$LIB_RS"
+    git add "$MAIN_RS" "$LIB_RS"
+    # Appending after the add leaves this function out of the index.  That is
+    # the state `git add --patch` produces when one hunk is declined.
+    printf 'fn  unstaged_probe(  )  {let _y=2;}\n' >> "$MAIN_RS"
+)
+cp "$SPAWN/$MAIN_RS" "$working_main"
+
+# The spawn runs the template's copy of the hook.  Equality extends every
+# result below to this repo's own copy.
+hook_check "this repo's hook matches the template's" \
+    cmp --silent "$SCRIPT_DIR/$HOOK" "$SCRIPT_DIR/template/$HOOK"
+hook_check "commit through the hook succeeds" hook_commit
+(cd "$SPAWN" && git show "HEAD:$MAIN_RS") > "$head_main"
+hook_check "unstaged hunk stays out of the commit" head_lacks_unstaged_hunk
+hook_check "staged hunk is committed formatted" \
+    head_holds_formatted_staged_hunk
+hook_check "working file keeps its unstaged hunk untouched" \
+    cmp --silent "$SPAWN/$MAIN_RS" "$working_main"
+hook_check "fully staged file is formatted in the working tree too" \
+    fully_staged_file_is_synced
+
+# format-staged carries its own treefmt.  This commit runs with every PATH
+# directory that holds a treefmt removed.  The formatters stay, since they
+# live in other directories.  The commit fails unless the hook finds the
+# treefmt the wrapper carries.
+hook_commit_without_treefmt() {
+    if (cd "$SPAWN" && nix develop --command bash -c '
+            set -euo pipefail
+            IFS=: read -ra dirs <<< "$PATH"
+            kept=()
+            for dir in "${dirs[@]}"; do
+                [[ -x "$dir/treefmt" ]] || kept+=("$dir")
+            done
+            PATH=$(IFS=:; printf "%s" "${kept[*]}")
+            export PATH
+            if command -v treefmt > /dev/null; then
+                echo "treefmt is still on PATH, so this proves nothing" >&2
+                exit 1
+            fi
+            git commit --quiet --message "hook probe without treefmt"
+        ') > "$commit_log" 2>&1; then
+        return 0
+    fi
+    cat "$commit_log"
+    return 1
+}
+
+head_holds_formatted_bundled_probe() {
+    (cd "$SPAWN" && git show "HEAD:$LIB_RS") \
+        | grep --quiet --fixed-strings --line-regexp -- 'fn bundled_probe() {'
+}
+
+(
+    cd "$SPAWN"
+    printf 'fn  bundled_probe(  )  {let _w=4;}\n' >> "$LIB_RS"
+    git add "$LIB_RS"
+)
+hook_check "commit succeeds with no treefmt on the caller's PATH" \
+    hook_commit_without_treefmt
+hook_check "that commit holds the staged hunk formatted" \
+    head_holds_formatted_bundled_probe
+
+echo
+echo "Summary: $PASS passed, $FAIL failed (out of $((PASS + FAIL)))"
 [[ $FAIL -eq 0 ]]
