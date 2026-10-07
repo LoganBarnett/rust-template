@@ -3,6 +3,12 @@
 
 * Upcoming
 ** Added
+** Fixes
+** Breaking
+** Maintenance
+** Security
+* v0.139.0
+** Added
 1. The comment and documentation guidance in =llms.org= is now a one-screen
    "Prose rules" section stated without argument.  The reasoning moves to
    rust-template's =docs/contribution-rationale.org= and is not emitted into
@@ -12,9 +18,6 @@
 ** Fixes
 1. The foundation's =USAGE.org= now says a =Cargo.toml= =description= takes the
    =-h= summary's place.  No action needed.
-** Breaking
-** Maintenance
-** Security
 * v0.138.0
 ** Added
 1. A doc comment on a =MergeConfig= struct now shows as the program's =--help=
