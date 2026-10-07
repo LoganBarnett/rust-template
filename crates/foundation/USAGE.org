@@ -356,6 +356,27 @@ The recommended configuration pattern uses three stages:
 The ~Config::from_cli_and_file~ method merges CLI → config file → defaults.
 Wire it into the ~CliApp~ trait via ~from_cli~.
 
+** Help text
+
+A doc comment on the ~Config~ struct is the program's help text.  Its first
+paragraph is the ~-h~ summary.  The whole comment shows under ~--help~.  A doc
+comment on a field describes its flag the same way.
+
+#+begin_src rustic :results none :exports code
+/// Count the words in a file.
+///
+/// Reads the file once and prints one line per distinct word.  A file that is
+/// not valid UTF-8 is rejected before anything is printed.
+#[derive(MergeConfig)]
+#[merge_config(app_name = "my-app")]
+pub struct Config {
+    #[merge_config(common)]
+    pub log_level: LogLevel,
+    #[merge_config(common)]
+    pub log_format: LogFormat,
+}
+#+end_src
+
 ** Subcommands
 
 Mark a field with ~#[merge_config(subcommand)]~ to expose a clap subcommand on

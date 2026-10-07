@@ -20,13 +20,27 @@ cargo test
 
 ## What the pre-commit hook does
 
-Before each commit, the hook will:
+The hook runs `format-staged`. The dev shell provides it. Before each commit
+it will:
 1. Identify which files are staged for commit
-2. Run `treefmt` on only those staged files, dispatching each to the formatter declared in `treefmt.toml` (rustfmt, alejandra, elm-format, prettier, …)
-3. Re-stage the formatted versions of those files
+2. Run `treefmt` on the staged content of those files, dispatching each to the
+   formatter declared in `treefmt.toml`
+3. Re-stage the formatted content
 4. Proceed with the commit, ensuring all committed code is properly formatted
 
-Note: Only files you've staged for commit will be formatted and included. Other files in your working directory remain untouched.
+Note: Only staged content is formatted and included. A hunk you left unstaged
+stays out of the commit. A file that carries unstaged changes is not rewritten
+in your working directory. Its unstaged diff then reads as both your edit and
+an undoing of the formatting. Nothing is lost. Stage the whole file and commit
+again to settle it. A fully staged file is also updated in place so it matches
+the commit.
+
+Commit from inside the dev shell. Outside it the hook cannot find
+`format-staged`, and the commit stops.
+
+`format-staged` refuses a repository that uses a split index or a sparse
+index. It cannot rewrite either one safely. The split index is the one
+`core.splitIndex` turns on.
 
 ## Bypassing the hook (not recommended)
 

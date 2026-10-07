@@ -4,7 +4,16 @@
 * Upcoming
 ** Added
 ** Fixes
+1. The pre-commit hook no longer commits unstaged hunks of a partially staged
+   file.  It now runs the =format-staged= tool from the foundation flake.
+   Spawns should sync compliance.
 ** Breaking
+1. The compliance check id =pre-commit-hook-runs-treefmt= is gone, replaced by
+   =pre-commit-hook-runs-format-staged= and =dev-shell-provides-format-staged=.
+   A project listing the old id under =compliance-ignores= in its
+   =rust-template.json= must update it.
+2. The pre-commit hook refuses a repository with =core.splitIndex= set or a
+   sparse index.  Turn that feature off to commit through the hook.
 ** Maintenance
 ** Security
 * v0.137.0

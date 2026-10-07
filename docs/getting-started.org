@@ -171,10 +171,14 @@ cargo fmt
 cargo fmt -- --check
 #+end_src
 
-The hook will:
-1. Check if code is formatted before allowing a commit
-2. Automatically format the code if it's not formatted
-3. Ask you to re-add the formatted files to your commit
+The hook runs =format-staged=, which will:
+1. Format the staged content of each staged file with =treefmt=
+2. Re-stage the formatted content, leaving unstaged hunks out of the commit
+3. Update the working file too, unless it carries unstaged changes
+
+A file with unstaged changes keeps its original text in the working tree.  Its
+unstaged diff then reads as both your edit and an undoing of the formatting.
+Nothing is lost.  Stage the whole file and commit again to settle it.
 
 To install the hooks manually (if needed):
 

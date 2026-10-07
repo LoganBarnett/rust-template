@@ -1,0 +1,33 @@
+[package]
+name = "rust-template-format-staged-lib"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = []
+
+[dependencies]
+# Supplies the logging enums this crate re-exports, so the cli's staged config
+# names them without reaching past the engine.
+rust-template-foundation = { workspace = true }
+# Reports which staged paths a run re-staged and which working files it
+# rewrote, the two things a contributor asks about after a commit.
+tracing = { workspace = true }
+# Names each failing operation as its own error variant rather than a shared
+# stringly-typed one.
+thiserror = { workspace = true }
+# Enables method chaining and reduces superfluous local variables that only
+# exist to name intermediate results.  Prefer .tap() over temporary variables
+# when it improves readability.
+tap = { workspace = true }
+# Reads the index, exports it through git's filters, writes the formatted
+# blobs, and rewrites the index, all in-process.  `worktree-mutation` supplies
+# the export and `attributes` the filter pipeline.
+gix = { workspace = true, features = ["attributes", "worktree-mutation", "parallel", "sha1"] }
+# Holds the exported index that treefmt formats, and removes it when the run
+# ends however the run ends.
+tempfile = "3"
+
+[lints]
+workspace = true

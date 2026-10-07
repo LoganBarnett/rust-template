@@ -526,6 +526,7 @@ fn cli_field_def(
 fn mc_gen_cli_raw(
   fields: &[MergeConfigFieldInfo],
   attrs: &MergeConfigStructAttrs,
+  struct_docs: &[syn::Attribute],
 ) -> proc_macro2::TokenStream {
   let app_name = &attrs.app_name;
   let prefix = env_prefix(app_name);
@@ -578,6 +579,7 @@ fn mc_gen_cli_raw(
   // `std::path::PathBuf` resolve via the user crate's prelude /
   // standard library namespace.
   quote! {
+    #(#struct_docs)*
     #[derive(::std::fmt::Debug, ::clap::Parser)]
     #[command(name = #app_name, version, about)]
     pub struct CliRaw {
@@ -968,7 +970,15 @@ fn mc_derive_impl(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
     ));
   }
 
-  let cli_raw = mc_gen_cli_raw(&field_infos, &attrs);
+  // Clap reads the long help from the doc comment on the parser struct.  The
+  // author's comment sits on the config struct, so it is copied over.
+  let struct_docs: Vec<syn::Attribute> = input
+    .attrs
+    .iter()
+    .filter(|attr| attr.path().is_ident("doc"))
+    .cloned()
+    .collect();
+  let cli_raw = mc_gen_cli_raw(&field_infos, &attrs, &struct_docs);
   let config_file_raw = mc_gen_config_file_raw(&field_infos, &attrs);
   let config_error = mc_gen_config_error(&attrs);
   let from_cli = mc_gen_from_cli_and_file(struct_name, &field_infos, &attrs);

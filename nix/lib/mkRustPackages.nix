@@ -64,7 +64,11 @@
   # Build the workspace's dependencies once and share the result across every
   # package and the workspace test check, rather than recompiling them per
   # crate.
-  cargoArtifacts = craneLib.buildDepsOnly commonArgs;
+  cargoArtifacts = craneLib.buildDepsOnly ({
+      # A virtual workspace root has no package name for crane to read.
+      pname = "workspace";
+    }
+    // commonArgs);
 
   # Per-crate crane arguments: the shared dependency artifacts plus a test
   # scope chosen from whether the crate has a library target.
