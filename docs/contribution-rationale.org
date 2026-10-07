@@ -1,0 +1,215 @@
+#+title:     Contribution rationale
+#+language:  en
+
+The conventions in =template/llms.org= are stated without argument.  This
+document holds the argument.  It is for the humans who maintain the rules.  It
+is linked from =llms.org= and never imported into an assistant's context.
+
+* Why the rules are bare
+
+A model imitates the register of its context more than it obeys the precepts in
+it.  A rule that says "be terse" inside four hundred words of em dashes teaches
+em dashes.  The rulebook is therefore written in the style it asks for.
+
+Rationale persuades a skeptic.  The model is not a skeptic.  It needs the rule
+and an example.  Every paragraph of justification competes with the rules for
+attention.  The salience of each rule falls as the section grows.  The
+justification lives here for humans to review.  Each section of the rulebook
+stays on one screen.
+
+The failure mode this guards against is a document that grows by one section per
+observed failure.  Each section arrives with a citation and a defense.  The
+result reads as an essay.  The model writes essays back.
+
+* Prose
+
+** Short sentences
+
+A sentence holds one idea.  A hung clause, a dash, a semicolon, or a
+parenthetical is a second sentence nested inside the first.  Each one asks the
+reader to hold the outer sentence open while the inner one runs.
+
+Writers describe this as a lack of restraint.  The lesson is not a character
+judgement.  It is that the urge to pack a sentence runs in the wrong direction.
+Restraint means splitting.  Twenty words is a guide, not a count.
+
+** ASCII punctuation
+
+The reader has a keyboard.  An em dash cannot be typed on it without a compose
+key or a digraph.  In vim, ~f~ followed by a character seeks to it.  Nobody
+seeks to a character they cannot type.  A digraph exists for the em dash.  It
+costs three keystrokes and a memory.  A hyphen, a period, and a comma cost
+nothing.
+
+The existing documents were dense with em dashes.  Those documents are the
+model's examples.  Scrubbing them is part of the rule.
+
+** The conclusion comes first
+
+Linda Flower named the failure in 1979.  She called it writer-based prose: text
+ordered by the writer's process of discovery rather than by what a reader needs.
+She described two shapes.  The narrative retells the discovery in order.  The
+survey inventories what the writer knows.  Journalism calls the symptom burying
+the lede.  The military's cure is bottom line up front.
+
+A comment written in discovery order puts the mechanism first.  The conclusion
+arrives in a trailing "so" or "because" clause, or inside a parenthetical.  The
+reader cannot evaluate anything until that clause.  They hold every part in
+their head and then read it again.
+
+The test is to cover everything after the first sentence.  A reader who stops
+there should know the point.  If what they know is which functions get called, a
+mechanism has been promoted and the conclusion is still buried.
+
+The first sentence is also the deletion condition.  A workaround's comment opens
+with the fact that forces it.  When the fact stops holding, the workaround goes.
+A statement of intent gives the reader neither a claim to check nor a condition
+to delete on.
+
+Bad.  The leaked key is a relative clause in the middle.  The fix is the last
+three words.
+
+#+begin_example
+reqwest's error text carries the request URL, which for a v3 key
+includes the key itself; the endpoint field already names the call,
+so every wrapped reqwest error drops its URL.
+#+end_example
+
+Good.  The first sentence stands alone.  The mechanism follows.
+
+#+begin_example
+A wrapped reqwest error would leak the API key.  The key travels in the
+request URL.  The endpoint field already names the call, so the URL is
+dropped.
+#+end_example
+
+** Altitude
+
+Documentation has levels.  A line of code is the finest.  The README is the
+coarsest.  A function's doc comment sits between.  A fact belongs at the finest
+level where it still applies.
+
+A workaround is a fact about one line.  Its justification goes beside that line.
+It does not go in the function summary unless the function exists only because
+of the workaround.  It never goes in the README.  A high level document that
+explains a low level surprise must change when the surprise goes away.  It will
+not.
+
+The review question is whether a paragraph could move down a level and still be
+found by the person who needs it.  If it could, it is at the wrong altitude.
+
+** Summaries state the outcome
+
+A summary completes "Calling this function ..." or "Applying this commit will
+...".  It states the result, never the steps.  A script that arms, aims,
+authorizes, and fires is summarized as "Fires the nukes."
+
+A surprising step gets a comment beside the step.  Suppose you have a function
+that accepts your machine description.  But if your machine description includes
+a temperature that is too hot, the description is rejected with
+`MIGHT_BE_A_STAR`.  So instead we use a `max` function to transform the
+temperature such that the description always lands.  In this case we would
+document the application of `max` and explain why: Cap temperature.  Temperature
+too hot.  Error code is `MIGHT_BE_A_STAR` if over cap.  The summary still says
+"Sends machine description."
+
+Listing what a thing does is the survey shape.  "This does X, Y, and Z" goes
+stale the moment Y is removed or W is added.  The briefer summary never does.
+
+** A comment adds what the code cannot
+
+John Ousterhout's /A Philosophy of Software Design/ makes the point.  A comment
+describes what is not obvious from the code, at a different level than the code.
+It adds precision the code cannot express or intuition above it.  "This assigns
+foo to bar" adds neither.  It is the code kept in a second place that can go
+stale.
+
+The test is regeneration.  Given the name and the summary, a fluent reader would
+write roughly this code.  Where their version matches, narration is not needed.
+Where it diverges, the code met something the obvious implementation does not
+survive.  That divergence is the surprise.  The comment opens with the
+workaround's intent (e.g. "Work around weird temperature restriction in machine
+description.").  Then the comment follows up with the nature of the problem the
+workaround solves.
+
+Precision is small and easy to miss.  It covers what an absent value means, a
+unit, a boundary, and whether a number was chosen or merely had to be chosen.  A
+specific number reads as tuned.  A coin flip has to say it is one.  "Unset is
+off.  Any value turns it on.  2 is arbitrary." is the whole comment such a
+setting needs.
+
+The bias to watch for is narration written for a reader who cannot yet read the
+code.  It is the register of tutorials and answers.  Most commented code a model
+has seen is in that register.
+
+** No tombstones
+
+"We used to do X, but now we do Y" describes code that no longer exists.  The
+test is whether an author who got it right on the first pass would have needed
+the sentence.  Usually not.  The sentence goes.
+
+The exception is the surprising case.  The obvious approach fails for a reason
+the reader cannot see.  Then the comment states the fact that breaks it and the
+deviation follows.  That is a conclusion-first comment, not a history.  See
+[[A comment adds what the code cannot]] for a strong accounting of this.
+
+** No comment beats a confusing one
+
+A confusing comment costs more than none.  The reader reads it, decides it is
+wrong, discards it, and then reads the code.  With no comment they read the
+code.  The default when unsure is silence.  A review pass deletes comments more
+often than it adds them.
+
+** Two passes
+
+Authors draft and then rewrite.  A model can do the same.  Only a rewrite
+against a checklist changes much.  A generic "now revise" pass is anchored on
+the draft and moves little.  The rulebook is the checklist.
+
+The durable form is a lint.  ASCII punctuation and semicolons in documents and
+comments can be checked mechanically.  Sentence length stays a review judgement.
+The compliance checker is where such a lint belongs.
+
+** Replies
+
+A reply is where the writer's journey is freshest.  The investigation just
+happened in discovery order.  The urge is to replay it.  The conclusion comes
+first.  If something could not be verified, that is the first sentence.
+
+The path taken is not the answer.  "I checked X, then Y, then found Z" is the
+narrative shape.  Z is the answer.  X and Y belong only where they qualify it.
+Numbers, commands, and quoted output go in tables or code blocks.  The claim in
+the prose then stays checkable at a glance.
+
+* Commit messages
+
+** The summary is imperative
+
+Git writes its own messages in the imperative.  A merge reads "Merge branch".  A
+revert reads "Revert".  Git's =Documentation/SubmittingPatches= asks the same of
+every patch.  It says to write "as if you are giving orders to the codebase to
+change its behavior."  A summary in any other mood is the odd one out in every
+log that holds a merge or a revert.
+
+"Applying this commit will ..." yields the imperative without naming it.  Only
+the bare verb completes the sentence.  "Will adds" and "will added" do not
+parse.
+
+** The summary has no period
+
+A summary is a title.  It is not a sentence.  SubmittingPatches says the first
+line "should skip the full stop."  Git's own merge and revert summaries carry
+none.
+
+Git also suggests an "area:" prefix on the summary.  This project does not use
+one.
+
+* Sources
+
+The two prose citations are from memory rather than from the page.  Linda
+Flower's paper is "Writer-Based Prose: A Cognitive Basis for Problems in
+Writing" from 1979.  John Ousterhout's book is from 2018.  Check them before
+quoting.
+
+The git quotations were checked against =Documentation/SubmittingPatches= as
+shipped with git 2.51.

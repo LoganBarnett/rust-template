@@ -359,8 +359,9 @@ Wire it into the ~CliApp~ trait via ~from_cli~.
 ** Help text
 
 A doc comment on the ~Config~ struct is the program's help text.  Its first
-paragraph is the ~-h~ summary.  The whole comment shows under ~--help~.  A doc
-comment on a field describes its flag the same way.
+paragraph is the ~-h~ summary.  The whole comment shows under ~--help~.  A
+~description~ in the crate's ~Cargo.toml~ takes the summary's place under ~-h~.
+A doc comment on a field describes its flag the same way.
 
 #+begin_src rustic :results none :exports code
 /// Count the words in a file.

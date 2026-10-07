@@ -3,15 +3,28 @@
 
 * Upcoming
 ** Added
+1. The comment and documentation guidance in =llms.org= is now a one-screen
+   "Prose rules" section stated without argument.  The reasoning moves to
+   rust-template's =docs/contribution-rationale.org= and is not emitted into
+   spawns.  Spawns should sync compliance.
+2. =llms.org= now asks for commit summaries in the imperative mood.  Spawns
+   should sync compliance.
 ** Fixes
+1. The foundation's =USAGE.org= now says a =Cargo.toml= =description= takes the
+   =-h= summary's place.  No action needed.
 ** Breaking
 ** Maintenance
 ** Security
 * v0.138.0
+** Added
+1. A doc comment on a =MergeConfig= struct now shows as the program's =--help=
+   text.  No action needed.
 ** Fixes
 1. The pre-commit hook no longer commits unstaged hunks of a partially staged
    file.  It now runs the =format-staged= tool from the foundation flake.
    Spawns should sync compliance.
+2. Nix builds no longer warn that the workspace root has no package name.  Bump
+   foundation.
 ** Breaking
 1. The compliance check id =pre-commit-hook-runs-treefmt= is gone, replaced by
    =pre-commit-hook-runs-format-staged= and =dev-shell-provides-format-staged=.

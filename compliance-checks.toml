@@ -1450,64 +1450,23 @@ kind = "section-exists"
 target = "llms.org"
 section = ["Verification"]
 
-# The comment and documentation conventions, with the anti-patterns named as
-# their own subsections so each stays assertable as the section grows.
+# The prose rules a spawn's comments and documents are judged against.
 [[check]]
-id = "llms-authoring-comments-section"
-description = "llms.org carries the \"Authoring Comments and Documentation\" section under the general code guidelines."
+id = "llms-prose-rules-section"
+description = "llms.org carries the \"Prose rules\" section under the general code guidelines."
 kind = "section-exists"
 target = "llms.org"
-section = ["General code guidelines", "Authoring Comments and Documentation"]
+section = ["General code guidelines", "Prose rules"]
 
+# The older wording asked for present tense, which cannot complete "Applying
+# this commit will ...".
 [[check]]
-id = "llms-comments-anti-pattern-historical"
-description = "The comment conventions name the historical / tombstone verbiage anti-pattern."
-kind = "section-exists"
-target = "llms.org"
-section = ["General code guidelines", "Authoring Comments and Documentation", "Content", "Anti Pattern: Historical / Tombstone Verbiage"]
-
-[[check]]
-id = "llms-comments-anti-pattern-obvious-intent"
-description = "The comment conventions name the obvious-intent anti-pattern."
-kind = "section-exists"
-target = "llms.org"
-section = ["General code guidelines", "Authoring Comments and Documentation", "Content", "Anti Pattern: Obvious Intent"]
-
-[[check]]
-id = "llms-comments-anti-pattern-inventory"
-description = "The comment conventions name the inventory anti-pattern."
-kind = "section-exists"
-target = "llms.org"
-section = ["General code guidelines", "Authoring Comments and Documentation", "Content", "Anti Pattern: Inventory"]
-
-[[check]]
-id = "llms-comments-anti-pattern-buried-problem"
-description = "The comment conventions name the buried-problem anti-pattern."
-kind = "section-exists"
-target = "llms.org"
-section = ["General code guidelines", "Authoring Comments and Documentation", "Content", "Anti Pattern: Buried Problem"]
-
-# A spawn that keeps the heading and guts the body would pass the section
-# check, so the rule itself — the opening is a falsifiable claim — is asserted
-# as a phrase.
-[[check]]
-id = "llms-comments-buried-problem-falsifiable-opening"
-description = "The buried-problem anti-pattern requires a surprise comment to open with a falsifiable statement."
+id = "llms-commit-summary-imperative"
+description = "The Commit Messages section asks for the summary line in the imperative mood."
 kind = "mention-present"
 target = "llms.org"
-section = ["General code guidelines", "Authoring Comments and Documentation", "Content", "Anti Pattern: Buried Problem"]
-contains = "is a falsifiable statement about the world"
-
-# A spawn carrying the earlier mechanism-first tombstone template passes the
-# section check unchanged, so the reworded template's lead is asserted as a
-# phrase.
-[[check]]
-id = "llms-comments-tombstone-leads-with-fact"
-description = "The tombstone template puts the fact that breaks the obvious approach first."
-kind = "mention-present"
-target = "llms.org"
-section = ["General code guidelines", "Authoring Comments and Documentation", "Content", "Anti Pattern: Historical / Tombstone Verbiage"]
-contains = "the fact that breaks the obvious approach comes first"
+section = ["General code guidelines", "Version Control", "Commit Messages"]
+contains = "imperative mood"
 
 # The functional-style rule and the three smells it names, so a spawn keeps
 # the guidance the reviewer judges imperative code against.
@@ -1517,6 +1476,13 @@ description = "llms.org carries the \"Functional Style\" section under the Rust 
 kind = "section-exists"
 target = "llms.org"
 section = ["General code guidelines", "Rust", "Functional Style"]
+
+[[check]]
+id = "llms-code-biases-section"
+description = "llms.org carries the \"LLM code biases to avoid\" section under the Code guidelines."
+kind = "section-exists"
+target = "llms.org"
+section = ["General code guidelines", "Code", "LLM code biases to avoid"]
 
 # ---------------------------------------------------------------------------
 # CONTRIBUTING.org: file plus major headings a spawn must keep.
