@@ -4,6 +4,11 @@
 * Upcoming
 ** Added
 ** Fixes
+** Breaking
+** Maintenance
+** Security
+* v0.138.0
+** Fixes
 1. The pre-commit hook no longer commits unstaged hunks of a partially staged
    file.  It now runs the =format-staged= tool from the foundation flake.
    Spawns should sync compliance.
@@ -14,8 +19,6 @@
    =rust-template.json= must update it.
 2. The pre-commit hook refuses a repository with =core.splitIndex= set or a
    sparse index.  Turn that feature off to commit through the hook.
-** Maintenance
-** Security
 * v0.137.0
 ** Added
 1. Servers are now checked to see if they use the Nix service helpers.
