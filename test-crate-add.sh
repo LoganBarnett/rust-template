@@ -168,6 +168,31 @@ assert_apple_sdk_wired() {
     fi
 }
 
+# Assert the emitted project's shared dependency build carries a real name.
+# Crane names it `cargo-package-deps` and warns when it finds no name.  A
+# virtual workspace root has none to find.
+assert_deps_named() {
+    local dir="$1"
+    if ! command -v nix &>/dev/null; then
+        echo "  (skipping deps-name eval — nix not on PATH)"
+        return 0
+    fi
+    # The system in the probe is arbitrary.  The name does not vary by system.
+    local got
+    got=$(nix \
+        --extra-experimental-features 'nix-command flakes' \
+        eval \
+        --raw \
+        --override-input foundation "git+file://$SCRIPT_DIR" \
+        --no-update-lock-file \
+        "$dir#checks.x86_64-linux.workspace-tests.cargoArtifacts.pname" \
+        2>/dev/null)
+    if [[ "$got" != "workspace-deps" ]]; then
+        echo "  assertion failed: expected the shared dependency build of $dir to be named workspace-deps (eval result: '${got:-<empty>}')" >&2
+        return 1
+    fi
+}
+
 # Assert that a freshly emitted project passes every compliance check — that
 # "the template emits a compliant project" actually holds.
 #
@@ -261,6 +286,9 @@ test_new_project_default() {
 
     # Flake-eval assertion: catches API drift between template and foundation.
     assert_flake_eval "$dir" || return 1
+
+    # Crane warns on every build when the shared dependency build has no name.
+    assert_deps_named "$dir" || return 1
 
     # An auth spawn's darwin cross outputs must actually receive the Apple SDK —
     # proves the emitted flag-driven wiring reaches mkDarwinCrossPackages.

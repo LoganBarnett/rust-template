@@ -9,20 +9,31 @@
 
 * Working with imports
 
-The =Imports= section collects this project's Claude Code /imports/, which are
-not org links.  Claude Code inlines each named file into the session context
-before the first turn, so those documents are already read: there is no separate
-step to perform, and no judgment call to make about whether a given document is
-relevant enough to open.  The section is a heading of its own so that compliance
-can assert the list against a named scope rather than against a position in the
-file.
+** Automatic Imports
 
-This file covers how to write code.  ~CONTRIBUTING.org~ covers how to land a
-change: changelog entries, commit messages, dependency comments, and the other
-conventions every pull request must follow.  Those conventions are enforced, so
-rediscovering them from a failed compliance check wastes a round trip.
-~README.org~ covers what this project is for; a change that contradicts it is
-wrong even when it compiles.
+This is for the following coding agent runners:
+
+1. Claude Code
+
+The documents under [[Imports]] are already in context.  Do not open them.  Do not
+weigh whether any of them is relevant enough to open.  Claude Code inlines each
+named file before the first turn.  An import is not an org link.  Compliance
+finds the list by the [[Imports]] heading rather than by its position in the file.
+
+** Manual Imports
+
+If you are not listed in the coding agent runners for [[Automatic Imports]], this
+applies to you.
+
+You must read the documents listed in [[Imports]].  Report to your operator how you
+handle automated imports, even if you do it the same way Claude does, so this
+can be codified.
+
+~CONTRIBUTING.org~ covers how to land a change: changelog entries, commit
+messages, dependency comments, and the other conventions every pull request must
+follow.  Those conventions are enforced, so rediscovering them from a failed
+compliance check wastes a round trip.  ~README.org~ covers what this project is
+for; a change that contradicts it is wrong even when it compiles.
 
 ** Rules for editing the import list
 
@@ -87,7 +98,9 @@ service from scratch.  The existing HTTP routes (=/healthz=, =/metrics=, =/me=,
 
 * General code guidelines
 
-These are instructions for LLMs to write code more to my liking.
+These are instructions for LLMs to write code more to my liking.  Where a
+section states a rule without argument, its reasoning is in rust-template's
+[[https://github.com/LoganBarnett/rust-template/blob/main/docs/contribution-rationale.org][=docs/contribution-rationale.org=]].  That document is not imported.
 
 ** Documents
 
@@ -98,143 +111,46 @@ actually run anything.
 
 No file lists in documentation.
 
-** Authoring Comments and Documentation
+** Prose rules
 
-*** Formatting and punctuation
+These apply to comments, doc comments, org documents, commit bodies, and
+replies.
 
-Comments must be complete sentences, wrapped at ~80 columns~, with standard
-punctuation.
+- Sentences are short.  One idea each.  About twenty words.
+- Punctuation is ASCII.  No em dashes.  No semicolons.  No parentheses.
+- A comma sets off one leading clause or separates a list.  Anything else is two
+  sentences.
+- Comments are complete sentences wrapped at 80 columns.
+- Open with the conclusion.  The mechanism comes after, or not at all.
+- A fact lives at the lowest level where it applies.  A line of code is the
+  lowest and the README is the highest.  A workaround is explained on the line
+  it guards, never above it.
+- A summary states the outcome.  It never lists the steps.
+- A comment states what the code cannot.  If the code could regenerate the
+  comment, delete the comment.
+- Do not describe code that no longer exists.  If the obvious approach fails,
+  state the fact that breaks it.
+- A number that was a coin flip says so.
+- When unsure whether to write a comment, do not.
+- Draft prose longer than a paragraph in a scratch file.  Rewrite it against
+  this list.  Only the rewrite lands.
 
-*** Content
-
-Only comment non-obvious intent, invariants, tradeoffs, or historical
-constraints; no restating of control flow.
-
-These rules apply to comments and documentation roughly the same.
-
-**** Anti Pattern: Historical / Tombstone Verbiage
-
-Historical verbiage are such as "We used to do X, but now we do Y".  We should
-only provide such prose in the _surprising_ case.  These would be better thought
-of as "Y, so the usual X does not work; instead we do Z": the fact that breaks
-the obvious approach comes first, as a claim a reader can check, and the
-deviation follows (see "Anti Pattern: Buried Problem").  This is the only case
-in which we use historical prose that refers to prior code that no longer
-exists.
-
-The easy test for this is "If you would have gotten this right on the first
-pass, would this have still needed this prose?".  If the answer is no, then do
-not leave historical prose.
-
-**** Anti Pattern: Obvious Intent
-
-Commenting intent that is obvious "This assigns foo to bar" or "This
-run_workflow function runs the workflow" are simple anti patterns.  We only
-comment on code that needs to be called out.  Assume the reader knows how to
-write software.  If the code is self documenting, obvious code should never need
-comments.
-
-The only exception is special documentation comments on the headers of things
-like functions, which then later get aggregated by a tool or auto-complete
-systems.  Even then, these comments should only refer to abstract outcomes and
-not implementation detail unless there is something specifically important about
-that implementation.  Stating what algorithm a sort uses is fine.  Stating in
-the doc comment that you used a ~loop~ over a combinator is not appropriate.
-
-**** Anti Pattern: Inventory
-
-Taking inventory in prose ("this does X, Y, and Z") just means you now have
-extra places to account for a change.  The moment you stop doing Y, all prose
-that takes inventory must be updated.  Same goes if you add a W activity.  The
-simple answer is to not write this prose at all.  If you find yourself writing
-these remarks, they are virtually always wrong, and instead an even briefer
-summary must be written instead, or the comment must be removed entirely.
-
-**** Anti Pattern: Buried Problem
-
-A comment that justifies a surprise — a workaround, a deviation from the obvious
-approach, a step nobody would expect — opens with the problem.  The first
-sentence (or the first clause, when the sentence is short) is a falsifiable
-statement about the world: what goes wrong, or which external fact forces the
-deviation.  The mechanism and the fix follow.
-
-The anti-pattern is the comment written in discovery order: the mechanism first,
-then its consequence, with the problem itself arriving in a trailing "so",
-"since", or "because" clause, or inside a parenthetical.  A reviewer cannot
-evaluate any of it until they reach that clause, so they hold every moving part
-in their head and then read the whole thing again.  The tells:
-
-- The problem sits at the end, in a trailing "so", "since", or "because" clause,
-  or in a parenthetical.
-- The opening sentence takes inventory of the moving parts before saying why
-  they matter.
-- The opening asserts intent ("this is deliberate") or passes judgement
-  ("deliberately simple") rather than stating a fact that could be false.
-
-Bad — the problem (a leaked key) is a relative clause in the middle, and the fix
-is the last three words:
+Bad.  The problem is a relative clause in the middle and the fix is the last
+three words.
 
 #+begin_example
 reqwest's error text carries the request URL, which for a v3 key
-includes the key itself; the endpoint field already names the call,
-so every wrapped reqwest error drops its URL.
+includes the key itself; the endpoint field already names the call, so
+every wrapped reqwest error drops its URL.
 #+end_example
 
-Good — the first sentence is the problem, and it can be checked on its own:
+Good.  The first sentence stands alone and the mechanism follows.
 
 #+begin_example
-A wrapped reqwest error would leak the API key: reqwest's message
-includes the request URL, and a v3 key travels in the URL.  The endpoint
-field already names the call, so the URL is dropped.
+A wrapped reqwest error would leak the API key.  The key travels in the
+request URL.  The endpoint field already names the call, so the URL is
+dropped.
 #+end_example
-
-Falsifiable is the test.  The opening claim is the one thing a reviewer has to
-verify, and it is the deletion condition for the code beneath it: when the claim
-stops holding, the workaround goes.  A statement of intent gives the reader
-neither.
-
-This applies wherever a surprise is justified — a code comment, a doc comment, a
-passage in ~README.org~ or under ~docs/~.  It does not apply to summaries, whose
-first sentence is the outcome (see "How to Summarize").
-
-**** How to Summarize
-
-This covers any summarized activity (function headers, file headers, and so on).
-
-A summary details what the outcome of the activity is, and never the steps
-involved unless those steps are particularly surprising.  A "fire the nukes"
-script shouldn't include anything about arming the nukes, aiming the nukes,
-authorizing the nukes, or anything else that we _do_ to fire the nukes unless
-there's some specific quirk that truly needs calling out that is _relevant to
-that summary_.  A good summary for a ~nuke-fire.sh~ is "Fires the nukes.".
-
-***** Documenting Quirks and Surprises
-
-Most quirks in a function or script needn't make it to the summary.  Let's say
-that we generally expect these steps for any nation to fire its nukes:
-
-1. Arm the nuke.
-2. Aim the nuke.
-3. Authorize the firing of the nuke.
-4. Fire the nuke.
-
-Any nuke firing activity here wouldn't be in a summary.
-
-Let's say our nation requires the tips to be signed using the public key of the
-recipient.  So now our script looks like:
-
-1. Arm the nuke.
-2. Aim the nuke.
-3. Sign the tip with the recipient's public key.
-4. Authorize the firing of the nuke.
-5. Fire the nuke.
-
-Okay that's an odd step, and because it's an odd step, it would require a
-comment _immediately adjacent_ to that specific functionality.  That comment
-opens with the fact that forces the step (the recipient's silo rejects an
-unsigned tip), not with a description of the signing; see "Anti Pattern: Buried
-Problem".  Since this has no great impact on how our ~nuke-fire.sh~ script
-works, we should leave it out of the summary.
 
 ** Version Control
 *** Commit Messages
@@ -247,12 +163,9 @@ forge sites default the one-and-only-one commit as both a pull request title and
 description (from the commit summary and body).  We want to leverage that as
 much as we can.
 
-For the commit message content itself, the summary should be present tense with
-no prefixes and no "Conventional Commit" tagging.  Just tell us what happens if
-we apply the commit.  You can imagine a sentence starting with "Applying this
-commit will ..." an the commit message summary completes the sentence.  No
-punctuation at the end (this is our one and only one exception to the
-punctuation rule).
+Write the summary line in the imperative mood.  It completes the sentence
+"Applying this commit will ...".  No prefixes.  No Conventional Commit tags.  No
+period at the end.
 
 Good:
 
@@ -315,6 +228,34 @@ direction.
 
 Use Pascal Initialisms (~Url~) instead of Preserved Initialisms (~URL~) when
 _authoring_ new identifiers in camel case.
+
+*** LLM code biases to avoid
+
+These are reminders, not boundaries.  A model already knows each of these; it
+needs the nudge, and the review agent needs a list to check against.  Every one
+is a judgement call in the "I know it when I see it" sense — deliberately vague
+so that no threshold can be gamed.  DRY is the example: "after three
+repetitions" lets two functions share two hundred lines, and when the language
+cannot express the abstraction (no lenses for pulling data out of a structure),
+the repetition is the honest form.
+
+- Copying a block instead of finding, or extracting, the helper that already
+  does it.
+- Speculative generality: parameters, options, hooks, and abstractions nobody
+  asked for, kept "for later".
+- Compatibility shims nobody asked for: an old name kept as an alias, a
+  deprecation path in a repo with one user.  Delete instead.
+- Long functions with nested branches where extraction would name the pieces.
+- Masking errors: broad handlers, ~.ok()~ or ~let _ =~ on a ~Result~, defaults
+  that turn a failure into a wrong answer (see "Error Handling").
+- Silencing a check instead of fixing what it found: a suppressed warning with
+  no reason beside it, a weakened or deleted test.
+- Calling functions, arguments, or fields that do not exist.  The compiler and
+  clippy are the check; run them before offering code (see "Verification").
+- Restyling or reformatting code the task did not touch.
+- A test that has never been seen failing.  Run it against the code before the
+  fix and show the failure, then the pass.
+- Placeholders and "implement later" in shipped code.
 
 ** Rust
 

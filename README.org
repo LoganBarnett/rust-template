@@ -468,6 +468,7 @@ The object key under =templateSpawns= is the project name (=--name=).  Running
 | [[file:docs/customizing.org][docs/customizing.org]]              | Adapting the template for your project.            |
 | [[file:docs/compliance.org][docs/compliance.org]]               | Compliance audits and forward-porting updates.     |
 | [[file:docs/maintenance.org][docs/maintenance.org]]              | Maintainer tooling, such as clearing a Dependabot backlog. |
+| [[file:docs/contribution-rationale.org][docs/contribution-rationale.org]]   | Why the conventions in =template/llms.org= are what they are. |
 | [[file:CONTRIBUTING.org][CONTRIBUTING.org]]                  | Contributing to this template repository.          |
 | [[file:template/README.org][template/README.org]]               | Full feature list and architecture of emitted projects. |
 
