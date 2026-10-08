@@ -12,7 +12,7 @@ use crate::error::{GitFailure, ReviewError};
 use crate::worktree::Worktree;
 use gix::bstr::{BStr, BString, ByteSlice};
 use gix::diff::blob::pipeline::{Mode, WorktreeRoots};
-use gix::diff::blob::platform::prepare_diff::{self, Operation, Outcome};
+use gix::diff::blob::platform::prepare_diff::{Operation, Outcome};
 use gix::diff::blob::platform::resource::Data;
 use gix::diff::blob::unified_diff::{ConsumeBinaryHunk, ContextSize};
 use gix::diff::blob::{Algorithm, Platform, ResourceKind, UnifiedDiff};
@@ -54,13 +54,16 @@ fn patches(
   // The old side always comes from the object store; the new side is read
   // from the working tree, through the same filters git applies on the way
   // in, or is found missing there.
-  let mut cache = worktree.repo().diff_resource_cache(
-    Mode::ToGitUnlessBinaryToTextIsPresent,
-    WorktreeRoots {
-      old_root: None,
-      new_root: Some(worktree.root().to_path_buf()),
-    },
-  )?;
+  let mut cache = worktree
+    .repo()
+    .diff_resource_cache(
+      Mode::ToGitUnlessBinaryToTextIsPresent,
+      WorktreeRoots {
+        old_root: None,
+        new_root: Some(worktree.root().to_path_buf()),
+      },
+    )
+    .map_err(GitFailure::DiffCache)?;
   paths
     .iter()
     .map(|path| {
@@ -85,45 +88,63 @@ fn file_patch(
 ) -> Result<String, GitFailure> {
   let repo = worktree.repo();
   let old_path = origin.unwrap_or(path);
-  let old = tree.lookup_entry_by_path(old_path)?;
+  let old = tree
+    .lookup_entry_by_path(old_path)
+    .map_err(GitFailure::Object)?;
   if old.as_ref().is_some_and(|entry| entry.mode().is_commit()) {
     debug!(path, "a submodule pointer has no patch to show");
     Ok(String::new())
   } else {
     let hash = repo.object_hash();
-    cache.set_resource(
-      old
-        .as_ref()
-        .map_or_else(|| ObjectId::null(hash), |entry| entry.object_id()),
-      old
-        .as_ref()
-        .map_or(EntryKind::Blob, |entry| entry.mode().kind()),
-      BStr::new(old_path),
-      ResourceKind::OldOrSource,
-      &repo.objects,
-    )?;
+    cache
+      .set_resource(
+        old
+          .as_ref()
+          .map_or_else(|| ObjectId::null(hash), |entry| entry.object_id()),
+        old
+          .as_ref()
+          .map_or(EntryKind::Blob, |entry| entry.mode().kind()),
+        BStr::new(old_path),
+        ResourceKind::OldOrSource,
+        &repo.objects,
+      )
+      .map_err(|source| GitFailure::DiffResource(gix::Error::from(source)))?;
     // The pipeline loads a link's target only when told the entry is a link;
     // as a blob it would read through to whatever the link points at.
-    cache.set_resource(
-      ObjectId::null(hash),
-      disk::kind(worktree.root(), path).map_err(|source| {
-        GitFailure::WorktreeStat {
-          path: PathBuf::from(path),
-          source: Box::new(source),
-        }
-      })?,
-      BStr::new(path),
-      ResourceKind::NewOrDestination,
-      &repo.objects,
-    )?;
+    cache
+      .set_resource(
+        ObjectId::null(hash),
+        disk::kind(worktree.root(), path).map_err(|source| {
+          GitFailure::WorktreeStat {
+            path: PathBuf::from(path),
+            source,
+          }
+        })?,
+        BStr::new(path),
+        ResourceKind::NewOrDestination,
+        &repo.objects,
+      )
+      .map_err(|source| GitFailure::DiffResource(gix::Error::from(source)))?;
     match cache.prepare_diff() {
       Ok(outcome) => rendered(repo, &outcome, path, origin),
       // A path the change set named that is gone from both sides by the
       // time it is rendered has nothing to show, which is not a failure.
-      Err(prepare_diff::Error::SourceAndDestinationRemoved) => {
-        Ok(String::new())
+      // gix reports that case only as a validation message.  The two sides
+      // are checked here instead.
+      Err(source) => {
+        let gone_from_disk =
+          disk::missing(worktree.root(), path).map_err(|stat| {
+            GitFailure::WorktreeStat {
+              path: PathBuf::from(path),
+              source: stat,
+            }
+          })?;
+        if old.is_none() && gone_from_disk {
+          Ok(String::new())
+        } else {
+          Err(GitFailure::DiffPrepare(gix::Error::from(source)))
+        }
       }
-      Err(source) => Err(GitFailure::from(source)),
     }
   }
 }
@@ -272,6 +293,22 @@ fn octal(mode: EntryKind) -> &'static str {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  /// A path can vanish between the status walk and the render.
+  #[test]
+  fn a_path_gone_from_both_sides_renders_as_nothing() {
+    let dir = tempfile::tempdir().expect("a scratch directory");
+    let repo = gix::init(dir.path()).expect("a fresh repository");
+    let worktree = Worktree::from_parts(repo, dir.path().to_path_buf());
+    let rendered = render(
+      &worktree,
+      &worktree.empty_tree(),
+      &["gone.rs".to_string()],
+      &BTreeMap::new(),
+    )
+    .expect("a path missing from both sides is not a failure");
+    assert_eq!(rendered, "");
+  }
 
   #[test]
   fn an_addition_comes_from_nowhere() {

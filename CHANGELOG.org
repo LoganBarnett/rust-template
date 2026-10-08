@@ -6,6 +6,7 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+1. gix is now 0.88.  No action needed.
 ** Security
 * v0.139.0
 ** Added

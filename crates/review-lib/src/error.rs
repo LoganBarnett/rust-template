@@ -3,91 +3,58 @@ use thiserror::Error;
 
 /// How a repository read failed.  Each operation-named `ReviewError` carries
 /// one of these so the operation names itself in the error rather than
-/// splitting into a separate variant per failure mode.  The library's error
-/// types are boxed: several are large, and an error that widens every `Result`
-/// in the crate is what clippy's `result_large_err` guards against.
+/// splitting into a separate variant per failure mode.
+///
+/// There is no `From<gix::Error>`.  Every gix call reports that one type, so
+/// each call site names its variant.
 #[derive(Debug, Error)]
 pub enum GitFailure {
   #[error("could not open the repository: {0}")]
-  Open(#[source] Box<gix::discover::Error>),
+  Open(#[source] gix::Error),
   #[error("the repository has no working tree")]
   Bare,
   #[error("could not prepare the status walk: {0}")]
-  Status(#[source] Box<gix::status::Error>),
+  Status(#[source] gix::Error),
   #[error("could not start the status walk: {0}")]
-  StatusStart(#[source] Box<gix::status::into_iter::Error>),
+  StatusStart(#[source] gix::Error),
   #[error("the status walk failed: {0}")]
-  StatusWalk(#[source] Box<gix::status::index_worktree::Error>),
+  StatusWalk(#[source] gix::Error),
   #[error("could not build an index from the base tree: {0}")]
-  IndexFromTree(#[source] Box<gix::repository::index_from_tree::Error>),
+  IndexFromTree(#[source] gix::Error),
   #[error("could not resolve the revision: {0}")]
-  Revision(#[source] Box<gix::revision::spec::parse::single::Error>),
+  Revision(#[source] gix::Error),
   #[error("could not read `HEAD`: {0}")]
-  Head(#[source] Box<gix::reference::find::existing::Error>),
+  Head(#[source] gix::Error),
   #[error("could not peel `HEAD` to a commit: {0}")]
-  HeadPeel(#[source] Box<gix::head::peel::Error>),
+  HeadPeel(#[source] gix::Error),
   #[error("could not resolve the commit `HEAD` names: {0}")]
-  HeadId(#[source] Box<gix::reference::head_id::Error>),
+  HeadId(#[source] gix::Error),
   #[error("could not look up the reference: {0}")]
-  Reference(#[source] Box<gix::reference::find::Error>),
+  Reference(#[source] gix::Error),
   #[error("no merge base: {0}")]
-  MergeBase(#[source] Box<gix::repository::merge_base::Error>),
+  MergeBase(#[source] gix::Error),
   #[error("could not read the object: {0}")]
-  Object(#[source] Box<gix::object::find::existing::Error>),
+  Object(#[source] gix::Error),
   #[error("could not peel the object to a tree: {0}")]
-  PeelToTree(#[source] Box<gix::object::peel::to_kind::Error>),
+  PeelToTree(#[source] gix::Error),
   #[error("could not prepare the diff pipeline: {0}")]
-  DiffCache(#[source] Box<gix::repository::diff_resource_cache::Error>),
+  DiffCache(#[source] gix::Error),
   #[error("could not load a side of the diff: {0}")]
-  DiffResource(#[source] Box<gix::diff::blob::platform::set_resource::Error>),
+  DiffResource(#[source] gix::Error),
   #[error("could not prepare the diff: {0}")]
-  DiffPrepare(#[source] Box<gix::diff::blob::platform::prepare_diff::Error>),
+  DiffPrepare(#[source] gix::Error),
   #[error("could not read the diff algorithm from the git config: {0}")]
-  DiffAlgorithm(#[source] Box<gix::config::diff::algorithm::Error>),
+  DiffAlgorithm(#[from] gix::config::diff::algorithm::Error),
   #[error("could not render the diff: {0}")]
-  DiffRender(#[source] Box<std::io::Error>),
+  DiffRender(#[from] std::io::Error),
   #[error("could not hash the content: {0}")]
-  Hash(#[source] Box<gix::hash::hasher::Error>),
+  Hash(#[source] gix::Error),
   #[error("could not stat the working-tree path {path:?}: {source}")]
   WorktreeStat {
     path: PathBuf,
     #[source]
-    source: Box<std::io::Error>,
+    source: std::io::Error,
   },
-}
-
-/// `?` conversions into the boxed variants; `#[from]` would take the box
-/// itself as the source.
-macro_rules! boxed_from {
-  ($($variant:ident: $source:ty),* $(,)?) => {$(
-    impl From<$source> for GitFailure {
-      fn from(source: $source) -> Self {
-        Self::$variant(Box::new(source))
-      }
-    }
-  )*};
-}
-
-boxed_from! {
-  Open: gix::discover::Error,
-  Status: gix::status::Error,
-  StatusStart: gix::status::into_iter::Error,
-  StatusWalk: gix::status::index_worktree::Error,
-  IndexFromTree: gix::repository::index_from_tree::Error,
-  Revision: gix::revision::spec::parse::single::Error,
-  Head: gix::reference::find::existing::Error,
-  HeadPeel: gix::head::peel::Error,
-  HeadId: gix::reference::head_id::Error,
-  Reference: gix::reference::find::Error,
-  MergeBase: gix::repository::merge_base::Error,
-  Object: gix::object::find::existing::Error,
-  PeelToTree: gix::object::peel::to_kind::Error,
-  DiffCache: gix::repository::diff_resource_cache::Error,
-  DiffResource: gix::diff::blob::platform::set_resource::Error,
-  DiffPrepare: gix::diff::blob::platform::prepare_diff::Error,
-  DiffAlgorithm: gix::config::diff::algorithm::Error,
-  DiffRender: std::io::Error,
-  Hash: gix::hash::hasher::Error,
 }
 
 /// Every way a review can fail.  A failure is never a pass: the caller reports

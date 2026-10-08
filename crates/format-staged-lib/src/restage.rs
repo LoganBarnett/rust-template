@@ -30,7 +30,7 @@ pub(crate) fn restage(
 ) -> Result<(), FormatStagedError> {
   let (mut filters, _) = repo
     .filter_pipeline(None)
-    .map_err(|source| FormatStagedError::FilterPipeline(Box::new(source)))?;
+    .map_err(FormatStagedError::FilterPipeline)?;
   let changed = staged
     .iter()
     .map(|file| reformatted(repo, &mut filters, index, export, workdir, file))
@@ -51,7 +51,7 @@ pub(crate) fn restage(
       .write(gix::index::write::Options::default())
       .map_err(|source| FormatStagedError::IndexWrite {
         path: index.path().to_path_buf(),
-        source: Box::new(source),
+        source: gix::Error::from(source),
       })?;
     changed
       .iter()
@@ -81,7 +81,7 @@ fn reformatted<'a>(
         .map(gix::Id::detach)
         .map_err(|source| FormatStagedError::FormattedBlobWrite {
           path: file.path.clone(),
-          source: Box::new(source),
+          source,
         })
     })?;
   if id == file.id {
@@ -136,7 +136,7 @@ fn working_file_in_sync(
         )
         .map_err(|source| FormatStagedError::WorkingFileHash {
           path: file.path.clone(),
-          source,
+          source: gix::Error::from(source),
         })
       })
       .map(|id| id == file.id)
@@ -155,7 +155,7 @@ fn cleaned(
   let file = std::fs::File::open(source).map_err(CleanFailure::Open)?;
   let mut filtered = filters
     .convert_to_git(file, rela_path, index)
-    .map_err(|source| CleanFailure::Filter(Box::new(source)))?;
+    .map_err(CleanFailure::Filter)?;
   let mut content = Vec::new();
   filtered
     .read_to_end(&mut content)

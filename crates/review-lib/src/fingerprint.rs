@@ -82,7 +82,9 @@ fn hash(
         &bytes,
       )
       .map(|id| id.to_string())
-      .map_err(|source| ReviewError::Fingerprint(GitFailure::from(source)))
+      .map_err(|source| {
+        ReviewError::Fingerprint(GitFailure::Hash(gix::Error::from(source)))
+      })
     })
     .transpose()
 }

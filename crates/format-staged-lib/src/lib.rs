@@ -25,7 +25,7 @@ pub use rust_template_foundation::logging::{LogFormat, LogLevel};
 /// because it hands the hook an index that is not the repository's own.
 pub fn run() -> Result<(), FormatStagedError> {
   let repo = gix::discover_with_environment_overrides(".")
-    .map_err(|source| FormatStagedError::RepositoryOpen(Box::new(source)))?;
+    .map_err(FormatStagedError::RepositoryOpen)?;
   let workdir = repo
     .workdir()
     .ok_or(FormatStagedError::RepositoryBare)?

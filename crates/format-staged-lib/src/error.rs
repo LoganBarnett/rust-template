@@ -10,22 +10,19 @@ pub enum CleanFailure {
   #[error("could not open the file: {0}")]
   Open(#[source] std::io::Error),
   #[error("could not apply git's filters: {0}")]
-  Filter(#[source] Box<gix::filter::pipeline::convert_to_git::Error>),
+  Filter(#[source] gix::Error),
   #[error("could not read the filtered content: {0}")]
   Read(#[source] std::io::Error),
 }
 
 /// Every way a run can fail.  A failure never leaves the index half
-/// rewritten: the index is written once, after every blob exists.  The gix
-/// error types are boxed because several are large.  Clippy's
-/// `result_large_err` rejects an error that widens every `Result` in the
-/// crate.
+/// rewritten: the index is written once, after every blob exists.
 #[derive(Debug, Error)]
 pub enum FormatStagedError {
   #[error(
     "could not open the repository enclosing the current directory: {0}"
   )]
-  RepositoryOpen(#[source] Box<gix::discover::Error>),
+  RepositoryOpen(#[source] gix::Error),
   #[error(
     "the repository has no working tree, so it has no staged content to \
      format"
@@ -41,7 +38,7 @@ pub enum FormatStagedError {
   IndexRead {
     path: PathBuf,
     #[source]
-    source: Box<gix::worktree::open_index::Error>,
+    source: gix::Error,
   },
   #[error(
     "the index at {path:?} is sparse, and a sparse index cannot be exported \
@@ -50,19 +47,19 @@ pub enum FormatStagedError {
   )]
   IndexSparse { path: PathBuf },
   #[error("could not resolve the tree `HEAD` names: {0}")]
-  HeadTreeResolve(#[source] Box<gix::reference::head_tree_id::Error>),
+  HeadTreeResolve(#[source] gix::Error),
   #[error(
     "could not read the `HEAD` tree to tell which index entries are staged: \
      {0}"
   )]
-  HeadIndexBuild(#[source] Box<gix::repository::index_from_tree::Error>),
+  HeadIndexBuild(#[source] gix::Error),
   #[error(
     "the staged path {path:?} cannot be a file path on this platform: {source}"
   )]
   StagedPathConvert {
     path: String,
     #[source]
-    source: gix::path::Utf8Error,
+    source: gix::Error,
   },
   #[error("could not create a directory to export the index into: {0}")]
   ExportDirCreate(#[source] std::io::Error),
@@ -73,14 +70,14 @@ pub enum FormatStagedError {
     source: std::io::Error,
   },
   #[error("could not read the checkout settings for the index export: {0}")]
-  ExportOptions(#[source] Box<gix::config::checkout_options::Error>),
+  ExportOptions(#[source] gix::Error),
   #[error("could not open the object database for the index export: {0}")]
   ExportObjects(#[source] std::io::Error),
   #[error("could not export the index to {dir:?}: {source}")]
   Export {
     dir: PathBuf,
     #[source]
-    source: Box<gix::worktree::state::checkout::Error>,
+    source: gix::Error,
   },
   #[error(
     "exporting the index put two paths in the same place: {}.  The \
@@ -100,7 +97,7 @@ pub enum FormatStagedError {
   #[error("treefmt could not format the staged content ({status})")]
   FormatterFailed { status: ExitStatus },
   #[error("could not prepare git's filters for the formatted content: {0}")]
-  FilterPipeline(#[source] Box<gix::repository::filter::pipeline::Error>),
+  FilterPipeline(#[source] gix::Error),
   #[error("could not take the formatted content of {path:?}: {source}")]
   FormattedContentClean {
     path: PathBuf,
@@ -111,7 +108,7 @@ pub enum FormatStagedError {
   FormattedBlobWrite {
     path: PathBuf,
     #[source]
-    source: Box<gix::object::write::Error>,
+    source: gix::Error,
   },
   #[error("could not inspect the working file {path:?}: {source}")]
   WorkingFileStat {
@@ -132,7 +129,7 @@ pub enum FormatStagedError {
   WorkingFileHash {
     path: PathBuf,
     #[source]
-    source: gix::hash::hasher::Error,
+    source: gix::Error,
   },
   #[error("the staged path {path:?} is no longer in the index")]
   IndexEntryMissing { path: String },
@@ -142,7 +139,7 @@ pub enum FormatStagedError {
   IndexWrite {
     path: PathBuf,
     #[source]
-    source: Box<gix::index::file::write::Error>,
+    source: gix::Error,
   },
   #[error(
     "could not update the working file {path:?} with its formatted content: \
