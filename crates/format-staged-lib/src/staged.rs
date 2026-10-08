@@ -32,7 +32,7 @@ pub(crate) fn rewritable_index(
       .map(|shared| gix::index::File::clone(&shared))
       .map_err(|source| FormatStagedError::IndexRead {
         path: repo.index_path(),
-        source: Box::new(source),
+        source,
       })
       .and_then(|index| {
         if index.is_sparse() {
@@ -55,11 +55,11 @@ pub(crate) fn staged_files(
   // commit counts as staged.
   let head = repo
     .head_tree_id_or_empty()
-    .map_err(|source| FormatStagedError::HeadTreeResolve(Box::new(source)))
+    .map_err(FormatStagedError::HeadTreeResolve)
     .and_then(|tree| {
       repo
         .index_from_tree(&tree)
-        .map_err(|source| FormatStagedError::HeadIndexBuild(Box::new(source)))
+        .map_err(FormatStagedError::HeadIndexBuild)
     })?;
   index
     .entries()
@@ -78,7 +78,7 @@ pub(crate) fn staged_files(
         .map(Cow::into_owned)
         .map_err(|source| FormatStagedError::StagedPathConvert {
           path: rela_path.to_string(),
-          source,
+          source: gix::Error::from(source),
         })
         .map(|path| StagedFile {
           rela_path,

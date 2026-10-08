@@ -43,7 +43,7 @@ pub(crate) fn export_index(
   })?;
   let options = repo
     .checkout_options(Source::IdMapping)
-    .map_err(|source| FormatStagedError::ExportOptions(Box::new(source)))
+    .map_err(FormatStagedError::ExportOptions)
     .map(|options| gix::worktree::state::checkout::Options {
       destination_is_initially_empty: true,
       ..options
@@ -68,7 +68,7 @@ pub(crate) fn export_index(
   )
   .map_err(|source| FormatStagedError::Export {
     dir: root.clone(),
-    source: Box::new(source),
+    source: gix::Error::from(source),
   })?;
   // On a case-insensitive filesystem two index paths can land on one file.
   // Its content would then be formatted and staged under the wrong path.

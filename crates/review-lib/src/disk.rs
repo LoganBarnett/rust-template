@@ -65,6 +65,13 @@ pub fn kind(root: &Path, path: &str) -> io::Result<EntryKind> {
     .or_else(or_missing(EntryKind::Blob))
 }
 
+/// Whether nothing is at `path`, not even a dangling link.
+pub fn missing(root: &Path, path: &str) -> io::Result<bool> {
+  fs::symlink_metadata(root.join(path))
+    .map(|_| false)
+    .or_else(or_missing(true))
+}
+
 /// A recovery that reads an absent path as `missing` and passes every other
 /// failure through.
 fn or_missing<T>(missing: T) -> impl FnOnce(io::Error) -> io::Result<T> {

@@ -54,9 +54,17 @@ impl Worktree {
   }
 
   fn discover() -> Result<Self, GitFailure> {
-    let repo = gix::discover_with_environment_overrides(".")?;
+    let repo = gix::discover_with_environment_overrides(".")
+      .map_err(GitFailure::Open)?;
     let root = repo.workdir().ok_or(GitFailure::Bare)?.to_path_buf();
     Ok(Self { repo, root })
+  }
+
+  /// A worktree over a repository a test created, since `open` only finds the
+  /// one enclosing the current directory.
+  #[cfg(test)]
+  pub(crate) fn from_parts(repo: gix::Repository, root: PathBuf) -> Self {
+    Self { repo, root }
   }
 
   /// The absolute path of the working tree's top-level directory, where the
@@ -114,10 +122,14 @@ impl Worktree {
   /// ignore is walked as untracked — which is exactly what differs from the
   /// tree, and nothing that merely differs from the index.
   fn changed_between(&self, base: &ObjectId) -> Result<ChangeSet, GitFailure> {
-    let index = self.repo.index_from_tree(&self.tree_at(base)?.id)?;
+    let index = self
+      .repo
+      .index_from_tree(&self.tree_at(base)?.id)
+      .map_err(GitFailure::IndexFromTree)?;
     self
       .repo
-      .status(gix::progress::Discard)?
+      .status(gix::progress::Discard)
+      .map_err(GitFailure::Status)?
       .index(IndexPersistedOrInMemory::InMemory(index))
       .untracked_files(UntrackedFiles::Files)
       // Rename tracking is off unless asked for; git has no configuration
@@ -125,9 +137,12 @@ impl Worktree {
       // (renames only, at git's own similarity threshold) are the closest to
       // what `git status` shows.
       .index_worktree_rewrites(Some(gix::diff::Rewrites::default()))
-      .into_index_worktree_iter(Vec::<BString>::new())?
+      .into_index_worktree_iter(Vec::<BString>::new())
+      .map_err(GitFailure::StatusStart)?
       .try_fold(Accumulated::default(), |set, item| {
-        item.map(|item| set.absorb(&item)).map_err(GitFailure::from)
+        item
+          .map(|item| set.absorb(&item))
+          .map_err(GitFailure::StatusWalk)
       })
       .map(Accumulated::into_change_set)
   }
@@ -144,9 +159,11 @@ impl Worktree {
   fn untracked(&self) -> Result<Vec<String>, GitFailure> {
     self
       .repo
-      .status(gix::progress::Discard)?
+      .status(gix::progress::Discard)
+      .map_err(GitFailure::Status)?
       .untracked_files(UntrackedFiles::Files)
-      .into_index_worktree_iter(Vec::<BString>::new())?
+      .into_index_worktree_iter(Vec::<BString>::new())
+      .map_err(GitFailure::StatusStart)?
       .filter_map(|item| match item {
         Ok(Item::DirectoryContents { entry, .. })
           if is_untracked_file(&entry) =>
@@ -154,7 +171,7 @@ impl Worktree {
           Some(Ok(text(entry.rela_path.as_bstr())))
         }
         Ok(_) => None,
-        Err(source) => Some(Err(GitFailure::from(source))),
+        Err(source) => Some(Err(GitFailure::StatusWalk(source))),
       })
       .collect()
   }
@@ -169,8 +186,10 @@ impl Worktree {
     Ok(
       self
         .repo
-        .head()?
-        .try_into_peeled_id()?
+        .head()
+        .map_err(GitFailure::Head)?
+        .try_into_peeled_id()
+        .map_err(GitFailure::HeadPeel)?
         .map(|id| id.detach()),
     )
   }
@@ -214,7 +233,8 @@ impl Worktree {
     Ok(
       self
         .repo
-        .try_find_reference(REMOTE_HEAD)?
+        .try_find_reference(REMOTE_HEAD)
+        .map_err(GitFailure::Reference)?
         .and_then(|reference| match reference.target() {
           TargetRef::Symbolic(name) => Some(text(name.shorten())),
           TargetRef::Object(_) => None,
@@ -228,7 +248,13 @@ impl Worktree {
   }
 
   fn branch_exists(&self, branch: &str) -> Result<bool, GitFailure> {
-    Ok(self.repo.try_find_reference(branch)?.is_some())
+    Ok(
+      self
+        .repo
+        .try_find_reference(branch)
+        .map_err(GitFailure::Reference)?
+        .is_some(),
+    )
   }
 
   /// Where the current branch left `branch`, which is the diff base that shows
@@ -243,9 +269,19 @@ impl Worktree {
   }
 
   fn merge_base_with_head(&self, branch: &str) -> Result<ObjectId, GitFailure> {
-    let branch = self.repo.rev_parse_single(BStr::new(branch))?.detach();
-    let head = self.repo.head_id()?.detach();
-    Ok(self.repo.merge_base(branch, head)?.detach())
+    let branch = self
+      .repo
+      .rev_parse_single(BStr::new(branch))
+      .map_err(GitFailure::Revision)?
+      .detach();
+    let head = self.repo.head_id().map_err(GitFailure::HeadId)?.detach();
+    Ok(
+      self
+        .repo
+        .merge_base(branch, head)
+        .map_err(GitFailure::MergeBase)?
+        .detach(),
+    )
   }
 
   /// The tree `base` names, whether it is a commit or a tree itself.
@@ -253,7 +289,12 @@ impl Worktree {
     &self,
     base: &ObjectId,
   ) -> Result<gix::Tree<'_>, GitFailure> {
-    Ok(self.repo.find_object(*base)?.peel_to_tree()?)
+    self
+      .repo
+      .find_object(*base)
+      .map_err(GitFailure::Object)?
+      .peel_to_tree()
+      .map_err(GitFailure::PeelToTree)
   }
 }
 

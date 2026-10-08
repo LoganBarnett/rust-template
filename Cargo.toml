@@ -81,7 +81,7 @@ toml = "1.1"
 # Let us work with git repositories - used by several crates.  Default features
 # are off to keep the network transports out of the build, and each engine names
 # the features it needs.
-gix = { version = "0.87", default-features = false }
+gix = { version = "0.88", default-features = false }
 # WORKSPACE_DEPS
 
 # Project-wide lint policy, enforced via clippy.  Test code is exempted
