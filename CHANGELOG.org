@@ -6,6 +6,8 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+1. Bump tokio from 1.53.1 to 1.53.2
+   (https://github.com/LoganBarnett/rust-template/pull/164)
 ** Security
 * v0.140.0
 ** Maintenance
