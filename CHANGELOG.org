@@ -6,8 +6,10 @@
 ** Fixes
 ** Breaking
 ** Maintenance
-1. gix is now 0.88.  No action needed.
 ** Security
+* v0.140.0
+** Maintenance
+1. gix is now 0.88.  No action needed.
 * v0.139.0
 ** Added
 1. The comment and documentation guidance in =llms.org= is now a one-screen
