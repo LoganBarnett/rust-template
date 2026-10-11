@@ -2,37 +2,48 @@
   "windows-msvc": true,
   "workspaces": {
     "foundation": {
-      "release-binary": false
+      "release-binary": false,
+      "type": "lib"
     },
     "foundation-derive": {
-      "release-binary": false
+      "release-binary": false,
+      "type": "lib"
     },
     "compliance-lib": {
-      "release-binary": false
+      "release-binary": false,
+      "type": "lib"
     },
     "compliance-cli": {
-      "release-binary": true
+      "release-binary": true,
+      "type": "cli"
     },
     "dependency-bump-lib": {
-      "release-binary": false
+      "release-binary": false,
+      "type": "lib"
     },
     "dependency-bump-cli": {
-      "release-binary": true
+      "release-binary": true,
+      "type": "cli"
     },
     "cross-fixture": {
-      "release-binary": false
+      "release-binary": false,
+      "type": "cli"
     },
     "review-lib": {
-      "release-binary": false
+      "release-binary": false,
+      "type": "lib"
     },
     "review-cli": {
-      "release-binary": true
+      "release-binary": true,
+      "type": "cli"
     },
     "format-staged-lib": {
-      "release-binary": false
+      "release-binary": false,
+      "type": "lib"
     },
     "format-staged-cli": {
-      "release-binary": true
+      "release-binary": true,
+      "type": "cli"
     }
   },
   "apple-frameworks": false

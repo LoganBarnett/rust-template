@@ -70,13 +70,17 @@ rust-template-foundation = { workspace = true }
     uses: LoganBarnett/rust-template/.github/workflows/reusable-ci.yml@main
 "#,
   );
-  // A cli crate that enables the foundation "cli" feature.
+  // A cli-role crate under a custom name exercises the role declaration below.
+  // The empty config and integration-test stubs satisfy the cli file-present
+  // checks through path resolution.
   write(
     &dir.join("crates/app/Cargo.toml"),
     r#"[dependencies]
 rust-template-foundation = { workspace = true, features = ["cli"] }
 "#,
   );
+  write(&dir.join("crates/app/src/config.rs"), "");
+  write(&dir.join("crates/app/tests/integration_test.rs"), "");
   // llms.org with the Template compliance section pointing at canonical docs,
   // plus the Persistent memory section.  Natural org formatting (blank line
   // after each heading, a wrapped paragraph) exercises the orgize-backed
@@ -97,14 +101,18 @@ Codify conventions in the repo, not in local memory.
 Record plans as TODO entries in tasks.org.
 "#,
   );
-  // Valid provenance that opts out of the stale-literal check and the two
-  // devShell-marker checks: this fixture's flake.nix is a non-evaluable stub
-  // (no outputs), so `nix eval` of its devShells would fail — those checks are
-  // exercised against real emissions by test-crate-add.sh instead.
+  // Valid provenance that declares the custom-named cli-role crate.  It opts
+  // out of the stale-literal check and the two devShell-marker checks.  This
+  // fixture's flake.nix is a stub with no outputs, so `nix eval` of its
+  // devShells would fail.  test-crate-add.sh runs those checks against real
+  // emissions instead.
   write(
     &dir.join("rust-template.json"),
     r#"{
   "template_sync_hashes": ["abc"],
+  "workspaces": {
+    "app": { "release-binary": true, "type": "cli" }
+  },
   "compliance-ignores": [
     "no-stale-rust-template-literals",
     "flake-default-devshell-marker",
@@ -114,14 +122,13 @@ Record plans as TODO entries in tasks.org.
   );
 }
 
-fn config_for(spawn_name: &str, spawn_dir: &Path, crates: &str) -> String {
+fn config_for(spawn_name: &str, spawn_dir: &Path) -> String {
   format!(
     r#"{{
   "templateSpawns": {{
     "{spawn_name}": {{
       "dir": "{}",
-      "archived": false,
-      "args": {{ "crates": "{crates}", "description": "", "public": false }}
+      "archived": false
     }}
   }}
 }}"#,
@@ -147,7 +154,7 @@ fn minimal_spawn_yields_expected_outcomes_without_engine_errors() {
   let root = tmp.path();
   let spawn_dir = root.join("good");
   write_compliant_spawn(&spawn_dir);
-  write(&root.join("config.json"), &config_for("good", &spawn_dir, "cli"));
+  write(&root.join("config.json"), &config_for("good", &spawn_dir));
 
   let report = run(&options(root)).unwrap();
   let spawn = report.spawns.iter().find(|s| s.project == "good").unwrap();
@@ -186,7 +193,9 @@ fn minimal_spawn_yields_expected_outcomes_without_engine_errors() {
     outcome(spawn, "llms-capturing-plans-section"),
     Verdict::Pass
   ));
-  // The cli feature check applies and passes; the server check skips.
+  // The cli feature check applies and passes, and the server check skips.  The
+  // fixture's cli-role crate lives at crates/app, so a pass here proves the
+  // declaration carries the gate.
   assert!(matches!(
     outcome(spawn, "cli-foundation-cli-feature"),
     Verdict::Pass
@@ -204,6 +213,15 @@ fn minimal_spawn_yields_expected_outcomes_without_engine_errors() {
   ] {
     assert!(matches!(outcome(spawn, id), Verdict::Skip { .. }), "{id}");
   }
+  // These checks name crates/cli paths.  The declaration resolves them to the
+  // stubs under crates/app.
+  assert!(matches!(outcome(spawn, "cli-config-present"), Verdict::Pass));
+  assert!(matches!(
+    outcome(spawn, "cli-integration-test-present"),
+    Verdict::Pass
+  ));
+  // Every crates/* member is declared, and every entry carries its type.
+  assert!(matches!(outcome(spawn, "provenance-schema-valid"), Verdict::Pass));
   // No Cargo.lock present, so the pin checks skip rather than error.
   assert!(matches!(
     outcome(spawn, "foundation-pins-agree"),
@@ -239,7 +257,7 @@ fn drifted_spawn_reports_specific_failures() {
 Nothing about compliance here.
 "#,
   );
-  write(&root.join("config.json"), &config_for("drifted", &spawn_dir, "cli"));
+  write(&root.join("config.json"), &config_for("drifted", &spawn_dir));
 
   let report = run(&options(root)).unwrap();
   let spawn = report
@@ -265,6 +283,130 @@ Nothing about compliance here.
 }
 
 #[test]
+fn undeclared_custom_crate_skips_role_checks_and_fails_the_schema() {
+  let tmp = tempfile::tempdir().unwrap();
+  let root = tmp.path();
+  let spawn_dir = root.join("undeclared");
+  write_compliant_spawn(&spawn_dir);
+  // Remove the role declarations.  An empty workspaces map still matches the
+  // schema.  The cli-role crate at crates/app is now invisible to the gates
+  // and to path resolution.  It is also unlisted, which the schema check
+  // reports.
+  write(
+    &spawn_dir.join("rust-template.json"),
+    r#"{
+  "template_sync_hashes": ["abc"],
+  "compliance-ignores": [
+    "no-stale-rust-template-literals",
+    "flake-default-devshell-marker",
+    "flake-ci-devshell-marker"
+  ]
+}"#,
+  );
+  write(&root.join("config.json"), &config_for("undeclared", &spawn_dir));
+
+  let report = run(&options(root)).unwrap();
+  let spawn = report
+    .spawns
+    .iter()
+    .find(|s| s.project == "undeclared")
+    .unwrap();
+
+  assert!(matches!(
+    outcome(spawn, "cli-foundation-cli-feature"),
+    Verdict::Skip { .. }
+  ));
+  assert!(matches!(outcome(spawn, "cli-config-present"), Verdict::Skip { .. }));
+  assert!(matches!(
+    outcome(spawn, "provenance-schema-valid"),
+    Verdict::Fail { .. }
+  ));
+}
+
+#[test]
+fn legacy_provenance_without_types_skips_role_checks_and_fails_the_schema() {
+  let tmp = tempfile::tempdir().unwrap();
+  let root = tmp.path();
+  let spawn_dir = root.join("legacy");
+  write_compliant_spawn(&spawn_dir);
+  // A file from before role declarations.  Its workspaces entry has no
+  // `type`, so the strict parse fails and the loader degrades the whole file
+  // to the default.  That drops compliance-ignores too, so the assertions
+  // below do not lean on the fixture's opt-outs.  A directory named after an
+  // archetype is not a role signal, so the cli gate skips despite it.
+  write(
+    &spawn_dir.join("rust-template.json"),
+    r#"{
+  "template_sync_hashes": ["abc"],
+  "workspaces": {
+    "cli": { "release-binary": true }
+  }
+}"#,
+  );
+  write(
+    &spawn_dir.join("crates/cli/Cargo.toml"),
+    r#"[dependencies]
+rust-template-foundation = { workspace = true, features = ["cli"] }
+"#,
+  );
+  write(&root.join("config.json"), &config_for("legacy", &spawn_dir));
+
+  let report = run(&options(root)).unwrap();
+  let spawn = report
+    .spawns
+    .iter()
+    .find(|s| s.project == "legacy")
+    .unwrap();
+
+  assert!(matches!(
+    outcome(spawn, "cli-foundation-cli-feature"),
+    Verdict::Skip { .. }
+  ));
+  assert!(matches!(
+    outcome(spawn, "provenance-schema-valid"),
+    Verdict::Fail { .. }
+  ));
+}
+
+#[test]
+fn declared_role_with_a_missing_directory_fails_loudly() {
+  let tmp = tempfile::tempdir().unwrap();
+  let root = tmp.path();
+  let spawn_dir = root.join("phantom");
+  write_compliant_spawn(&spawn_dir);
+  // A declared server role has no directory behind it.  The gate counts the
+  // role as present, so its checks run and fail instead of silently skipping.
+  write(
+    &spawn_dir.join("rust-template.json"),
+    r#"{
+  "template_sync_hashes": ["abc"],
+  "workspaces": {
+    "app": { "release-binary": true, "type": "cli" },
+    "provider": { "release-binary": true, "type": "server" }
+  },
+  "compliance-ignores": [
+    "no-stale-rust-template-literals",
+    "flake-default-devshell-marker",
+    "flake-ci-devshell-marker"
+  ]
+}"#,
+  );
+  write(&root.join("config.json"), &config_for("phantom", &spawn_dir));
+
+  let report = run(&options(root)).unwrap();
+  let spawn = report
+    .spawns
+    .iter()
+    .find(|s| s.project == "phantom")
+    .unwrap();
+
+  assert!(matches!(
+    outcome(spawn, "server-foundation-auth-feature"),
+    Verdict::Fail { .. }
+  ));
+}
+
+#[test]
 fn archived_and_missing_spawns_are_skipped() {
   let tmp = tempfile::tempdir().unwrap();
   let root = tmp.path();
@@ -273,13 +415,11 @@ fn archived_and_missing_spawns_are_skipped() {
   "templateSpawns": {{
     "archived": {{
       "dir": "{}",
-      "archived": true,
-      "args": {{ "crates": "cli" }}
+      "archived": true
     }},
     "gone": {{
       "dir": "{}",
-      "archived": false,
-      "args": {{ "crates": "cli" }}
+      "archived": false
     }}
   }}
 }}"#,

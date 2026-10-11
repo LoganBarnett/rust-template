@@ -193,18 +193,14 @@ RESOLVED_OUTPUT="$(cd "$OUTPUT" && pwd)"
 
 jq --arg repo "$PROJECT_NAME" \
    --arg dir  "$RESOLVED_OUTPUT" \
-   --arg crates "$CRATES" \
-   --arg desc "$DESCRIPTION" \
-   --argjson public "$PUBLIC" \
    '.templateSpawns[$repo] = {
        dir: $dir,
-       archived: false,
-       args: {
-           crates: $crates,
-           description: $desc,
-           public: $public
-       }
-   }' "$CONFIG" > "$CONFIG.tmp" && mv "$CONFIG.tmp" "$CONFIG"
+       archived: false
+   }' "$CONFIG" > "$CONFIG.tmp"
+# The move stands alone so a failed jq stops the script instead of leaving the
+# spawn unregistered.  `set -e` ignores a failure in any member of an `&&` list
+# but the last.
+mv "$CONFIG.tmp" "$CONFIG"
 
 # ---------------------------------------------------------------------------
 # Format the emitted files.  Substitutions and crate-add expansions can

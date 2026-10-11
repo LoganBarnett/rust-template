@@ -196,41 +196,50 @@ assert_deps_named() {
 # Assert that a freshly emitted project passes every compliance check — that
 # "the template emits a compliant project" actually holds.
 #
-# Registers the emission as a single spawn in a throwaway config.json (supplying
-# its crate set so the role-conditional checks run), then runs the compliance
-# checker against it and fails on any `fail` or `error` outcome.  Nothing is
-# tolerated: the foundation pin checks skip on a fresh emission (the template
-# Cargo.lock has no resolved foundation git rev), and pin hygiene is a
+# Registers the emission as a single spawn in a throwaway config.json, then
+# runs the compliance checker against it and fails on any `fail` or `error`
+# outcome.  The role-conditional checks read the emission's own
+# rust-template.json, so the registry carries only the location.  Nothing is
+# tolerated.  The foundation pin checks skip on a fresh emission, because the
+# template Cargo.lock has no resolved foundation git rev.  Pin hygiene is a
 # template-maintenance concern tracked as its own task.
 #
 # Gated on the checker having been built (which is gated on cargo); hosts
 # without a Rust toolchain skip cleanly, as with the cargo-check assertion.
 assert_compliant() {
-    local dir="$1" crates="$2" public="${3:-false}"
+    local dir="$1"
     if [[ -z "$COMPLIANCE_BIN" || ! -x "$COMPLIANCE_BIN" ]]; then
         echo "  (skipping compliance check — checker not built)"
         return 0
     fi
     local config="$TMPBASE/compliance-registry-$(basename "$dir").json"
-    jq -n --arg dir "$dir" --arg crates "$crates" --argjson public "$public" \
-        '{templateSpawns: {emission: {dir: $dir, archived: false, args: {crates: $crates, public: $public}}}}' \
-        > "$config"
+    jq --null-input --arg dir "$dir" \
+        '{templateSpawns: {emission: {dir: $dir, archived: false}}}' \
+        > "$config" || return 1
     # The checker's exit code is authoritative: non-zero iff a check failed or
     # errored (or the run could not start at all).  Trust it for the pass/fail
     # decision; the JSON report is only for showing *which* checks failed.
+    # The checker's stderr goes to a file that is shown only on failure.  A
+    # passing run stays quiet, and a failing one keeps its logs and any startup
+    # error.
     local report exit_code=0
+    local stderr_log="$TMPBASE/compliance-stderr-$(basename "$dir").log"
     report=$("$COMPLIANCE_BIN" \
         --registry "$config" \
         --manifest "$SCRIPT_DIR/compliance-checks.toml" \
         --template-dir "$SCRIPT_DIR" \
-        --format json 2>/dev/null) || exit_code=$?
+        --format json 2> "$stderr_log") || exit_code=$?
     if [[ "$exit_code" -ne 0 ]]; then
         echo "  assertion failed: fresh emission is not compliant:" >&2
-        printf '%s' "$report" \
-            | jq -r '.spawns[].checks[]
-                     | select(.status == "fail" or .status == "error")
-                     | "    [\(.id)] \(.detail // "")"' 2>/dev/null >&2 \
-            || echo "    (checker exited $exit_code without a JSON report)" >&2
+        if [[ -n "$report" ]]; then
+            printf '%s' "$report" \
+                | jq --raw-output '.spawns[].checks[]
+                         | select(.status == "fail" or .status == "error")
+                         | "    [\(.id)] \(.detail // "")"' >&2
+        else
+            echo "    (checker exited $exit_code without a JSON report)" >&2
+        fi
+        sed 's/^/    /' "$stderr_log" >&2
         return 1
     fi
 }
@@ -282,7 +291,7 @@ test_new_project_default() {
     localize_foundation "$dir" || return 1
 
     # Compliance: a fresh emission must pass every check.
-    assert_compliant "$dir" "cli,server" || return 1
+    assert_compliant "$dir" || return 1
 
     # Flake-eval assertion: catches API drift between template and foundation.
     assert_flake_eval "$dir" || return 1
@@ -333,7 +342,7 @@ test_new_project_cli_only() {
     assert_file_contains "$dir/rust-template.json" '"apple-frameworks": false'
 
     localize_foundation "$dir" || return 1
-    assert_compliant "$dir" "cli" || return 1
+    assert_compliant "$dir" || return 1
 
     assert_flake_eval "$dir" || return 1
 
@@ -367,7 +376,7 @@ test_new_project_server_only() {
     assert_file_contains "$dir/rust-template.json" '"apple-frameworks": true'
 
     localize_foundation "$dir" || return 1
-    assert_compliant "$dir" "server" || return 1
+    assert_compliant "$dir" || return 1
 }
 
 # ---------------------------------------------------------------------------
@@ -398,8 +407,8 @@ test_new_project_public() {
     localize_foundation "$dir" || return 1
     assert_file_contains "$dir/Cargo.lock" 'source = "git+file://'
 
-    # Compliance with public = true so the gated publish checks actually run.
-    assert_compliant "$dir" "cli,server" true || return 1
+    # Compliance: a fresh public emission must pass every check.
+    assert_compliant "$dir" || return 1
 }
 
 # ---------------------------------------------------------------------------
@@ -473,6 +482,18 @@ test_custom_crate_name() {
     if grep -q 'find_config_file' "$dir/crates/worker/src/config.rs" 2>/dev/null; then
         assert_file_contains "$dir/crates/worker/src/config.rs" 'find_config_file("test-app"'
     fi
+
+    # The declared role reaches the provenance inventory under the custom name.
+    if [[ "$(jq --raw-output '.workspaces.worker.type' "$dir/rust-template.json")" != "cli" ]]; then
+        echo "  assertion failed: worker workspaces entry does not declare type cli" >&2
+        return 1
+    fi
+
+    # Compliance must hold with a custom-named role crate beside the
+    # archetype-named one.  The role-conditional checks and crates/<role> paths
+    # resolve through the role declarations, not the directory names.
+    localize_foundation "$dir" || return 1
+    assert_compliant "$dir" || return 1
 }
 
 # ---------------------------------------------------------------------------

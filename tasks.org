@@ -938,12 +938,11 @@ against it to claim crate names and register trust configs.  Current fleet is
 about 22 projects and growing.
 
 The trustworthy signal for "is this project public" is the GitHub repository
-visibility itself (via =gh repo view --json visibility=), not the spawn
-manifest's =args.public=.  At least one historical project (sonify-health) was
-spawned without =--public= despite being intended as public, so the manifest is
-known-stale in places.  Reconcile each project's manifest entry against live
-GitHub visibility before running the setup script — fix the manifest where it
-diverges so future forward-ports treat the project correctly.
+visibility itself (via =gh repo view --json visibility=).  A spawn's own durable
+signal is a non-empty =publish= list in =crates/lib/Cargo.toml=.  At least one
+historical project, sonify-health, was spawned without =--public= despite being
+intended as public.  Reconcile each project's =publish= list against live GitHub
+visibility before running the setup script.
 
 * TODO Reliable launchd reload for Darwin user-agent services
 
@@ -1636,6 +1635,9 @@ recorded in ~rust-template.json~ must all agree.  Note that the bump can pull a
 new foundation major/minor, so the sweep must build and test the spawn before
 recording the new hash.
 
+Superseded by [[*Replace the generator scripts and compliance-cli with rust-template-cli][the rust-template-cli design]].  Its in-spawn sync procedure carries
+both bumps and the invariant.
+
 ** TODO Add a compliance check that the three pins agree
 Extend ~compliance-check.sh~ with a check that reads the foundation commit from
 each spawn's ~Cargo.lock~ (the ~source~ line of the ~rust-template-foundation~
@@ -1713,6 +1715,9 @@ the Cargo dep + ~Cargo.lock~ + ~flake.lock~ edges in lockstep).
 ~section-exists~ / ~mention-present~ are prose — report only, never auto-write
 into a foreign repo.
 
+Superseded by [[*Replace the generator scripts and compliance-cli with rust-template-cli][the rust-template-cli design]].  There this becomes the =compliance
+fix= subcommand.
+
 * TODO Make the foundation pin checks meaningful and keep the template pins honest
 The pin checks under-deliver on the three-way agreement that
 [[*Compliance sync must bump both flake input and Cargo dependency][the dual-pin invariant]] documents, and the template's own pins have drifted, so
@@ -1732,6 +1737,9 @@ the pins can only point at a *pushed* rev — they can never equal a locally
 unpushed HEAD, making the check unsatisfiable by construction in local
 development.  Decide: drop it, compare against the latest pushed rev, or keep it
 as an informational (non-failing) signal.
+
+Answered by [[*Replace the generator scripts and compliance-cli with rust-template-cli][the rust-template-cli design]].  Compare against the revision the CLI
+was built from.  That is the foundation revision the spawn's dev shell provides.
 
 ** TODO Refresh the template's foundation pins
 ~template/flake.lock~ pins the ~foundation~ input to a stale rev, and
@@ -1825,8 +1833,11 @@ Add an =EXIT=/=ERR= trap that removes the temp so a failed write leaves nothing
 behind, and fix both sites together rather than only the newer one.
 
 Not urgent and not blocking the release-binary work: the original file is never
-clobbered today, only an orphan temp is left.  New work touching this idiom
-should trap-clean inline rather than deferring to this entry.
+clobbered today, only an orphan temp is left.
+
+Superseded by [[*Replace the generator scripts and compliance-cli with rust-template-cli][the rust-template-cli rewrite]], which deletes both scripts.  Until
+then the write and the move are separate statements.  A failed write now aborts
+the script instead of hiding as the non-final member of an =&&= list.
 
 * TODO Make the template fork-aware: derive owner (and host) from the remote
 
@@ -2441,3 +2452,160 @@ Probe outcome (recorded from the first live runs, 2026-07-31):
   degradation handled it.  Re-check after a nixpkgs bump; consider overriding
   the package version in =nix/lib/mkCiShell.nix= and =nix/dependency-bump.nix=
   if it lags.
+
+* TODO Stop new-project.sh mangling prose mentions of rust-template in emitted docs
+
+Emitted docs lose every narrative mention of rust-template.  The emitter renames
+=rust-template= to the project name everywhere.  That is right for package and
+binary names.  It is wrong for prose that refers to the template.
+
+An emitted =llms.org= reads "This project was generated from my-app".  It also
+says "my-app is the authority and evolves independently of this repo".  The
+emitted =flake.nix= comments say "provided by the my-app (foundation) flake".
+
+Only a few forms are restored today.  They are =rust-template-foundation=,
+=rust-template.json=, and =LoganBarnett/rust-template= followed by =/=, =.git=,
+or a quote.  A bare link ending in =]]= is lost, and so is every narrative
+mention.
+
+One option is a stable placeholder for narrative mentions, such as an org macro.
+Another is a restore pass keyed on phrases the template uses deliberately.
+Whichever lands, add a =mention-present= check on the emitted =llms.org=
+"Template compliance" section.  That flags a mangled mention in existing spawns
+too.
+
+* TODO Codify the manifest comment rules, then sweep compliance-checks.toml
+
+The manifest needs written rules for its comments.  The on-demand code-review
+block already follows them, but =CONTRIBUTING.org= does not state them.
+
+- A check's =description= prints beside its id on failure.  It is the per-check
+  documentation, so a comment that restates it says nothing new.
+- Comments are section banners that carry a group's motivation.  They are not
+  bound to any single check.
+- A per-check comment is reserved for a fact neither slot can carry, such as a
+  non-obvious parameter choice.
+
+Codify these under "Compliance checks" in =CONTRIBUTING.org=.  Then sweep the
+manifest.  Promote the rationale worth keeping into the nearest banner and
+delete the rest.  The code-review gate block is a good first target.
+
+* TODO Replace the generator scripts and compliance-cli with rust-template-cli
+
+The bash generators have outgrown what a shell script can carry honestly.  A
+pass over =new-project.sh=, =crate-add.sh=, and =test-crate-add.sh= found one
+swallowing pattern in several shapes.  =set -e= ignores a failure in every
+member of an =&&= list but the last.  A failed =jq= therefore left the manifest
+unwritten while the script reported success.  The test runner invokes each test
+under =if=, which switches =set -e= off for the whole test body.  An assertion
+then fails a test only when it happens to be the last command.  Three emission
+tests were reporting PASS over failed assertions.  The fix is a typed program,
+not more shell discipline.
+
+Build a single =rust-template-cli= binary on the foundation =MergeConfig= and
+=#[foundation_main]= convention.  It takes a =#[merge_config(subcommand)]= tree:
+
+#+begin_example
+rust-template-cli project new --name my-app --output ~/dev/my-app \
+  [--crate cli --crate server] [--public] [--description …]
+rust-template-cli project list
+rust-template-cli crate new --type server [--name api] [--project-dir .]
+rust-template-cli compliance check [--project my-app] [--format json]
+#+end_example
+
+Settled design decisions:
+
+- *One library, one binary.* Emission and compliance share the registry and
+  provenance models.  Rename =compliance-lib= to =rust-template-lib= and add the
+  emission modules there.  Retire =compliance-cli= in favour of the new binary,
+  which =just compliance= runs.  Neither crate is published, so the rename is
+  free.  =dependency-bump=, =review-cli=, and =format-staged= stay separate
+  binaries.
+- *The template and the check manifest are embedded in the binary.*
+  =--template-dir= overrides the embed.  The binary reaches spawns through the
+  foundation flake, as =review= and =format-staged= already do.  =crate new= and
+  =compliance check= then work in a spawn's dev shell with no template checkout.
+- *A checkout uses the files on disk.* Run with =cargo run= from the
+  rust-template checkout, the binary reads the on-disk =template/= and
+  =compliance-checks.toml=.  Local edits are then exercised directly.  A release
+  uses the embedded copies.
+- *The embed covers tracked files only.* Embedding follows symlinks and sweeps
+  up untracked files.  Today's =cp -RP template/.= also copies
+  =template/.direnv=.  The =CLAUDE.md= to =llms.org= symlink is recreated from
+  an explicit symlink table.
+- *Everything the checker reads under =template_dir= goes in the embed.* That is
+  =template/= for =file-matches-template=, the manifest, and
+  =nix/compliance/*.nix= for the =nix eval= kinds.  The Nix helpers are written
+  to a scratch directory for =nix-instantiate=.
+- *Compliance favours the spawn it is run from.* With no =--project=,
+  =compliance check= looks for =rust-template.json= in the working directory and
+  audits that spawn.  Failing that, a =config.json= with spawns means the fleet
+  audit.  Finding neither is an error that names both files.  The registry stays
+  for the fleet form.
+- *The compliance sync procedure changes to match.* In the spawn, bump the
+  foundation flake input and the Cargo dependency in lockstep.  Enter the dev
+  shell, which now carries the CLI at that revision.  Then run
+  =rust-template-cli compliance check=.  =docs/compliance.org= and the emitted
+  =llms.org= "Template compliance" section move to this flow from =just
+  compliance --project= in the template checkout.  This folds in
+  [[*Document the dependency bump in the compliance procedure]].
+- *The provenance hash comes from the build.* The binary carries the
+  rust-template revision it was built from.  =build.rs= reads it from git in a
+  checkout, and the Nix build passes =self.rev=.  =project new= records it in
+  =template_sync_hashes=.  That also answers [[*Decide what ~pins-current~ should compare against][the pins-current question]].  A
+  spawn's pins should equal the revision of the CLI its dev shell provides.
+- *One substitution pass with a protected set* replaces the rename-then-restore
+  dance.  =rust-template= and =rust_template= become the project name everywhere
+  except a fixed set.  The set is =rust-template-foundation=,
+  =rust-template.json=, and =<owner>/rust-template= references.  Design it with
+  [[*Stop new-project.sh mangling prose mentions of rust-template in emitted docs]]
+  in view.
+- *Spawns are born with a lockfile.* =project new= runs =cargo
+  generate-lockfile= once the crate set settles.  That closes
+  [[*Emit spawns with a complete, self-consistent Cargo.lock]].
+- *The emission suite becomes Rust integration tests.* They run =assert_cmd=
+  against temporary directories.  The nix-dependent assertions stay gated by an
+  environment variable, as today.  The =template-suite-passes= kind runs a
+  template shell suite against a spawn.  It has no manifest users and goes with
+  the scripts.
+- *The scripts are deleted outright once covered.* That means =new-project.sh=,
+  =crate-add.sh=, =script-common.sh=, and =test-crate-add.sh=.  Every reference
+  to them is updated, in the docs, the CI workflow, and this file.  The
+  remaining shell test suites are follow-ups on the same path.
+
+Distribution follows the other foundation binaries.  Add the crate to
+=flake.nix= =crates= and to =rust-template.json= with =type= ="cli"= and
+=release-binary= =true=.  Carry over the =just=-on-PATH wrapper from
+=nix/packages/compliance-cli.nix=.  Expose it to spawns' dev shells from
+=template/flake.nix= next to =review= and =format-staged=.
+
+This supersedes [[*Trap-clean orphaned temp files in the jq write-and-move idiom]].
+It also supersedes the =compliance-cli= half of
+[[*Rewrite the compliance checker as a Rust cli + lib with per-check ids]].  That
+entry's =--fix= phase becomes =compliance fix=.  Land it on its own branch after
+the crate-types work, in the order below.
+
+** TODO Move the checker under the umbrella
+Rename the crates and add the subcommand tree with =compliance check= as its
+only verb.  Port =compliance-cli='s tests, and switch =just compliance= and CI.
+Behaviour is unchanged apart from the in-spawn default.
+
+** TODO Embed the template, the manifest, and the Nix helpers
+Add the embed with its =--template-dir= override.  Select the on-disk source
+when run from a checkout and the embedded one from a release.  Recreate symlinks
+from the symlink table, and stamp the build revision.
+
+** TODO =crate new=
+Port =crate-add.sh=.  That covers the archetype copy, the single substitution
+pass, and the =Cargo.toml= member and =flake.nix= sentinel insertions.  It also
+covers the provenance inventory entry and the workspace-dependency merge.
+
+** TODO =project new= and =project list=
+Port =new-project.sh= on top of =crate new=.  That covers the skeleton copy, the
+conflict check for pre-populated directories, and provenance seeding.  It also
+covers the registry update, lockfile generation, and the =treefmt= pass.
+
+** TODO Port the emission suite and delete the scripts
+Write Rust integration tests for the four emission shapes plus the crate-add
+cases.  Then remove the scripts and update every reference and the compliance
+sync procedure.

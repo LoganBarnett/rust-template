@@ -2,12 +2,9 @@
 //!
 //! Each `[[check]]` entry names a stable `id`, a human `description`, a `kind`
 //! from the finite set the engine implements, and the parameters that kind
-//! needs.  An optional `when_crates_contains` restricts a check to spawns whose
-//! crate-role list contains a given substring (e.g. only run a server check on
-//! spawns generated with a `server` crate); an optional
-//! `when_foundation_feature` restricts it to spawns that enable a given
-//! foundation feature (e.g. only run the Apple-SDK wiring check on spawns that
-//! enable `auth`).
+//! needs.  An optional `when_role` restricts a check to spawns with a crate
+//! playing the given archetype role.  An optional `when_foundation_feature`
+//! restricts it to spawns that enable a given foundation feature.
 //!
 //! The manifest is parsed in two stages: TOML into [`RawCheck`] (all
 //! kind-specific parameters optional), then validated into a typed [`Check`]
@@ -16,6 +13,7 @@
 //! missing 'section'") rather than opaque deserialization failures.
 
 use crate::error::ComplianceError;
+use crate::provenance::CrateRole;
 use serde::Deserialize;
 use std::path::Path;
 
@@ -24,12 +22,10 @@ use std::path::Path;
 pub struct Check {
   pub id: String,
   pub description: String,
-  /// When set, the check only applies to spawns whose `args.crates` string
-  /// contains this substring; others report `Skip`.
-  pub when_crates_contains: Option<String>,
-  /// When `Some(true)`, the check only applies to spawns marked public; others
-  /// report `Skip`.  Used for the crates.io publish machinery.
-  pub when_public: Option<bool>,
+  /// When set, the check only applies to spawns whose `rust-template.json`
+  /// `workspaces` map declares a crate playing this role.  Other spawns report
+  /// `Skip`.
+  pub when_role: Option<CrateRole>,
   /// When set, the check only applies to spawns that enable this foundation
   /// feature (any `crates/**/Cargo.toml` lists it on the foundation
   /// dependency); others report `Skip`.  Gates feature-coupled wiring — e.g.
@@ -317,6 +313,12 @@ pub enum CheckKind {
   /// `nixosModules.server`) inside a full nixpkgs configuration
   /// (`nixosSystem`) with the service enabled.
   NixosModuleEvaluates { module: String },
+  /// The spawn's `rust-template.json` matches the typed provenance model, and
+  /// every crate under `crates/` has a `workspaces` entry.  The engine's loader
+  /// degrades an invalid file to an empty default so the other checks still
+  /// run.  This check reports that degradation as a failure.  It skips when the
+  /// file is absent, which a `file-present` check already reports.
+  ProvenanceSchema,
 }
 
 /// The TOML shape: every kind-specific field is optional and validated later.
@@ -332,9 +334,7 @@ struct RawCheck {
   description: String,
   kind: String,
   #[serde(default)]
-  when_crates_contains: Option<String>,
-  #[serde(default)]
-  when_public: Option<bool>,
+  when_role: Option<String>,
   #[serde(default)]
   when_foundation_feature: Option<String>,
   #[serde(default)]
@@ -516,8 +516,7 @@ impl RawCheck {
       id,
       description,
       kind,
-      when_crates_contains,
-      when_public,
+      when_role,
       when_foundation_feature,
       target,
       path,
@@ -549,6 +548,21 @@ impl RawCheck {
       paragraphs,
       points_to,
     } = self;
+
+    // A misspelled role gate would silently match no spawn.  Validation
+    // rejects it before any check runs.
+    let when_role = when_role
+      .map(|value| {
+        CrateRole::parse(&value).ok_or_else(|| {
+          ComplianceError::ManifestInvalid {
+            id: id.clone(),
+            message: format!(
+              "when_role must be one of cli, server, lib; got '{value}'"
+            ),
+          }
+        })
+      })
+      .transpose()?;
 
     let resolved = match kind.as_str() {
       "file-present" => CheckKind::FilePresent {
@@ -783,6 +797,7 @@ impl RawCheck {
       "nixos-module-evaluates" => CheckKind::NixosModuleEvaluates {
         module: require(&id, &kind, "module", module)?,
       },
+      "provenance-schema" => CheckKind::ProvenanceSchema,
       other => {
         return Err(ComplianceError::ManifestInvalid {
           id: id.clone(),
@@ -794,8 +809,7 @@ impl RawCheck {
     Ok(Check {
       id,
       description,
-      when_crates_contains,
-      when_public,
+      when_role,
       when_foundation_feature,
       kind: resolved,
     })
@@ -1058,6 +1072,69 @@ mod tests {
       .validate()
       .unwrap_err();
     assert!(matches!(error, ComplianceError::ManifestInvalid { .. }));
+  }
+
+  #[test]
+  fn carries_when_role() {
+    let toml = r#"
+            [[check]]
+            id = "x"
+            description = "d"
+            kind = "file-present"
+            path = "crates/cli/src/config.rs"
+            when_role = "cli"
+        "#;
+    let raw: RawManifest = toml::from_str(toml).unwrap();
+    let check = raw.check.into_iter().next().unwrap().validate().unwrap();
+    assert_eq!(check.when_role, Some(CrateRole::Cli));
+  }
+
+  #[test]
+  fn invalid_when_role_is_an_error() {
+    let toml = r#"
+            [[check]]
+            id = "x"
+            description = "d"
+            kind = "file-present"
+            path = "flake.nix"
+            when_role = "worker"
+        "#;
+    let raw: RawManifest = toml::from_str(toml).unwrap();
+    let error = raw
+      .check
+      .into_iter()
+      .next()
+      .unwrap()
+      .validate()
+      .unwrap_err();
+    assert!(matches!(error, ComplianceError::ManifestInvalid { .. }));
+  }
+
+  #[test]
+  fn when_role_defaults_to_none() {
+    let toml = r#"
+            [[check]]
+            id = "x"
+            description = "d"
+            kind = "file-present"
+            path = "flake.nix"
+        "#;
+    let raw: RawManifest = toml::from_str(toml).unwrap();
+    let check = raw.check.into_iter().next().unwrap().validate().unwrap();
+    assert!(check.when_role.is_none());
+  }
+
+  #[test]
+  fn validates_a_provenance_schema_check() {
+    let toml = r#"
+            [[check]]
+            id = "x"
+            description = "d"
+            kind = "provenance-schema"
+        "#;
+    let raw: RawManifest = toml::from_str(toml).unwrap();
+    let check = raw.check.into_iter().next().unwrap().validate().unwrap();
+    assert!(matches!(check.kind, CheckKind::ProvenanceSchema));
   }
 
   #[test]

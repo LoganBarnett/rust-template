@@ -44,9 +44,8 @@ find . -type f \( -name "*.toml" -o -name "*.rs" -o -name "*.org" \) \
 #+end_src
 
 Don't forget to update:
-1. ~Cargo.toml~ — workspace metadata (authors, repository, license)
-2. ~flake.nix~ — the ~workspaceCrates~ section (see [[file:customizing.org][customizing.org]])
-3. ~README.org~ — project description
+1. ~Cargo.toml~ — workspace metadata (authors, repository, license).
+2. ~README.org~ — project description.
 
 ** 3. Enter the development environment
 

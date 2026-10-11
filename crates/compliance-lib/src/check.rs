@@ -19,6 +19,8 @@ use std::process::Command;
 
 mod module_evaluates;
 mod nix_call;
+mod provenance_schema;
+mod role_paths;
 
 /// A check's verdict: the result of running one check against one spawn.
 #[derive(Debug, Clone, Serialize)]
@@ -48,9 +50,7 @@ impl Verdict {
 pub struct SpawnContext<'a> {
   /// The spawn's project root.
   pub dir: &'a Path,
-  /// The comma-separated crate-role list from the spawn manifest.
-  pub crates: &'a str,
-  /// The spawn's parsed provenance (for `compliance-ignores`).
+  /// The spawn's parsed provenance.
   pub provenance: &'a Provenance,
   /// The template's current `HEAD`, resolved once per run (shared), or the
   /// reason it could not be resolved.
@@ -58,8 +58,6 @@ pub struct SpawnContext<'a> {
   /// The template checkout root; its `template/` subtree holds the canonical
   /// files that `file-matches-template` compares against.
   pub template_dir: &'a Path,
-  /// Whether the spawn is marked public (gates the publish-machinery checks).
-  pub public: bool,
 }
 
 /// Run `check` against the spawn described by `ctx`.
@@ -70,22 +68,12 @@ pub fn run_check(check: &Check, ctx: &SpawnContext) -> Verdict {
   }
 
   // Role-conditional checks skip on spawns that lack the role.
-  if let Some(role) = &check.when_crates_contains {
-    if !ctx.crates.contains(role.as_str()) {
+  if let Some(role) = check.when_role {
+    if !ctx.provenance.has_role(role) {
       return Verdict::Skip {
-        reason: format!(
-          "crate roles \"{}\" do not include \"{role}\"",
-          ctx.crates
-        ),
+        reason: format!("spawn has no {} crate", role.as_str()),
       };
     }
-  }
-
-  // Public-only checks (the crates.io publish machinery) skip on private spawns.
-  if check.when_public == Some(true) && !ctx.public {
-    return Verdict::Skip {
-      reason: "spawn is not public".to_string(),
-    };
   }
 
   // Feature-conditional checks skip on spawns that do not enable the feature,
@@ -98,7 +86,9 @@ pub fn run_check(check: &Check, ctx: &SpawnContext) -> Verdict {
     }
   }
 
-  match &check.kind {
+  // Role paths resolve before dispatch, so no per-kind helper sees a custom
+  // crate name.  A failure then names the directory that was actually read.
+  match &role_paths::resolve_kind(&check.kind, ctx.provenance) {
     CheckKind::FilePresent { path } => file_present(ctx.dir, path),
     CheckKind::JsonValid { path } => json_valid(ctx.dir, path),
     CheckKind::FileContains { target, contains } => {
@@ -130,9 +120,14 @@ pub fn run_check(check: &Check, ctx: &SpawnContext) -> Verdict {
     CheckKind::PinsAgree => pins_agree(ctx.dir),
     CheckKind::PinsCurrent => pins_current(ctx.dir, ctx.template_head),
     CheckKind::FileAbsent { path } => file_absent(ctx.dir, path),
-    CheckKind::FileMatchesTemplate { path } => {
-      file_matches_template(ctx.dir, ctx.template_dir, path)
-    }
+    // Only the spawn side resolves.  The canonical copy under `template/`
+    // keeps the archetype path.
+    CheckKind::FileMatchesTemplate { path } => file_matches_template(
+      ctx.dir,
+      ctx.template_dir,
+      &ctx.provenance.resolve_role_path(path),
+      path,
+    ),
     CheckKind::GlobPresent { glob } => glob_present(ctx.dir, glob),
     CheckKind::JsonPathExists { target, pointer } => {
       structured_path(ctx.dir, target, pointer, &PathMatch::Exists, parse_json)
@@ -306,6 +301,9 @@ pub fn run_check(check: &Check, ctx: &SpawnContext) -> Verdict {
         "nixos-module-evaluates.nix",
         module,
       )
+    }
+    CheckKind::ProvenanceSchema => {
+      provenance_schema::provenance_schema(ctx.dir)
     }
   }
 }
@@ -599,21 +597,25 @@ fn file_absent(dir: &Path, path: &str) -> Verdict {
   }
 }
 
+/// `spawn_path` and `template_path` name the same file in two layouts.  The
+/// spawn path may point into a custom-named role crate.  The canonical copy
+/// under `template/` always keeps the archetype layout.
 fn file_matches_template(
   dir: &Path,
   template_dir: &Path,
-  path: &str,
+  spawn_path: &str,
+  template_path: &str,
 ) -> Verdict {
-  let spawn = match read_file(&dir.join(path)) {
+  let spawn = match read_file(&dir.join(spawn_path)) {
     FileRead::Found(text) => text,
     FileRead::Missing => {
       return Verdict::Skip {
-        reason: format!("{path} not present"),
+        reason: format!("{spawn_path} not present"),
       }
     }
     FileRead::Error(detail) => return Verdict::Error { detail },
   };
-  let canonical_path = template_dir.join("template").join(path);
+  let canonical_path = template_dir.join("template").join(template_path);
   let canonical = match read_file(&canonical_path) {
     FileRead::Found(text) => text,
     FileRead::Missing => {
@@ -630,7 +632,9 @@ fn file_matches_template(
     Verdict::Pass
   } else {
     Verdict::Fail {
-      detail: format!("{path} differs from the template's canonical copy"),
+      detail: format!(
+        "{spawn_path} differs from the template's canonical copy"
+      ),
     }
   }
 }
