@@ -42,7 +42,9 @@ An LLM performing compliance work must follow this discipline:
   must not be touched unless the user asks.
 - *Preserve the project's crate names.* Compliance does not require renaming
   crates to match the template's =cli= / =server= / =lib= names.  The mapping is
-  conceptual.
+  conceptual, and it is declared rather than inferred.  Each =workspaces= entry
+  in the project's =rust-template.json= names its role in a =type= field.  See
+  [[*Crate mapping]].
 
 * Crate mapping
 
@@ -59,6 +61,23 @@ what matter.
 A target repo may have more crates than the template (workers, etc.).  Extra
 crates are not non-compliant; they simply do not have a direct template
 counterpart. Apply the general [[*Cross-role compliance items]] to them.
+
+** Declaring the mapping
+
+The project's =rust-template.json= records the mapping.  Every =workspaces=
+entry carries a required =type= naming its crate's role: ="cli"=, ="server"=, or
+="lib"=.  A check path under =crates/<role>= resolves to the crate that declares
+the role, so the checker follows a renamed crate.  Every crate under =crates/=
+needs an entry, or =provenance-schema-valid= fails.
+
+#+begin_src json :exports code
+{
+  "workspaces": {
+    "provider": { "release-binary": true, "type": "cli" },
+    "lib": { "release-binary": false, "type": "lib" }
+  }
+}
+#+end_src
 
 * Compliance process
 
@@ -99,21 +118,18 @@ Used when a prior sync event has recorded a commit hash.  The diff between that
 hash and the template's current =HEAD= bounds the work precisely.
 
 1. *Determine the base hash.* Take the last entry in =template_sync_hashes=.
-
-2. *Diff the template.* In the template repository: #+begin_src sh :exports code
-   git diff <last-hash>..HEAD #+end_src Every changed file is a candidate for
-   porting.  Ignore changes that are clearly project-name substitutions or
-   business logic unrelated to the derived project's crates.
-
+2. *Diff the template.* In the template repository, run =git diff
+   <last-hash>..HEAD=.  Every changed file is a candidate for porting.  Ignore
+   changes that are clearly project-name substitutions or business logic
+   unrelated to the derived project's crates.
 3. *Map, enumerate, report, apply.* Follow the [[*LLM role during compliance work]]
    discipline: map each touched file to a crate role, enumerate gaps, report
    them, then apply infrastructure only.  Consult [[*Crate mapping]] when the diff
    touches role-specific files.
-
 4. *Update the record.* Append the current template =HEAD= to
    =template_sync_hashes= in =rust-template.json= and commit the file together
-   with the ported changes: #+begin_src sh :exports code git -C
-   <path-to-template-repo> rev-parse HEAD #+end_src
+   with the ported changes.  =git -C <path-to-template-repo> rev-parse HEAD=
+   prints that hash.
 
 ** Fresh-emission compliance
 
@@ -122,12 +138,10 @@ the derived project predates template provenance and there is no baseline to
 diff from.  A feature-by-feature walk of this document cannot catch everything
 the template emits; compare against a real emission instead.
 
-1. *Emit a fresh project in a temporary directory.* #+begin_src sh :exports code
-   ./new-project.sh \ --name <target-project-name> \ --output
-   /tmp/<target-project-name>-fresh \ --crates <same crate set the target uses>
-   #+end_src Include =--public= if the target is public.  Use the same
-   =--description= if one was recorded in the spawn manifest.
-
+1. *Emit a fresh project in a temporary directory.* Run =new-project.sh= with
+   the target's name as =--name=, a directory under =/tmp= as =--output=, and
+   the target's crate set as =--crates=.  Include =--public= if the target is
+   public.
 2. *File-by-file comparison.* Walk the fresh emission against the derived repo.
    For each file or directory in the emission:
    - Absent from the derived repo → propose adding it.
@@ -135,14 +149,12 @@ the template emits; compare against a real emission instead.
      where the target has legitimate customisation (business logic,
      project-specific configuration fields, domain-specific dependencies).
    - Present and equivalent → skip.
-
 3. *Map, enumerate, report, apply.* Follow the [[*LLM role during compliance work]]
    discipline.
-
 4. *Establish provenance.* After applying, create =rust-template.json= with
    =template_sync_hashes= containing the current template =HEAD= so subsequent
-   compliance work can use the diff-based process: #+begin_src sh :exports code
-   git -C <path-to-template-repo> rev-parse HEAD #+end_src
+   compliance work can use the diff-based process.  =git -C
+   <path-to-template-repo> rev-parse HEAD= prints that hash.
 
 ** Verification
 

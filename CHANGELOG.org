@@ -3,8 +3,27 @@
 
 * Upcoming
 ** Added
+1. Compliance checks now follow a role crate under any directory name.  Each
+   =workspaces= entry in =rust-template.json= declares its role in a =type=
+   field, which =crate-add.sh= writes.  See Breaking for the edit existing
+   projects need.
 ** Fixes
+1. Role-gated compliance checks no longer skip renamed or later-added crates.
+   No action needed.
+2. =new-project.sh= and =crate-add.sh= now fail when they cannot write the spawn
+   registry or =rust-template.json=.  No action needed.
 ** Breaking
+1. =rust-template.json= must give every crate under =crates/= a =workspaces=
+   entry, and each entry needs a =type= of ="cli"=, ="server"=, or ="lib"=.  Add
+   the missing entries and types.  Until then =provenance-schema-valid= fails
+   and the file's =compliance-ignores= are not honored.
+2. The compliance check id =provenance-valid-json= is gone, replaced by
+   =provenance-schema-valid=.  A project listing the old id under
+   =compliance-ignores= in its =rust-template.json= must update it.
+3. Spawn registry entries in =config.json= drop their =args= block, and a stale
+   one is ignored.  No action needed.
+4. The check manifest gate =when_crates_contains= is now =when_role=, and the
+   unused =when_public= gate is gone.  No action needed.
 ** Maintenance
 ** Security
 * v0.140.0

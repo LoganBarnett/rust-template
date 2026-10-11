@@ -35,46 +35,7 @@ license = "MIT OR Apache-2.0"  # or your preferred license
 repository = "https://github.com/yourusername/your-project"
 #+end_src
 
-** 3. Update flake.nix Workspace Crates
-
-Edit ~flake.nix~ and update the ~workspaceCrates~ section:
-
-#+begin_src nix :exports code
-workspaceCrates = {
-  # CLI application
-  cli = {
-    name = "my-app-cli";           # Cargo package name
-    binary = "my-app-cli";         # Binary executable name
-    description = "CLI application";
-  };
-
-  # Server process
-  server = {
-    name = "my-app-server";
-    binary = "my-app-server";
-    description = "Server process";
-  };
-
-  # Add more crates as needed
-  # worker = {
-  #   name = "my-app-worker";
-  #   binary = "my-app-worker";
-  #   description = "Background worker";
-  # };
-};
-#+end_src
-
-The ~workspaceCrates~ configuration in ~flake.nix~ is the *single source of
-truth* for:
-- Nix package generation (when uncommented)
-- App generation (~nix run .#cli~, ~nix run .#server~)
-- Overlay generation for NixOS modules
-- Consistent naming across the flake
-
-This prevents repetitive boilerplate and makes it easy to add/remove workspace
-members.
-
-** 4. Rename Directories
+** 3. Rename Directories
 
 #+begin_src sh :exports code
 # If you want to rename the crate directories too:
@@ -90,61 +51,39 @@ mv crates/lib "crates/${PROJECT_NAME}-lib"
 ** Example: Adding a Background Worker
 
 1. Create the crate:
-
-#+begin_src sh :exports code
-cargo new --bin crates/worker
-#+end_src
-
+   #+begin_src sh :exports code
+   cargo new --bin crates/worker
+   #+end_src
 2. Add to workspace ~Cargo.toml~:
-
-#+begin_src toml :exports code
-[workspace]
-members = [
-    "crates/cli",
-    "crates/lib",
-    "crates/server",
-    "crates/worker",  # New!
-]
-#+end_src
-
+   #+begin_src toml :exports code
+   [workspace]
+   members = [
+       "crates/cli",
+       "crates/lib",
+       "crates/server",
+       "crates/worker",  # New!
+   ]
+   #+end_src
 3. Update package ~Cargo.toml~:
+   #+begin_src toml :exports code
+   # crates/worker/Cargo.toml
+   [package]
+   name = "my-app-worker"
+   version.workspace = true
+   edition.workspace = true
+   authors.workspace = true
+   license.workspace = true
+   repository.workspace = true
 
-#+begin_src toml :exports code
-# crates/worker/Cargo.toml
-[package]
-name = "my-app-worker"
-version.workspace = true
-edition.workspace = true
-authors.workspace = true
-license.workspace = true
-repository.workspace = true
+   [[bin]]
+   name = "my-app-worker"
+   path = "src/main.rs"
 
-[[bin]]
-name = "my-app-worker"
-path = "src/main.rs"
-
-[dependencies]
-my-app-lib = { workspace = true }
-# ... other dependencies
-#+end_src
-
-4. Add to ~flake.nix~ workspaceCrates:
-
-#+begin_src nix :exports code
-workspaceCrates = {
-  cli = { ... };
-  server = { ... };
-
-  # Add the new worker
-  worker = {
-    name = "my-app-worker";
-    binary = "my-app-worker";
-    description = "Background worker";
-  };
-};
-#+end_src
-
-5. Implement with the same patterns:
+   [dependencies]
+   my-app-lib = { workspace = true }
+   # ... other dependencies
+   #+end_src
+4. Implement with the same patterns:
    - Create ~config.rs~ with staged configuration types
    - Use semantic error types with ~thiserror~
    - Add integration tests
@@ -154,36 +93,19 @@ workspaceCrates = {
 ** Example: Removing the Server Crate
 
 1. Remove from workspace:
-
-#+begin_src toml :exports code
-# Cargo.toml
-[workspace]
-members = [
-    "crates/cli",
-    "crates/lib",
-    # "crates/server",  # Commented out or removed
-]
-#+end_src
-
-2. Remove from ~flake.nix~:
-
-#+begin_src nix :exports code
-workspaceCrates = {
-  cli = {
-    name = "my-app-cli";
-    binary = "my-app-cli";
-    description = "CLI application";
-  };
-
-  # server = { ... };  # Removed
-};
-#+end_src
-
-3. Delete the directory:
-
-#+begin_src sh :exports code
-rm -rf crates/server
-#+end_src
+   #+begin_src toml :exports code
+   # Cargo.toml
+   [workspace]
+   members = [
+       "crates/cli",
+       "crates/lib",
+       # "crates/server",  # Commented out or removed
+   ]
+   #+end_src
+2. Delete the directory:
+   #+begin_src sh :exports code
+   rm -rf crates/server
+   #+end_src
 
 * Customizing Logging
 

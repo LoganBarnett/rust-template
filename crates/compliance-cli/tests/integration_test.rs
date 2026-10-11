@@ -33,8 +33,7 @@ fn registry_json(name: &str, dir: &Path, archived: bool) -> String {
   "templateSpawns": {{
     "{name}": {{
       "dir": "{}",
-      "archived": {archived},
-      "args": {{ "crates": "cli" }}
+      "archived": {archived}
     }}
   }}
 }}"#,

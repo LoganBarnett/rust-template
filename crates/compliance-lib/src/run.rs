@@ -186,11 +186,9 @@ fn check_spawn(
   let provenance = provenance::load(&dir);
   let ctx = SpawnContext {
     dir: &dir,
-    crates: &spawn.args.crates,
     provenance: &provenance,
     template_head,
     template_dir,
-    public: spawn.args.public,
   };
 
   let checks = checks

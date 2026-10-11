@@ -376,27 +376,6 @@ license = "AGPL-3.0-or-later"
 repository = "https://github.com/yourusername/your-project"
 #+end_src
 
-** Update flake.nix workspaceCrates
-
-Edit the ~workspaceCrates~ section in ~flake.nix~ to match your actual crate
-descriptions. The name and binary fields are already substituted by the script;
-update the human-readable descriptions:
-
-#+begin_src nix :exports code
-workspaceCrates = {
-  cli = {
-    name = "my-app-cli";
-    binary = "my-app-cli";
-    description = "Description of your CLI tool";
-  };
-  server = {
-    name = "my-app-server";
-    binary = "my-app-server";
-    description = "Description of your server process";
-  };
-};
-#+end_src
-
 ** Rename crate directories (optional)
 
 The script preserves the original directory names (=crates/cli=,
@@ -408,7 +387,9 @@ mv crates/server "crates/my-app-server"
 mv crates/lib "crates/my-app-lib"
 #+end_src
 
-Update the ~members~ list in ~Cargo.toml~ to match.
+Update the ~members~ list in ~Cargo.toml~ to match.  Rename the matching keys in
+the ~workspaces~ map of ~rust-template.json~ too.  The compliance checker keys
+that map by directory name.
 
 ** Build and verify
 
@@ -438,24 +419,16 @@ the script copies it on first use.
   "templateSpawns": {
     "<project-name>": {
       "dir": "/absolute/path/to/project",
-      "archived": false,
-      "args": {
-        "crates": "cli,server",
-        "description": "One-line description",
-        "public": true
-      }
+      "archived": false
     }
   }
 }
 #+end_src
 
-| Field               | Type    | Description |
-|---------------------+---------+-------------|
-| =dir=               | string  | Absolute path to the emitted project directory. |
-| =archived=          | boolean | =true= if the project's remote repositories are archived and no longer accept pushes.  Set manually; =new-project.sh= always writes =false=. |
-| =args.crates=       | string  | Comma-separated binary crates passed to =--crates= at generation time. |
-| =args.description=  | string  | Description passed to =--description=, or empty. |
-| =args.public=       | boolean | Whether =--public= was passed at generation time.  Controls whether the lib crate is publishable and whether =publish.yml= is emitted. |
+| Field      | Type    | Description                                                                           |
+|------------+---------+---------------------------------------------------------------------------------------|
+| =dir=      | string  | Absolute path to the emitted project directory.                                       |
+| =archived= | boolean | =true= if the project's remote repositories are archived and no longer accept pushes. |
 
 The object key under =templateSpawns= is the project name (=--name=).  Running
 =new-project.sh= a second time with the same =--name= overwrites the entry.
@@ -482,24 +455,19 @@ types, integration tests, a Nix dev shell, and optional server scaffolding
 
 * Adding a new workspace crate
 
-1. Create the crate: #+begin_src sh :exports code cargo new --bin crates/worker
-   #+end_src
-
-2. Add to ~[workspace] members~ in ~Cargo.toml~.
-
-3. Set up the crate ~Cargo.toml~ to inherit workspace metadata and follow the
-   staged-configuration pattern from the existing crates.
-
-4. Add an entry to ~workspaceCrates~ in ~flake.nix~.
-
-5. Add integration tests under ~crates/worker/tests/~.
+#+begin_src sh :exports code
+./crate-add.sh --type cli --project-dir ~/dev/my-app
+./crate-add.sh --type server --project-dir ~/dev/my-app --name api
+./crate-add.sh --help
+#+end_src
 
 * Removing a crate
 
 1. Remove its entry from ~[workspace] members~ in ~Cargo.toml~.
-2. Remove its entry from ~workspaceCrates~ in ~flake.nix~.
-3. Delete the crate directory: #+begin_src sh :exports code rm -rf crates/server
-   #+end_src
+2. Remove its entry from the ~workspaces~ map of ~rust-template.json~.  A
+   declared role with no directory behind it fails that role's compliance
+   checks.
+3. Delete the crate directory with ~rm -rf crates/${crate}~.
 
 * Enabling Nix package builds
 
@@ -548,9 +516,6 @@ steps assume the names are already correct.
 
 - ~Cargo.toml~ :: Update ~[workspace.package]~ metadata (authors, license,
   repository).
-- ~flake.nix~ :: Update ~description~ and ~workspaceCrates~ descriptions.  Match
-  the crate ~name~ and ~binary~ fields to the actual Cargo package and binary
-  names.
 - ~README.org~ :: Replace this file's content with a README that describes the
   /new/ project.
 - ~crates/*/src/main.rs~ :: Replace the placeholder business logic (~run()~

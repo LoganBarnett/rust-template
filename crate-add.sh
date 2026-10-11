@@ -166,10 +166,12 @@ ${sentinel_indent}# CRATE:${CRATE_NAME}:end" "$PROJECT_DIR/flake.nix"
 fi
 
 # Step 7: Record the crate in rust-template.json's workspace inventory.  Every
-# member gets an entry; the release-binary flag marks binary archetypes (cli,
-# server), which ship a release binary, versus libs, which do not.  The
-# release-binary workflow reads this inventory to decide what to build, and
-# compliance checks that every workspace member is listed here.
+# member gets an entry.  The release-binary flag is true for the binary
+# archetypes, cli and server, and false for libs.  The type field names the
+# archetype role.  The compliance checker reads it to follow a role crate under
+# a custom name.  Its provenance-schema check asserts every member is listed
+# with a type.  The release-binary workflow reads this inventory to decide what
+# to build.
 if [[ "$CRATE_TYPE" == "lib" ]]; then
     release_binary=false
 else
@@ -195,14 +197,19 @@ fi
 # object; a malformed existing file is left to fail loudly rather than be
 # silently replaced.
 if [[ -f "$provenance" ]]; then
-    jq --arg name "$CRATE_NAME" --argjson release "$release_binary" \
-       ".workspaces[\$name] = {\"release-binary\": \$release} | .[\"apple-frameworks\"] = $apple_frameworks_expr" \
-       "$provenance" > "$provenance.tmp" && mv "$provenance.tmp" "$provenance"
+    jq --arg name "$CRATE_NAME" --arg type "$CRATE_TYPE" \
+       --argjson release "$release_binary" \
+       ".workspaces[\$name] = {\"release-binary\": \$release, \"type\": \$type} | .[\"apple-frameworks\"] = $apple_frameworks_expr" \
+       "$provenance" > "$provenance.tmp"
 else
-    jq --null-input --arg name "$CRATE_NAME" --argjson release "$release_binary" \
-       "{workspaces: {(\$name): {\"release-binary\": \$release}}} | .[\"apple-frameworks\"] = $apple_frameworks_expr" \
-       > "$provenance.tmp" && mv "$provenance.tmp" "$provenance"
+    jq --null-input --arg name "$CRATE_NAME" --arg type "$CRATE_TYPE" \
+       --argjson release "$release_binary" \
+       "{workspaces: {(\$name): {\"release-binary\": \$release, \"type\": \$type}}} | .[\"apple-frameworks\"] = $apple_frameworks_expr" \
+       > "$provenance.tmp"
 fi
+# The move stands alone so a failed jq stops the script.  `set -e` ignores a
+# failure in any member of an `&&` list but the last.
+mv "$provenance.tmp" "$provenance"
 
 # Step 8: Merge workspace dependencies from workspace-deps.toml.
 deps_file="$TEMPLATE_DIR/crates/$CRATE_TYPE/workspace-deps.toml"

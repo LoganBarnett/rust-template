@@ -2,9 +2,10 @@
 #
 # Each [[check]] has a stable `id` (printed on failure), a human `description`,
 # a `kind` from the finite set the engine implements, and that kind's
-# parameters.  An optional `when_crates_contains` restricts a check to spawns
-# whose crate-role list contains the given substring.  A spawn may opt out of
-# any check by listing its id under `compliance-ignores` in its
+# parameters.  An optional `when_role` of cli, server, or lib restricts a check
+# to spawns whose rust-template.json declares a crate of that role.  A path
+# under `crates/<role>` resolves to the crate that declares the role.  A spawn
+# may opt out of any check by listing its id under `compliance-ignores` in its
 # rust-template.json.
 #
 # Paths in `target` / `path` are relative to a spawn's project root; `suite`
@@ -97,10 +98,9 @@ kind = "file-present"
 path = "rust-template.json"
 
 [[check]]
-id = "provenance-valid-json"
-description = "The rust-template.json provenance file parses as JSON."
-kind = "json-valid"
-path = "rust-template.json"
+id = "provenance-schema-valid"
+description = "The rust-template.json provenance file matches the typed schema: every workspaces entry declares a type and every crates/* member has an entry."
+kind = "provenance-schema"
 
 # ── Foundation wiring ────────────────────────────────────────────────
 
@@ -265,14 +265,14 @@ id = "server-foundation-auth-feature"
 description = "A server-crate spawn enables the foundation \"auth\" feature."
 kind = "foundation-feature"
 feature = "auth"
-when_crates_contains = "server"
+when_role = "server"
 
 [[check]]
 id = "cli-foundation-cli-feature"
 description = "A cli-crate spawn enables the foundation \"cli\" feature."
 kind = "foundation-feature"
 feature = "cli"
-when_crates_contains = "cli"
+when_role = "cli"
 
 # ── Hygiene ──────────────────────────────────────────────────────────
 
@@ -935,7 +935,7 @@ kind = "rust-fn-has-attr"
 target = "crates/cli/src/main.rs"
 function = "main"
 attr = "foundation_main"
-when_crates_contains = "cli"
+when_role = "cli"
 
 [[check]]
 id = "cli-config-derives-merge-config"
@@ -944,7 +944,7 @@ kind = "rust-struct-has-derive"
 target = "crates/cli/src/config.rs"
 struct_name = "Config"
 derive = "MergeConfig"
-when_crates_contains = "cli"
+when_role = "cli"
 
 [[check]]
 id = "cli-config-merge-config-helper-attr"
@@ -953,7 +953,7 @@ kind = "rust-struct-has-helper-attr"
 target = "crates/cli/src/config.rs"
 struct_name = "Config"
 attr = "merge_config"
-when_crates_contains = "cli"
+when_role = "cli"
 
 [[check]]
 id = "cli-config-common-field-count"
@@ -964,7 +964,7 @@ struct_name = "Config"
 attr = "merge_config"
 contains = "common"
 count = 2
-when_crates_contains = "cli"
+when_role = "cli"
 
 [[check]]
 id = "server-main-foundation-entry-attr"
@@ -973,7 +973,7 @@ kind = "rust-fn-has-attr"
 target = "crates/server/src/main.rs"
 function = "main"
 attr = "foundation_main"
-when_crates_contains = "server"
+when_role = "server"
 
 [[check]]
 id = "server-main-delegates-to-foundation-runner"
@@ -982,7 +982,7 @@ kind = "rust-method-chain"
 target = "crates/server/src/main.rs"
 function = "main"
 methods = "with_state, listen"
-when_crates_contains = "server"
+when_role = "server"
 
 [[check]]
 id = "server-config-derives-merge-config"
@@ -991,7 +991,7 @@ kind = "rust-struct-has-derive"
 target = "crates/server/src/config.rs"
 struct_name = "Config"
 derive = "MergeConfig"
-when_crates_contains = "server"
+when_role = "server"
 
 [[check]]
 id = "server-config-merge-config-helper-attr"
@@ -1000,7 +1000,7 @@ kind = "rust-struct-has-helper-attr"
 target = "crates/server/src/config.rs"
 struct_name = "Config"
 attr = "merge_config"
-when_crates_contains = "server"
+when_role = "server"
 
 [[check]]
 id = "server-config-common-field-count"
@@ -1011,7 +1011,7 @@ struct_name = "Config"
 attr = "merge_config"
 contains = "common"
 count = 2
-when_crates_contains = "server"
+when_role = "server"
 
 # The server crate embeds its compiled frontend into the binary via
 # rust_embed, so a release binary is self-contained rather than depending on a
@@ -1022,14 +1022,14 @@ id = "server-build-script-present"
 description = "The server crate keeps a build script that resolves the embedded-frontend asset directory."
 kind = "file-present"
 path = "crates/server/build.rs"
-when_crates_contains = "server"
+when_role = "server"
 
 [[check]]
 id = "server-frontend-module-present"
 description = "The server crate declares its embedded frontend in a dedicated frontend.rs module."
 kind = "file-present"
 path = "crates/server/src/frontend.rs"
-when_crates_contains = "server"
+when_role = "server"
 
 [[check]]
 id = "server-frontend-derives-rust-embed"
@@ -1038,7 +1038,7 @@ kind = "rust-struct-has-derive"
 target = "crates/server/src/frontend.rs"
 struct_name = "Frontend"
 derive = "RustEmbed"
-when_crates_contains = "server"
+when_role = "server"
 
 [[check]]
 id = "server-main-installs-spa"
@@ -1047,7 +1047,7 @@ kind = "rust-method-chain"
 target = "crates/server/src/main.rs"
 function = "main"
 methods = "spa"
-when_crates_contains = "server"
+when_role = "server"
 
 [[check]]
 id = "server-rust-embed-interpolate-feature"
@@ -1056,7 +1056,7 @@ kind = "toml-seq-contains"
 target = "Cargo.toml"
 pointer = "workspace.dependencies.rust-embed.features"
 value = "interpolate-folder-path"
-when_crates_contains = "server"
+when_role = "server"
 
 # ======== rust-modules ========
 [[check]]
@@ -1077,21 +1077,21 @@ id = "cli-config-present"
 description = "The cli crate keeps configuration in a dedicated config.rs module."
 kind = "file-present"
 path = "crates/cli/src/config.rs"
-when_crates_contains = "cli"
+when_role = "cli"
 
 [[check]]
 id = "server-config-present"
 description = "The server crate keeps configuration in a dedicated config.rs module."
 kind = "file-present"
 path = "crates/server/src/config.rs"
-when_crates_contains = "server"
+when_role = "server"
 
 [[check]]
 id = "server-web-base-present"
 description = "The server crate defines its web base server state module at crates/server/src/web_base.rs."
 kind = "file-present"
 path = "crates/server/src/web_base.rs"
-when_crates_contains = "server"
+when_role = "server"
 
 [[check]]
 id = "server-dep-prometheus"
@@ -1099,7 +1099,7 @@ description = "The server crate depends on prometheus for metrics."
 kind = "file-contains"
 target = "crates/server/Cargo.toml"
 contains = "prometheus = { workspace = true }"
-when_crates_contains = "server"
+when_role = "server"
 
 [[check]]
 id = "server-dep-tokio-listener"
@@ -1107,7 +1107,7 @@ description = "The server crate depends on tokio-listener for systemd socket act
 kind = "file-contains"
 target = "crates/server/Cargo.toml"
 contains = "tokio-listener = { workspace = true }"
-when_crates_contains = "server"
+when_role = "server"
 
 # ── tap dependency ───────────────────────────────────────────────────
 # tap powers the chain-friendly style the template prescribes (see the
@@ -1280,7 +1280,7 @@ kind = "toml-path-equals"
 target = "crates/cli/Cargo.toml"
 pointer = "package.version.workspace"
 value = "true"
-when_crates_contains = "cli"
+when_role = "cli"
 
 [[check]]
 id = "cli-cargo-edition-workspace"
@@ -1289,7 +1289,7 @@ kind = "toml-path-equals"
 target = "crates/cli/Cargo.toml"
 pointer = "package.edition.workspace"
 value = "true"
-when_crates_contains = "cli"
+when_role = "cli"
 
 [[check]]
 id = "cli-cargo-authors-workspace"
@@ -1298,7 +1298,7 @@ kind = "toml-path-equals"
 target = "crates/cli/Cargo.toml"
 pointer = "package.authors.workspace"
 value = "true"
-when_crates_contains = "cli"
+when_role = "cli"
 
 [[check]]
 id = "cli-cargo-license-workspace"
@@ -1307,7 +1307,7 @@ kind = "toml-path-equals"
 target = "crates/cli/Cargo.toml"
 pointer = "package.license.workspace"
 value = "true"
-when_crates_contains = "cli"
+when_role = "cli"
 
 [[check]]
 id = "cli-cargo-repository-workspace"
@@ -1316,7 +1316,7 @@ kind = "toml-path-equals"
 target = "crates/cli/Cargo.toml"
 pointer = "package.repository.workspace"
 value = "true"
-when_crates_contains = "cli"
+when_role = "cli"
 
 # ---------------------------------------------------------------------------
 # Server crate: workspace metadata inheritance.
@@ -1328,7 +1328,7 @@ kind = "toml-path-equals"
 target = "crates/server/Cargo.toml"
 pointer = "package.version.workspace"
 value = "true"
-when_crates_contains = "server"
+when_role = "server"
 
 [[check]]
 id = "server-cargo-edition-workspace"
@@ -1337,7 +1337,7 @@ kind = "toml-path-equals"
 target = "crates/server/Cargo.toml"
 pointer = "package.edition.workspace"
 value = "true"
-when_crates_contains = "server"
+when_role = "server"
 
 [[check]]
 id = "server-cargo-authors-workspace"
@@ -1346,7 +1346,7 @@ kind = "toml-path-equals"
 target = "crates/server/Cargo.toml"
 pointer = "package.authors.workspace"
 value = "true"
-when_crates_contains = "server"
+when_role = "server"
 
 [[check]]
 id = "server-cargo-license-workspace"
@@ -1355,7 +1355,7 @@ kind = "toml-path-equals"
 target = "crates/server/Cargo.toml"
 pointer = "package.license.workspace"
 value = "true"
-when_crates_contains = "server"
+when_role = "server"
 
 [[check]]
 id = "server-cargo-repository-workspace"
@@ -1364,7 +1364,7 @@ kind = "toml-path-equals"
 target = "crates/server/Cargo.toml"
 pointer = "package.repository.workspace"
 value = "true"
-when_crates_contains = "server"
+when_role = "server"
 
 # ---------------------------------------------------------------------------
 # Lib crate: workspace metadata inheritance.
@@ -1417,14 +1417,14 @@ id = "cli-integration-test-present"
 description = "The cli crate ships an integration test under tests/."
 kind = "file-present"
 path = "crates/cli/tests/integration_test.rs"
-when_crates_contains = "cli"
+when_role = "cli"
 
 [[check]]
 id = "server-integration-test-present"
 description = "The server crate ships an integration test under tests/."
 kind = "file-present"
 path = "crates/server/tests/integration_test.rs"
-when_crates_contains = "server"
+when_role = "server"
 
 # ---------------------------------------------------------------------------
 # llms.org: major headings a spawn must keep.
@@ -1807,7 +1807,7 @@ package = "rust-template-review-stop"
 id = "darwin-service-log-path-stdout"
 description = "The darwin service's stdout log defaults to a file directly under /var/log, which survives an OS update."
 kind = "nix-module-option-default"
-when_crates_contains = "server"
+when_role = "server"
 module = "darwinModules.server"
 option = "logPathStdout"
 value = "/var/log/@service@-stdout.log"
@@ -1816,7 +1816,7 @@ value = "/var/log/@service@-stdout.log"
 id = "darwin-service-log-path-stderr"
 description = "The darwin service's stderr log defaults to a file directly under /var/log, which survives an OS update."
 kind = "nix-module-option-default"
-when_crates_contains = "server"
+when_role = "server"
 module = "darwinModules.server"
 option = "logPathStderr"
 value = "/var/log/@service@-stderr.log"
@@ -1825,7 +1825,7 @@ value = "/var/log/@service@-stderr.log"
 id = "darwin-healthcheck-log-path-stdout"
 description = "The darwin health-check agent's stdout log defaults to a file directly under /var/log, which survives an OS update."
 kind = "nix-module-option-default"
-when_crates_contains = "server"
+when_role = "server"
 module = "darwinModules.server"
 option = "healthCheck.logPathStdout"
 value = "/var/log/@service@-healthcheck-stdout.log"
@@ -1834,7 +1834,7 @@ value = "/var/log/@service@-healthcheck-stdout.log"
 id = "darwin-healthcheck-log-path-stderr"
 description = "The darwin health-check agent's stderr log defaults to a file directly under /var/log, which survives an OS update."
 kind = "nix-module-option-default"
-when_crates_contains = "server"
+when_role = "server"
 module = "darwinModules.server"
 option = "healthCheck.logPathStderr"
 value = "/var/log/@service@-healthcheck-stderr.log"
@@ -1847,26 +1847,26 @@ value = "/var/log/@service@-healthcheck-stderr.log"
 id = "darwin-module-calls-foundation-helper"
 description = "Some .nix file calls the foundation's mkDarwinService, so a fix to the darwin service module reaches the spawn on its next foundation bump."
 kind = "nix-call-present"
-when_crates_contains = "server"
+when_role = "server"
 function = "mkDarwinService"
 
 [[check]]
 id = "nixos-module-calls-foundation-helper"
 description = "Some .nix file calls the foundation's mkNixosService, so a fix to the NixOS service module reaches the spawn on its next foundation bump."
 kind = "nix-call-present"
-when_crates_contains = "server"
+when_role = "server"
 function = "mkNixosService"
 
 [[check]]
 id = "darwin-module-evaluates"
 description = "The darwin module evaluates inside a full nix-darwin configuration with the service enabled, so every launchd option it sets exists and it defines its health-check daemon."
 kind = "darwin-module-evaluates"
-when_crates_contains = "server"
+when_role = "server"
 module = "darwinModules.server"
 
 [[check]]
 id = "nixos-module-evaluates"
 description = "The NixOS module evaluates inside a full NixOS configuration with the service enabled, so every systemd option it sets exists."
 kind = "nixos-module-evaluates"
-when_crates_contains = "server"
+when_role = "server"
 module = "nixosModules.server"
