@@ -3,6 +3,12 @@
 
 * Upcoming
 ** Added
+** Fixes
+** Breaking
+** Maintenance
+** Security
+* v0.141.0
+** Added
 1. Compliance checks now follow a role crate under any directory name.  Each
    =workspaces= entry in =rust-template.json= declares its role in a =type=
    field, which =crate-add.sh= writes.  See Breaking for the edit existing
@@ -24,8 +30,6 @@
    one is ignored.  No action needed.
 4. The check manifest gate =when_crates_contains= is now =when_role=, and the
    unused =when_public= gate is gone.  No action needed.
-** Maintenance
-** Security
 * v0.140.0
 ** Maintenance
 1. gix is now 0.88.  No action needed.
