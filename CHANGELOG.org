@@ -3,6 +3,12 @@
 
 * Upcoming
 ** Added
+** Fixes
+** Breaking
+** Maintenance
+** Security
+* v0.142.0
+** Added
 1. Compliance now checks a documentation section's prose against the template's
    whole paragraphs and their order.  A template prose edit reaches every spawn
    with no new check.  Spawns should sync compliance.
@@ -11,14 +17,11 @@
    =docs/contribution-rationale.org=.  Spawns should sync compliance.
 3. =llms.org= now asks for two spaces after a sentence, long program arguments,
    and import paths that name a file.  Spawns should sync compliance.
-** Fixes
 ** Breaking
 1. The prose checks on =llms.org= and =CONTRIBUTING.org= now judge whole
    sections, so one reworded sentence fails its section.  Sync the section or
    list its new check id under =compliance-ignores=.  Ignores that name a
    retired phrase check no longer apply.
-** Maintenance
-** Security
 * v0.141.0
 ** Added
 1. Compliance checks now follow a role crate under any directory name.  Each
