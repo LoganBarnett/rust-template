@@ -18,6 +18,8 @@
    list its new check id under =compliance-ignores=.  Ignores that name a
    retired phrase check no longer apply.
 ** Maintenance
+1. Bump serde_json from 1.0.151 to 1.0.154
+   (https://github.com/LoganBarnett/rust-template/pull/176)
 ** Security
 * v0.141.0
 ** Added
