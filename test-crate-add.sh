@@ -204,17 +204,20 @@ assert_deps_named() {
 # template Cargo.lock has no resolved foundation git rev.  Pin hygiene is a
 # template-maintenance concern tracked as its own task.
 #
+# The spawn is registered under its project name, as new-project.sh registers a
+# real one.  The paragraph checks need that name to undo the rename.
+#
 # Gated on the checker having been built (which is gated on cargo); hosts
 # without a Rust toolchain skip cleanly, as with the cargo-check assertion.
 assert_compliant() {
-    local dir="$1"
+    local name="$1" dir="$2"
     if [[ -z "$COMPLIANCE_BIN" || ! -x "$COMPLIANCE_BIN" ]]; then
         echo "  (skipping compliance check — checker not built)"
         return 0
     fi
     local config="$TMPBASE/compliance-registry-$(basename "$dir").json"
-    jq --null-input --arg dir "$dir" \
-        '{templateSpawns: {emission: {dir: $dir, archived: false}}}' \
+    jq --null-input --arg name "$name" --arg dir "$dir" \
+        '{templateSpawns: {($name): {dir: $dir, archived: false}}}' \
         > "$config" || return 1
     # The checker's exit code is authoritative: non-zero iff a check failed or
     # errored (or the run could not start at all).  Trust it for the pass/fail
@@ -291,7 +294,7 @@ test_new_project_default() {
     localize_foundation "$dir" || return 1
 
     # Compliance: a fresh emission must pass every check.
-    assert_compliant "$dir" || return 1
+    assert_compliant "test-app" "$dir" || return 1
 
     # Flake-eval assertion: catches API drift between template and foundation.
     assert_flake_eval "$dir" || return 1
@@ -342,7 +345,7 @@ test_new_project_cli_only() {
     assert_file_contains "$dir/rust-template.json" '"apple-frameworks": false'
 
     localize_foundation "$dir" || return 1
-    assert_compliant "$dir" || return 1
+    assert_compliant "test-app" "$dir" || return 1
 
     assert_flake_eval "$dir" || return 1
 
@@ -376,7 +379,7 @@ test_new_project_server_only() {
     assert_file_contains "$dir/rust-template.json" '"apple-frameworks": true'
 
     localize_foundation "$dir" || return 1
-    assert_compliant "$dir" || return 1
+    assert_compliant "test-app" "$dir" || return 1
 }
 
 # ---------------------------------------------------------------------------
@@ -408,7 +411,7 @@ test_new_project_public() {
     assert_file_contains "$dir/Cargo.lock" 'source = "git+file://'
 
     # Compliance: a fresh public emission must pass every check.
-    assert_compliant "$dir" || return 1
+    assert_compliant "test-app" "$dir" || return 1
 }
 
 # ---------------------------------------------------------------------------
@@ -493,7 +496,7 @@ test_custom_crate_name() {
     # archetype-named one.  The role-conditional checks and crates/<role> paths
     # resolve through the role declarations, not the directory names.
     localize_foundation "$dir" || return 1
-    assert_compliant "$dir" || return 1
+    assert_compliant "test-app" "$dir" || return 1
 }
 
 # ---------------------------------------------------------------------------

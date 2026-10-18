@@ -48,15 +48,12 @@ pub(super) fn resolve_kind(
       target: resolve(target),
       line: line.clone(),
     },
-    CheckKind::ParagraphsInOrder {
-      target,
-      section,
-      paragraphs,
-    } => CheckKind::ParagraphsInOrder {
-      target: resolve(target),
-      section: section.clone(),
-      paragraphs: paragraphs.clone(),
-    },
+    CheckKind::TemplateParagraphsInOrder { target, section } => {
+      CheckKind::TemplateParagraphsInOrder {
+        target: resolve(target),
+        section: section.clone(),
+      }
+    }
     CheckKind::FileAbsent { path } => CheckKind::FileAbsent {
       path: resolve(path),
     },

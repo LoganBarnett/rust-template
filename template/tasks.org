@@ -1,6 +1,5 @@
 #+title:     Tasks
 #+language:  en
 
-The project's backlog.  Record plans and work items here as ~* TODO~ entries —
-see the "Capturing plans" guidance in =llms.org= — cross-linking related entries
-and marking finished work ~* DONE~.
+The project's backlog.  Record plans and work items here as ~* TODO~ entries.
+Cross-link related entries and mark finished work ~* DONE~.

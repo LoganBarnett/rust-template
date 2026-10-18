@@ -199,17 +199,29 @@ green checker run is necessary, not sufficient, for full compliance.
 ** Authoring checks
 *** Choosing a check kind
 
-Default to /presence/ checks — =section-exists= for a heading, =mention-present=
-for a load-bearing phrase, =file-present= for a required file, and a value check
-(=toml-path-equals=, =yaml-path-equals=, =toml-seq-contains=, …) for a specific
-setting.  They assert that what the template lays down is /there/, without
-forbidding anything a spawn adds on top.  That additive freedom is the point: a
-project may extend =llms.org= with its own conventions, take on a new file type
-and add a formatter to =treefmt.toml=, or grow a section — and stay compliant,
-because the check verifies the required content is present rather than that the
-file is unchanged.  The =treefmt= checks are the model: each asserts one shipped
-formatter's wiring is present, so a spawn can add its own without tripping
-anything.
+Default to /presence/ checks — =section-exists= for a heading,
+=template-paragraphs-in-order= for a section's prose, =file-present= for a
+required file, and a value check (=toml-path-equals=, =yaml-path-equals=,
+=toml-seq-contains=, …) for a specific setting.  They assert that what the
+template lays down is /there/, without forbidding anything a spawn adds on top.
+That additive freedom is the point: a project may extend =llms.org= with its own
+conventions, take on a new file type and add a formatter to =treefmt.toml=, or
+grow a section — and stay compliant, because the check verifies the required
+content is present rather than that the file is unchanged.  The =treefmt= checks
+are the model: each asserts one shipped formatter's wiring is present, so a
+spawn can add its own without tripping anything.
+
+Prose is checked a section at a time.  =template-paragraphs-in-order= names a
+section.  Every paragraph the template has there must appear whole and in the
+same order in the spawn's section.  The check reads those paragraphs from the
+template checkout when it runs.  Editing template prose therefore reaches every
+spawn without a manifest change.  A spawn may add paragraphs of its own anywhere
+in the section.  It may not reword one.  A paragraph is kept or opted out of as
+a unit.  Opting out goes by check id, so it covers the whole section.  Choose
+each section at the granularity a spawn would opt out at.  A section includes
+its subsections, so a checked section should not sit inside another one.  Reach
+for =mention-present= only for text outside a paragraph.  A line inside a src
+block is the usual case.
 
 Prefer the narrowest precise check that captures the convention.  Reaching for
 =file-matches-template= (byte-for-byte equality with the template) is almost
@@ -262,10 +274,10 @@ When you change the template, ask whether existing spawns should gain the
 change.
 
 - *Yes* → add or extend a check in =compliance-checks.toml= that fails a spawn
-  lacking it — a =section-exists= or =mention-present= for documentation, a
-  value check for wiring (see [[*Choosing a check kind]]).  Confirm the new check
-  /passes/ against the template's own emitted content before relying on it;
-  nothing else dogfoods that.
+  lacking it — a =section-exists= or =template-paragraphs-in-order= for
+  documentation, a value check for wiring (see [[*Choosing a check kind]]).  Confirm
+  the new check /passes/ against the template's own emitted content before
+  relying on it; nothing else dogfoods that.
 - *No* → it needs no check.  Either it is a pure new-emission default that older
   spawns need not backfill, or it flows in automatically through the foundation
   library or a reusable workflow the spawn references at =@main= — those reach

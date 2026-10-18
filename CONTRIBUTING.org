@@ -75,11 +75,11 @@ emission test must still pass against a fresh spawn.  See [[file:docs/compliance
 for the checker and the set of check kinds.
 
 This applies even to documentation additions.  A new =llms.org= or
-=CONTRIBUTING.org= section can be asserted with =section-exists=, a load-bearing
-phrase within one with =mention-present=, and a new required file with
-=file-present=.  If a convention genuinely cannot be expressed as a structural
-rule, say so in the change rather than dropping the check silently — the default
-expectation is that every new convention is machine-checked.
+=CONTRIBUTING.org= section can be asserted with =section-exists=, its prose with
+=template-paragraphs-in-order=, and a new required file with =file-present=.  If
+a convention genuinely cannot be expressed as a structural rule, say so in the
+change rather than dropping the check silently — the default expectation is that
+every new convention is machine-checked.
 
 * UI philosophy: no modals
 

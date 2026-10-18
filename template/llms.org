@@ -37,70 +37,21 @@ for; a change that contradicts it is wrong even when it compiles.
 
 ** Rules for editing the import list
 
-Do not replace an import with an ~[[file:...][=name=]]~ org link.  A link is an invitation the
-agent may decline; an import is not.  Links remain correct for supporting
-material — the imports are reserved for documents that every change in this
-project must be measured against.
+Claude:
+1. Start with ~@~ at beginning of line.
+2. Give each import a blank line before and after.
+3. Keep ~@README.org~ before ~@CONTRIBUTING.org~.
 
-Some mechanics worth knowing before adding an entry:
+The example below shows how this is done.  The comma in the raw org-mode text is
+an escape character to prevent an import.
 
-- Paths resolve relative to the file doing the importing, and imports recurse,
-  so an imported document brings in its own imports too.
-- A file reached by more than one path is inlined once, so a redundant entry
-  costs nothing.
-- Position is irrelevant to the mechanism.  Claude Code honors an import
-  wherever it sits, and the imported text reaches the session before this file
-  is read at all, so there is no rule about the section coming first — the
-  heading carries the meaning, not the placement.
-- An import is a line that is exactly ~@~ followed by the path — nothing before
-  it, nothing after it.  The runner matches whole lines, not org syntax, so
-  anything else — however valid as org-mode — is not an import to it: an
-  indented path, a path with trailing text, a path inside a sentence.  The
-  converse hazard is a line that merely /begins/ with ~@~, such as a CSS at-rule
-  in an example: the runner cannot tell it from an import, even inside a
-  ~#+begin_src~ block, which is why the CSS examples in ~CONTRIBUTING.org~ guard
-  their at-rules with a leading empty comment.  To write an import path in prose
-  without importing it, keep it inside a sentence or wrap it in org verbatim
-  markers.
-- Each import is a paragraph of its own: a blank line before it and a blank line
-  after it.  Two imports on adjacent lines are one org paragraph — that is how
-  ~org-fmt~ reads them, and how the compliance check reads them — so the blank
-  line between them is not optional.
-- Order is meaningful, because the order the documents arrive in is the order
-  they are read.  ~README.org~ comes first — what the project /is/ frames
-  everything after it — and ~CONTRIBUTING.org~ second.  A project may add its
-  own imports before, between, or after those two; the two keep their relative
-  order.
-
-* Server crate: role and scope
-
-The =crates/server= crate is the project's general-purpose long-running service.
-It is /not/ specifically an HTTP server — HTTP is present only as infrastructure
-for health checks, metrics, and observability.
-
-The server might primarily:
-
-- Watch local files for changes and react to them.
-- Communicate over a binary protocol, gRPC, or WebSockets.
-- Bridge between systems (queues, databases, external APIs).
-- Serve any other role that calls for a persistent process responding to
-  stimuli.
-
-When adding new functionality that requires a long-running process, build it in
-the server crate rather than creating a separate service.  The server already
-provides structured logging, systemd socket activation, watchdog integration,
-graceful shutdown, and an Elm frontend — duplicating this infrastructure is
-wasteful and error-prone.
-
-Do not mistake the server for "just a web server" and stand up a separate HTTP
-service from scratch.  The existing HTTP routes (=/healthz=, =/metrics=, =/me=,
-=/scalar=) are supporting infrastructure, not the defining purpose.
+#+begin_src org :results none :exports code
+,@foo-doc.org
+#+end_src
 
 * General code guidelines
 
-These are instructions for LLMs to write code more to my liking.  Where a
-section states a rule without argument, its reasoning is in rust-template's
-[[https://github.com/LoganBarnett/rust-template/blob/main/docs/contribution-rationale.org][=docs/contribution-rationale.org=]].  That document is not imported.
+These are instructions for LLMs to write code and documentation to my standard.
 
 ** Documents
 
@@ -114,13 +65,17 @@ No file lists in documentation.
 ** Prose rules
 
 These apply to comments, doc comments, org documents, commit bodies, and
-replies.
+replies.  The rules are stated, not argued.  The reasoning behind each one is in
+rust-template's [[https://github.com/LoganBarnett/rust-template/blob/main/docs/contribution-rationale.org][=docs/contribution-rationale.org=]].  That document is not
+imported.
 
 - Sentences are short.  One idea each.  About twenty words.
 - Punctuation is ASCII.  No em dashes.  No semicolons.  No parentheses.
 - A comma sets off one leading clause or separates a list.  Anything else is two
   sentences.
 - Comments are complete sentences wrapped at 80 columns.
+- Two spaces follow sentence-ending punctuation.  A formatter that strips them
+  wins.  Match single-spaced prose rather than reflowing it.
 - Open with the conclusion.  The mechanism comes after, or not at all.
 - A fact lives at the lowest level where it applies.  A line of code is the
   lowest and the README is the highest.  A workaround is explained on the line
@@ -153,74 +108,41 @@ dropped.
 #+end_example
 
 ** Version Control
+*** Adding Files for Nix Flakes
+
+Nix Flakes only see tracked files.  An untracked file appears as missing.  Use
+~git add --intent-to-add~ to add files to allow [[Leave Unstaged]] to be honored
+while satisfying Nix Flakes.
+
 *** Commit Messages
 
-A commit message logs a change that is suitable for a reviewer.  Generally
-speaking, we want to submit one commit per pull request.  Multiple commits can
-be presented in a pull request if somehow the changes are completely different
-yet required in order for the pull request to be considered complete.  Many git
-forge sites default the one-and-only-one commit as both a pull request title and
-description (from the commit summary and body).  We want to leverage that as
-much as we can.
+The audience of a commit message is a reviewer.
 
-Write the summary line in the imperative mood.  It completes the sentence
-"Applying this commit will ...".  No prefixes.  No Conventional Commit tags.  No
-period at the end.
+The commit has three components: The title, the activity, and the description.
 
-Good:
+1. The title follows the ~git~ imperative style.
+2. The activity is a single sentence saying what it accomplishes.  It names the
+   ticket if one exists.
+3. The description explains "why" and any notable, surprising bits.
+
+In all cases, follow [[Prose rules]].
 
 #+begin_example
-clarify documentation re: ritual summoning
+frobnicate self sealing stem bolts
+
+Closes #1234 - Self sealing stem bolts arrive unfrobnicated.
+
+Self sealing stem bolts require frobnication.  This adds it when they are
+inserted via the UI or API.
 #+end_example
 
-#+begin_example
-simplify approach of detecting tachyons
-#+end_example
+Do not include taxonomy of the ticket or the change.  No =feat=, no =fix=, and
+the like.
 
-#+begin_example
-add flux capacitor to front-end
-#+end_example
+*** Leave Unstaged
 
-Bad:
-
-#+begin_example
-(feat) Add a flux capacitor to the front-end in main.elm
-#+end_example
-
-The commit body is your opportunity to document the motivation for the changes
-(e.g. to fix a bug, to optimize a workflow, to add a new feature, and so on).
-This is the "why" part.  Why did were these changes necessary?  In addition,
-provide context for the change.  Does the bug fix come at some cost to
-performance?  Were other considerations made as part of the changes, and then
-discarded?  Is this the first commit in a series of similar refactors?
-
-A commit body that contains line numbers, file names, and symbol names (e.g.
-functions, variables, etc.) is a high scoring smell and should be avoided.
-
-One thing to be mindful of when crafting a commit is that whoever is viewing the
-commit _can always see what changed for themselves_.
-
-If you find yourself including critical information in the commit whose value
-extends outside of the commit (e.g. that this is a workaround or some surprising
-change), that should exist as a code comment.  It can be worth calling out such
-workarounds in the commit as well, but you don't need to specifically locate
-them (no line numbers, function names, and so on).
-
-Another reason not to include line numbers is that code formatters will change
-this as part of making the commit.
-
-*** History Hygiene
-
-We want to avoid commits that are essentially "I accomplished a task" and then
-later a "jk here's the rest of the task done".  When this happens, we should
-perform a fixup assuming the commits are unpublished.
-
-This tends to come up especially when you have a mega-commit for a bunch of
-unrelated work.  In these cases, the right thing to do is break up the work
-assuming the work can survive independently.
-
-In the event that you can't resolve these notions, halt and ask the operator for
-direction.
+Files should be left unstaged for review.  See [[Adding Files for Nix Flakes]] for
+an exception and how to handle it.
 
 ** Code
 
@@ -231,13 +153,8 @@ _authoring_ new identifiers in camel case.
 
 *** LLM code biases to avoid
 
-These are reminders, not boundaries.  A model already knows each of these; it
-needs the nudge, and the review agent needs a list to check against.  Every one
-is a judgement call in the "I know it when I see it" sense — deliberately vague
-so that no threshold can be gamed.  DRY is the example: "after three
-repetitions" lets two functions share two hundred lines, and when the language
-cannot express the abstraction (no lenses for pulling data out of a structure),
-the repetition is the honest form.
+These are reminders, not boundaries.  A model already knows each of these.  It
+just needs the nudge, and the review agent needs a list to check against.
 
 - Copying a block instead of finding, or extracting, the helper that already
   does it.
@@ -257,239 +174,56 @@ the repetition is the honest form.
   fix and show the failure, then the pass.
 - Placeholders and "implement later" in shipped code.
 
+*** Program arguments
+
+Use a program's long arguments whenever it has them.  ~mkdir --parents~, not
+~mkdir -p~.  A short argument with no long form gets a comment at each use.
+
+*** Import paths
+
+An import names a file, never a directory.  In Nix that is ~./foo/default.nix~,
+not ~./foo~.  A project that already imports directories implicitly keeps its
+pattern.
+
 ** Rust
 
 *** Error Handling
 
-Prefer semantic errors.  Do not just wrap or propagate a ~FileMissingError~ or
-~FileWriteError~.  This information _might_ include what file was involved, but
-it doesn't say what was happening.  Include something either about the error
-itself (like ~ConfigFileMissingError~) or about the process in which the error
-occurred (~ReportFileWriteError~).
+Use semantic errors.  Do not just wrap or propagate a ~FileMissingError~ or
+~FileWriteError~.  Include something about the error itself or about the process
+in which it occurred.  ~ConfigFileMissingError~ names the error and
+~ReportFileWriteError~ names the process.  Use ~thiserror~ to map other API
+errors when sensible.  Do not employ ~anyhow~.
 
-In cases where you can be semantic with your approach to APIs, use ~thiserror~
-to automatically map API errors of certain kinds to semantic errors.
-
-A bad example.  This is bad because it simply signals that a file somewhere in
-the program couldn't be read — this could be any file, and tells contributors
-and users nothing:
-
-#+begin_src rustic :results none :exports code
-use std::fs;
-use thiserror::Error;
-
-enum AppError {
-  #[error("Could not read file: {0}")]
-  FileReadError(#[from] std::io::Error),
-}
-
-fn config_file_contents() -> Result<String, AppError> {
-  fs::read_to_string(file_path)
-    .map_err(AppError::FileReadError)
-}
-#+end_src
-
-The following is a good example, where the error indicates the nature of the
-failure (the file could not be read) and the context (which file/operation):
-
-#+begin_src rustic :results none :exports code
-use std::fs;
-use thiserror::Error;
-
-enum AppError {
-  #[error("Could not read configuration file: {0}")]
-  ConfigFileReadError(#[from] std::io::Error),
-}
-
-fn config_file_contents() -> Result<String, AppError> {
-  fs::read_to_string(file_path)
-    .map_err(AppError::ConfigFileReadError)
-}
-#+end_src
-
-Generally this means there will be little reuse of error variants, and that is
-acceptable. Do not swallow errors — let them propagate.
+Do not drop or swallow errors.
 
 *** No ~unwrap~ or ~expect~ in non-test code
 
-~.unwrap()~ and ~.expect()~ (the panicking variants — /not/ ~unwrap_or~,
-~unwrap_or_else~, or ~unwrap_or_default~, which are fine) are prohibited in all
-non-test code.  No carve-outs.
+Shipping code never calls ~.unwrap()~ or ~.expect()~.  The non-panicking
+variants such as ~unwrap_or~ are fine.  Propagate with ~?~, convert with
+~.map_err~, or handle the error.
 
-Errors must never be silently swallowed either: no ~let _ = ...~ on a ~Result~,
-no ~.ok()~ to discard, no empty match arm dropping the ~Err~.  Propagate with
-~?~, transform with ~.map_err(...)~, or handle explicitly.
+Tests may panic.  That covers ~#[cfg(test)]~, ~#[test]~, and ~tests/~.
+Examples, benches, and ~build.rs~ are not tests.  Their ~main~ returns
+~Result<(), Box<dyn Error>>~.
 
-Tests are the only exemption.  Code under ~#[cfg(test)]~, ~#[test]~, and
-integration tests under ~tests/~ may use ~.unwrap()~ and ~.expect()~ freely —
-panicking is the desired failure signal there, and tests are not shipping code
-paths.
+A failure that seems impossible is proven to the compiler:
 
-**** The principle
+- A literal regex uses ~lazy_regex::regex!~.
+- A literal address uses a ~const~ constructor such as ~Ipv4Addr::new~.
+- A literal URL uses ~url-macro~.
+- Any other literal gets a validating macro.  Write one if none exists.
 
-~Result~ is not primarily a recovery mechanism.  Its primary value is /typed
-control flow and semantic stamping/ — it forces the caller to acknowledge a
-failure mode and lets you propagate, transform, or convert errors in a linear,
-reasonable-about way.  Recovery is one thing you can do with that; propagation
-and forced acknowledgment are the rest.
+Common traps and their fixes:
 
-~.unwrap()~ and ~.expect()~ discard that value in exchange for cosmetic brevity.
-That trade is never worth it in shipping code.
+- Lock poisoning: return the error or use ~parking_lot::Mutex~.
+- A thread join: convert the error or call ~std::panic::resume_unwind~.
+- ~SystemTime~ before the epoch: ~.unwrap_or(Duration::ZERO)~.
+- Check then unwrap: use ~if let~ or ~let else~.
+- An environment variable: load config at startup and name the missing one.
+- ~OnceCell~ after init: use ~LazyLock~ or ~get_or_init~.
 
-If a failure is genuinely impossible, /prove it to the compiler/ via a macro,
-type, or ~const~.  Do not assert it to a future reader with ~.unwrap()~.
-
-**** Compile-time-known literals: use a macro
-
-The most tempting exception is "but the input is a string literal, it can only
-fail on a programmer typo."  The fix is not to allow ~.unwrap()~ — it is to move
-the validation to compile time:
-
-- *Regex.* Use ~lazy_regex::regex!("^foo$")~.  The proc-macro validates the
-  pattern at expansion time, returns a ~&'static Regex~, and caches it.  Invalid
-  patterns become compile errors.
-- *IP addresses.* Do not parse — ~Ipv4Addr::new(127, 0, 0, 1)~ is ~const~.  Same
-  for ~Ipv6Addr~ and ~SocketAddrV4~ / ~SocketAddrV6~ construction.
-- *URLs.* Use ~url-macro~ or similar; or build with ~const_format~.
-- *General pattern.* Any proc-macro can validate a string literal at expansion
-  time. The ~.unwrap()~, if any, lives inside macro-generated code on a path the
-  proc-macro has statically proven unreachable — never at the call site.
-
-If no suitable macro exists for a given parse, the right move is /write one/,
-not allow ~.unwrap()~.
-
-**** Considered exceptions and why each was rejected
-
-These are the cases that look reasonable on first pass.  The argument for each
-and the rejection reasoning are captured here so they don't get re-derived
-incorrectly.
-
-***** Literal regex / literal parse without a macro
-
-/Argument for:/ "The pattern is a string literal known at compile time; the only
-failure mode is a programmer typo, caught the first time the code runs."
-
-/Why rejected:/ "Caught the first time the code runs" assumes 100% line coverage
-of every path containing a ~.unwrap()~.  That is fantasy.  A
-~Regex::new("...").unwrap()~ on a cold or rare code path is a landmine for the
-next person — it ships, and the panic surfaces in production on the unusual
-input that finally hits that branch.  If the input really is a literal, prove it
-at compile time with a macro (see above).  Do not assert it at runtime.
-
-***** ~std::sync::Mutex~ / ~RwLock~ poisoning
-
-/Argument for:/ "A poisoned lock means another thread panicked
-mid-critical-section.  The protected invariants may be broken; recovering is
-almost always wrong.  ~.unwrap()~ is idiomatic."
-
-/Why rejected:/ That is an /application author's/ judgment smuggled into a rule
-that also governs library code.  A library that panics on poisoning takes the
-recovery decision away from a consumer who might be a long-running daemon, a
-supervisor process, an FFI host, or something else entirely.  Return ~Result~
-and let the caller decide.  If a project standardizes on ~parking_lot::Mutex~,
-this whole class of unwrap goes away — no poisoning, no ~.unwrap()~ needed.
-
-***** ~build.rs~ and other build-time scripts
-
-/Argument for:/ "Build scripts run once at build time.  A panic gives a clear
-build failure with a backtrace.  ~Result~ plumbing is pure ceremony."
-
-/Why rejected:/ What looks like ceremony is the actual value.  Write ~fn main()
--> Result<(), Box<dyn Error>>~ in the build script and ~?~ through the whole
-thing — cargo still sees a non-zero exit and prints the error. You keep typed
-control flow, composable error transformation, and you avoid pushing correctness
-onto "specific arrangement of code" in the exception-language style.  Otherwise
-non-trivial ~build.rs~ drifts toward needing its own unit tests just to verify
-error paths, which is a giant step back from what ~Result~ already gives you for
-free.
-
-***** Examples and benchmarks
-
-/Argument for:/ "These aren't shipping code paths; relax the rule the same way
-tests are exempt."
-
-/Why rejected:/ Unlike tests, examples have no upside from ~.unwrap()~ over ~?~.
-Both fail loudly when something goes wrong; ~?~ just composes properly and reads
-the same.  More importantly, examples are /teaching material/ — whatever pattern
-they show is the pattern users copy.  Modeling ~.unwrap()~ in examples
-propagates ~.unwrap()~ everywhere.  Use ~fn main() -> Result<(), Box<dyn
-Error>>~ and ~?~ — that teaches the right thing. Benches follow the same logic.
-
-***** ~thread::spawn~ join handle propagating a child panic
-
-/Argument for:/ "~handle.join().unwrap()~ /re-raises/ the child thread's panic
-in the parent.  The ~Err~ payload literally is the panic.  Unwrapping is the
-correct propagation; not unwrapping would be swallowing it."
-
-/Why rejected, on two counts:/
-
-1. Not panicking is not the same as swallowing.  Rust forces explicit effort to
-   swallow an ~Err~ (~let _ =~, ~.ok()~, etc.).  Returning the ~Err~ up the
-   stack, or converting it via ~.map_err(...)~ into a typed error, is the
-   /opposite/ of swallowing.
-2. The framing presumes recovery is the only point of ~Result~.  It is not — see
-   the principle above.  You can convert a join ~Err~ (which is ~Box<dyn Any +
-   Send>~) into your own error type and propagate it; the caller may genuinely
-   want to log it, retry, fail over, or report it structurally rather than die.
-   If you specifically want to re-raise a panic, ~std::panic::resume_unwind~ is
-   the honest way to say so — it makes the intent explicit instead of disguising
-   it as a generic ~.unwrap()~.
-
-***** ~SystemTime::now().duration_since(UNIX_EPOCH)~
-
-/Argument for:/ "Only fails if the system clock is set before 1970, which won't
-happen."
-
-/Why rejected:/ It happens.  Misconfigured embedded devices, freshly-imaged VMs
-with bad RTCs, containers without time sync.  Use ~.unwrap_or(Duration::ZERO)~
-or propagate.
-
-***** "I just checked above" patterns
-
-/Argument for:/ "I called ~if !vec.is_empty()~ on the line above, so
-~vec.first().unwrap()~ can't fail."
-
-/Why rejected:/ The check-and-unwrap pair rots the moment someone refactors
-between the two lines.  Restructure with ~if let Some(x) = vec.first()~ — the
-type system carries the invariant for you, no comment or discipline required.
-
-***** ~env::var("FOO").unwrap()~ for "always-set" env vars
-
-/Argument for:/ "We always set ~FOO~ in our deployment."
-
-/Why rejected:/ The "always set" assumption breaks the moment someone runs the
-binary in a new context (local dev, a one-off script, a new deploy environment,
-a debugging shell).  Load config at startup with proper error reporting that
-names the missing variable.
-
-***** ~OnceCell::get().unwrap()~ / ~LazyLock~ after init
-
-/Argument for:/ "I initialized it earlier in ~main~."
-
-/Why rejected:/ Usually a sign the data structure is wrong — ~LazyLock~ exposes
-the value via ~Deref~ directly, and ~OnceLock~ has ~get_or_init~.  Restructure
-rather than asserting initialization order at runtime.
-
-**** How to apply
-
-Treat ~.unwrap()~ and ~.expect()~ outside the test exemption as a defect.
-Refactor to ~Result<_, E>~ and propagate with ~?~.  If the error type does not
-compose, fix the error type (add a ~From~ impl, use ~anyhow~ / ~thiserror~,
-etc.) — do not reach for ~.unwrap()~.
-
-For literal-input cases (regex, addresses, URLs, etc.), use or write a macro
-that validates at compile time.  The unwrap, if any, lives inside the macro on a
-statically-proven-unreachable path — never in user code.
-
-When reviewing diffs, flag every new ~.unwrap()~ / ~.expect()~ and check it
-against the considered-exceptions list above.  "But this case is different" is
-itself a yellow flag — usually it is one of the above wearing a different hat.
-
-The bias to watch for: LLMs carry a strong "exceptions are friendly" instinct
-from Python and other exception-driven languages where ad-hoc ~try/except~ is
-normal. Rust's design rejects that worldview.  The discipline is: prove
-unreachability to the compiler, or propagate.  There is no third option for
-shipping code.
+A case that looks new is usually one of these traps in disguise.
 
 *** Rule of least power
 
@@ -514,57 +248,20 @@ Concretely:
 - ~let~ over ~let mut~; pure expression over statement-with-side-effects.
 - ~Option::map_or~ / ~map_or_else~ over ~if let Some(x) = ... { ... } else { ...
   }~ when both arms are pure transforms.
-- ~?~ over ~if cond { return Err(...) } else { ... }~ when the right shape
-  exists. An early-return guard clause without an ~else~ is /already/ the
-  least-powerful form for that flow — leave it alone.
-
-The mechanical enforcement is a curated set of clippy lints in the ~manual_*~
-family (~manual_map~, ~manual_filter~, ~manual_find~, ~manual_let_else~, etc.)
-plus ~option_if_let_else~, ~map_unwrap_or~, ~question_mark~,
-~single_match_else~, and friends.  These live under ~[workspace.lints.clippy]~
-in the root ~Cargo.toml~ at ~warn~ — they have teeth without becoming a hard
-block. When the imperative form is genuinely clearer (multi-line bodies, side
-effects, nested control flow), override site-locally with
-~#[allow(clippy::lint_name)]~ and a one-line comment explaining why.
-
-The bias to watch for: LLMs reach for ~match~, ~for~, and early ~return~ because
-that is how most training-set Rust reads, and because imperative constructs are
-the most expressive available.  Maximum expressivity is the wrong default.
-Reach for the narrowest construct that fits; escalate to ~match~ or a loop only
-when the combinator form distorts the meaning.
 
 *** Functional Style
 
-Rust is an imperative language at its core, but we can still leverage functional
-principals where possible, and Rust does a lot to assist with this.
+Code should be written in functional style whenever possible.
 
-Code should be written in functional style whenever possible.  Imperative style
-will be an inevitable part of working in an imperative language like Rust, but
-you can perform practically all of the data manipulation that the imperative
-bits need in a functional section.  The imperative bits are effectively
-quarantined to where it is absolutely necessary, and then reasoning about them
-becomes easy, since the imperative part of them is laid bare and not
-intermingled with data manipulation.  Typical imperative surfaces are external
-APIs, touching disk, writing to the network, emitting output, and so on.
-
-Imperative smells:
-+ Early returns :: While these can be handled by just using branching ~if/else~
-  sections, having a lot of them outlines a possible need to sharpen the data
-  structure via another type in an earlier stage of execution, or moving logic
-  branches into their own functions.  A function should generally be viewed as
-  "what is this returning" and not "what alterations are being made".  An early
-  return is basically saying "no further alterations", whereas branches are
-  saying "these are the possible ways in which results are produced".
-+ List building :: Adding elements to a list is firmly in imperative territory.
-  It's a sure sign that a compositor isn't being used (such as a ~filter~).
-  Rust optimizes its calls quite a bit, so you're fine to chain ~filter~
-  expressions along and that sort of thing.
-+ Long lived variables :: Long living variables, especially those marked as
-  ~mut~, are frequent trademarks of imperative functions that are probably too
-  long and doing too much.  Not all ~mut~ variables are culprits but many are.
-  Keep in mind that a long lived variable carries its own cognitive load - you
-  have to be aware that it could be used at any point in the function past its
-  declaration, all the way to the end of scope.
+Avoid these imperative smells:
++ Early returns :: Instead of returning early, use the appropriate ~if/else~ or
+  equivalent to show the branching pattern.
++ List building :: Instead of building up a list, reach for a compositor
+  instead.
++ Long lived variables :: Avoid long living variables.  Those marked ~mut~ are
+  the worst offenders.
++ Functions as verbs :: Name functions as nouns.  The noun is what is returned.
+  ~sum~ returns the sum and ~reversed~ returns the reversed string.
 
 *** Code Structure
 
@@ -581,70 +278,46 @@ Keep ~.rs~ files under ~src~ for executables and ~lib~ for libraries.
 
 **** Chains, local variables, and tap
 
-Local variables should be generally frowned upon unless Rust specifically
-requires them (for scope/ownership reasons), or a value has multiple uses.
+Use ~tap~ to reduce local variable usage as well as perform logging.  Local
+variables aren't disallowed but discouraged.
 
-You can further avoid local variables by using the ~tap~ crate to do logging in
-the middle of a call chain without breaking the chain.
-
-Another way to avoid local variables is to create structs atomically from
-function calls.  The ~foo~ field can be assigned the result of the ~foo()~ call,
-for example.  Prefer nouns (~foo()~) over verb-prefixed names (~get_foo()~),
-since verbs are highly subjective in software.
-
-Prefer functional combinators over explicit ~loop~ and early ~return~.  When
-functions grow complicated, simplify by extracting smaller functions.
+Use chained calls when possible.
 
 *** Debugging
 
-When lacking information during debugging, permanent additions to the logs (at
-appropriate levels) are one of the best cures.  The program should tell you what
-ails it.
+When the program lacks sufficient output to determine what is going on, improve
+the logging.  The program tells you what ails it.
 
-Create tests which exercise the problem you are running into.  Prefer mock
-services with integration tests so we can test real behavior, over unit tests
-which test contrived situations.
+Create tests which exercise the problem you are running into.
 
-Tests and test scripts must exit with a proper error code.
+Prefer mock services with full-stack integration tests over unit tests.  The
+closer to real, the better.
+
+Tests and test scripts must exit with a proper error code.  Never author
+anything that makes you parse output to determine if there was an error.
 
 *** Types as validation
 
 Only use ~Option~ if the field is truly optional.  If a struct would be invalid
 without a field set, do not use ~Option~.  Instead, make an intermediate type
-that represents a candidate whose validity is not yet fully known.  This is very
-helpful for processing phases.
+that represents a candidate whose validity is not yet fully known.
 
 For example, ~CliArgs~ can represent arguments as provided on the command line.
 ~ConfigFile~ can represent the configuration file's state.  Meshing the two
 together yields a ~Config~ that represents a completely valid configuration.
 
+
+
 * Persistent memory
 
 Use the assistant's local memory only for facts specific to one clone or one
-machine — local paths, machine quirks, transient personal context.  Anything
-that is a project convention, decision, or standard belongs in the repository
-(~llms.org~, ~CONTRIBUTING.org~, or ~docs/~), where every contributor benefits
-from it and it can be reviewed.  Reaching for memory to record a convention is
-the signal that it should be codified here instead.
+machine.  That covers local paths, machine quirks, and transient personal
+context.
 
-The emitted ~.claude/settings.json~ therefore ships with ~autoMemoryEnabled:
-false~: the assistant's auto-memory — which otherwise accrues machine-local
-files under a contributor's home directory, invisible to review and scoped to a
-single clone — is off by default, so every learning is forced through the
-reviewable, checked-in docs above.  Re-enable it per clone only for genuinely
-local scratch context.
-
-* Capturing plans
-
-When a planning pass produces a design worth keeping, record it as a ~TODO~
-entry in ~tasks.org~ (the project's backlog), cross-linking related entries and
-marking superseded ones, rather than leaving it only in an ephemeral plan file.
-
-When a change completes a ~TODO~, flip that entry to ~DONE~ in the same change
-set that does the work — the way a commit ~Closes #1234~ claims an issue.  The
-implementing PR carries its own status flip; do not leave it for a follow-up
-commit, which otherwise either drifts (the work merges but the backlog still
-says ~TODO~) or forces an otherwise-empty commit just to move the marker.
+A project convention or decision belongs in the repository, in ~llms.org~,
+~CONTRIBUTING.org~, or ~docs/~.  There every contributor benefits from it and it
+can be reviewed.  Reaching for memory to record a convention is the signal that
+it should be codified here instead.
 
 * Verification
 
@@ -680,30 +353,16 @@ nix develop --command cargo clippy --workspace --all-targets --all-features \
   -- --deny warnings
 #+end_src
 
-This is the same gate CI enforces, so running it first keeps a lint failure from
-reaching the reviewer or the pipeline.  It also surfaces the combinator lints
-that steer toward the least-powerful construct (see "Rule of least power") while
-the change is still in hand, rather than after the fact.
-
 This applies to every contributor, human or agent.  Nothing runs it on your
 behalf.
 
 * Template compliance
 
-This project was generated from rust-template ([[https://github.com/LoganBarnett/rust-template]]).
-Periodic work called /compliance sync/ keeps the project's structure and
-infrastructure aligned with what the template would emit today — things like
-missing or drifted CI workflows, foundation feature wiring, crate-to-role
-mappings, and similar plumbing.  Application logic is explicitly out of scope.
+This project was generated from rust-template [[https://github.com/LoganBarnett/rust-template][rust-template]].  Periodic work
+called /compliance sync/ keeps the project's structure and infrastructure
+aligned with what the template would emit today.
 
 The authoritative description of what compliance means, when it runs, the
 process for performing it, the crate-mapping rules, the items it checks, and
-what it does /not/ cover lives in rust-template itself at [[https://github.com/LoganBarnett/rust-template/blob/main/docs/compliance.org][=docs/compliance.org=]].
-Consult that document when working on a compliance task; rust-template is the
-authority and evolves independently of this repo.
-
-Do *not* copy the compliance documentation into this repo or paraphrase it here.
-A local duplicate will drift the moment the canonical document changes, and the
-canonical source is one fetch away.  If a future change to the compliance
-process belongs in the docs, propose it against rust-template, not against this
-repo.
+what it does /not/ cover lives in rust-template itself.  See
+[[https://github.com/LoganBarnett/rust-template/blob/main/docs/compliance.org][docs/compliance.org on rust-template]] for what this process entails.

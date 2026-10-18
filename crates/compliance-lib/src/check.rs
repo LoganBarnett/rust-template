@@ -21,6 +21,7 @@ mod module_evaluates;
 mod nix_call;
 mod provenance_schema;
 mod role_paths;
+mod template_paragraphs_in_order;
 
 /// A check's verdict: the result of running one check against one spawn.
 #[derive(Debug, Clone, Serialize)]
@@ -48,6 +49,9 @@ impl Verdict {
 
 /// Everything a check needs to know about the spawn it runs against.
 pub struct SpawnContext<'a> {
+  /// The spawn's project name, which `new-project.sh` wrote over every
+  /// `rust-template` it emitted.
+  pub project: &'a str,
   /// The spawn's project root.
   pub dir: &'a Path,
   /// The spawn's parsed provenance.
@@ -56,7 +60,8 @@ pub struct SpawnContext<'a> {
   /// reason it could not be resolved.
   pub template_head: &'a Result<String, String>,
   /// The template checkout root; its `template/` subtree holds the canonical
-  /// files that `file-matches-template` compares against.
+  /// files that `file-matches-template` and `template-paragraphs-in-order`
+  /// compare against.
   pub template_dir: &'a Path,
 }
 
@@ -112,11 +117,15 @@ pub fn run_check(check: &Check, ctx: &SpawnContext) -> Verdict {
     CheckKind::LinePresent { target, line } => {
       line_present(ctx.dir, target, line)
     }
-    CheckKind::ParagraphsInOrder {
-      target,
-      section,
-      paragraphs,
-    } => paragraphs_in_order(ctx.dir, target, section.as_deref(), paragraphs),
+    CheckKind::TemplateParagraphsInOrder { target, section } => {
+      template_paragraphs_in_order::template_paragraphs_in_order(
+        ctx.dir,
+        ctx.template_dir,
+        ctx.project,
+        target,
+        section,
+      )
+    }
     CheckKind::PinsAgree => pins_agree(ctx.dir),
     CheckKind::PinsCurrent => pins_current(ctx.dir, ctx.template_head),
     CheckKind::FileAbsent { path } => file_absent(ctx.dir, path),
@@ -495,62 +504,6 @@ fn line_present(dir: &Path, target: &str, line: &str) -> Verdict {
     },
     FileRead::Error(detail) => Verdict::Error { detail },
   }
-}
-
-fn paragraphs_in_order(
-  dir: &Path,
-  target: &str,
-  section: Option<&[String]>,
-  paragraphs: &[String],
-) -> Verdict {
-  match read_file(&dir.join(target)) {
-    FileRead::Found(text) => {
-      match org::paragraphs_in_order(&text, section, paragraphs) {
-        Ok(()) => Verdict::Pass,
-        Err(org::ParagraphsMissing::NotFoundInOrder { index }) => {
-          Verdict::Fail {
-            detail: paragraph_missing_detail(
-              target, section, paragraphs, index,
-            ),
-          }
-        }
-        Err(org::ParagraphsMissing::SectionNotFound(name)) => Verdict::Fail {
-          detail: format!("section \"{name}\" not found in {target}"),
-        },
-      }
-    }
-    FileRead::Missing => Verdict::Fail {
-      detail: format!("{target} not found"),
-    },
-    FileRead::Error(detail) => Verdict::Error { detail },
-  }
-}
-
-/// The failure detail for a wanted paragraph that never appeared in order:
-/// which entry is missing, which entry it should have followed, and the scope
-/// it was looked for in.
-fn paragraph_missing_detail(
-  target: &str,
-  section: Option<&[String]>,
-  paragraphs: &[String],
-  index: usize,
-) -> String {
-  format!(
-    "{} not found as a paragraph of its own{} in {}",
-    // `index` names the first unconsumed entry, so it is always in range;
-    // `get` keeps that a fact about the data, not a promise.
-    paragraphs
-      .get(index)
-      .map_or_else(|| format!("entry {index}"), |entry| format!("\"{entry}\"")),
-    index
-      .checked_sub(1)
-      .and_then(|previous| paragraphs.get(previous))
-      .map_or_else(String::new, |previous| format!(" after \"{previous}\"")),
-    section.map_or_else(
-      || target.to_string(),
-      |name| format!("{target} § {}", name.join(" > ")),
-    ),
-  )
 }
 
 fn pins_agree(dir: &Path) -> Verdict {
