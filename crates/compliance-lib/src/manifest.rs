@@ -77,18 +77,17 @@ pub enum CheckKind {
   /// Code `@path` importer, which honours a line that is exactly `@<file>` and
   /// nothing else.  A phrase check would pass text that consumer never sees.
   LinePresent { target: String, line: String },
-  /// `target` (an org document) carries each entry of `paragraphs` as a
-  /// paragraph of its own — the paragraph's whole text, whitespace-flattened,
-  /// equals the entry — and those paragraphs appear in the given relative
-  /// order.  Other paragraphs may sit before, between, or after them; the
-  /// entries are an ordered subsequence, not the section's exact contents.
-  /// When `section` is set the search is scoped to the body of the section at
-  /// that path.  Two candidate lines with no blank line between them form one
-  /// paragraph and so satisfy neither entry.
-  ParagraphsInOrder {
+  /// Every paragraph under the `section` heading of the template's copy of
+  /// `target` appears whole in the spawn's same section, in the same order.
+  /// The template's copy is `template/<target>` in the template checkout, so
+  /// editing template prose reaches every spawn without a manifest change.
+  /// The section includes its subsections.  A spawn may add paragraphs before,
+  /// between, or after the template's.  Paragraphs compare by
+  /// whitespace-flattened text, so reflow is free but every word and markup
+  /// character counts.
+  TemplateParagraphsInOrder {
     target: String,
-    section: Option<Vec<String>>,
-    paragraphs: Vec<String>,
+    section: Vec<String>,
   },
   /// The foundation revision pinned in `Cargo.lock` equals the one pinned in
   /// `flake.lock` (the two dependency edges agree with each other).
@@ -392,8 +391,6 @@ struct RawCheck {
   #[serde(default)]
   line: Option<String>,
   #[serde(default)]
-  paragraphs: Option<Vec<String>>,
-  #[serde(default)]
   points_to: Option<String>,
 }
 
@@ -545,7 +542,6 @@ impl RawCheck {
       option,
       suite,
       line,
-      paragraphs,
       points_to,
     } = self;
 
@@ -596,10 +592,9 @@ impl RawCheck {
         target: require(&id, &kind, "target", target)?,
         line: require(&id, &kind, "line", line)?,
       },
-      "paragraphs-in-order" => CheckKind::ParagraphsInOrder {
+      "template-paragraphs-in-order" => CheckKind::TemplateParagraphsInOrder {
         target: require(&id, &kind, "target", target)?,
-        section: optional_path(&id, &kind, "section", section)?,
-        paragraphs: require_path(&id, &kind, "paragraphs", paragraphs)?,
+        section: require_path(&id, &kind, "section", section)?,
       },
       "pins-agree" => CheckKind::PinsAgree,
       "pins-current" => CheckKind::PinsCurrent,
@@ -855,6 +850,57 @@ mod tests {
         assert_eq!(section, vec!["Upcoming", "Added"]);
       }
       other => panic!("wrong kind: {other:?}"),
+    }
+  }
+
+  #[test]
+  fn validates_a_template_paragraphs_check() {
+    let toml = r#"
+            [[check]]
+            id = "x"
+            description = "d"
+            kind = "template-paragraphs-in-order"
+            target = "CONTRIBUTING.org"
+            section = ["Changelog conventions"]
+        "#;
+    let raw: RawManifest = toml::from_str(toml).unwrap();
+    let check = raw.check.into_iter().next().unwrap().validate().unwrap();
+    match check.kind {
+      CheckKind::TemplateParagraphsInOrder { target, section } => {
+        assert_eq!(target, "CONTRIBUTING.org");
+        assert_eq!(section, vec!["Changelog conventions"]);
+      }
+      other => panic!("wrong kind: {other:?}"),
+    }
+  }
+
+  #[test]
+  fn template_paragraphs_requires_a_section() {
+    // A whole-document comparison is not offered, so an omitted or empty
+    // section is a manifest error rather than a silent widening.
+    for section in ["", "section = []"] {
+      let toml = format!(
+        r#"
+            [[check]]
+            id = "x"
+            description = "d"
+            kind = "template-paragraphs-in-order"
+            target = "llms.org"
+            {section}
+        "#
+      );
+      let raw: RawManifest = toml::from_str(&toml).unwrap();
+      let error = raw
+        .check
+        .into_iter()
+        .next()
+        .unwrap()
+        .validate()
+        .unwrap_err();
+      assert!(
+        matches!(error, ComplianceError::ManifestInvalid { .. }),
+        "{section:?}"
+      );
     }
   }
 

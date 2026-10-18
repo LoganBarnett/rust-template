@@ -81,26 +81,10 @@ rust-template-foundation = { workspace = true, features = ["cli"] }
   );
   write(&dir.join("crates/app/src/config.rs"), "");
   write(&dir.join("crates/app/tests/integration_test.rs"), "");
-  // llms.org with the Template compliance section pointing at canonical docs,
-  // plus the Persistent memory section.  Natural org formatting (blank line
-  // after each heading, a wrapped paragraph) exercises the orgize-backed
-  // scanner rather than fixed line positions.
-  write(
-    &dir.join("llms.org"),
-    r#"* Template compliance
-
-The authoritative description lives at
-docs/compliance.org in the template.
-
-* Persistent memory
-
-Codify conventions in the repo, not in local memory.
-
-* Capturing plans
-
-Record plans as TODO entries in tasks.org.
-"#,
-  );
+  // The spawn's llms.org is the template's own, so the paragraph checks compare
+  // a copy that cannot drift.
+  std::fs::copy(repo_root().join("template/llms.org"), dir.join("llms.org"))
+    .unwrap();
   // Valid provenance that declares the custom-named cli-role crate.  It opts
   // out of the stale-literal check and the two devShell-marker checks.  This
   // fixture's flake.nix is a stub with no outputs, so `nix eval` of its
@@ -175,24 +159,22 @@ fn minimal_spawn_yields_expected_outcomes_without_engine_errors() {
     outcome(spawn, "no-stale-rust-template-literals"),
     Verdict::Ignored { .. }
   ));
-  // The doc section and its mention both pass.
-  assert!(matches!(
-    outcome(spawn, "llms-template-compliance-section"),
-    Verdict::Pass
-  ));
-  assert!(matches!(
-    outcome(spawn, "llms-template-compliance-points-to-canonical-docs"),
-    Verdict::Pass
-  ));
-  // The Persistent memory and Capturing plans sections are present too.
-  assert!(matches!(
-    outcome(spawn, "llms-persistent-memory-section"),
-    Verdict::Pass
-  ));
-  assert!(matches!(
-    outcome(spawn, "llms-capturing-plans-section"),
-    Verdict::Pass
-  ));
+  // A copy of the template's llms.org passes its sections and every llms.org
+  // paragraph check.
+  for id in [
+    "llms-template-compliance-section",
+    "llms-persistent-memory-section",
+    "llms-template-compliance-paragraphs",
+    "llms-imports-ordered",
+    "llms-working-with-imports-paragraphs",
+    "llms-commit-messages-paragraphs",
+    "llms-no-unwrap-paragraphs",
+    "llms-prose-rules-paragraphs",
+    "llms-program-arguments-paragraphs",
+    "llms-import-paths-paragraphs",
+  ] {
+    assert!(matches!(outcome(spawn, id), Verdict::Pass), "{id}");
+  }
   // The cli feature check applies and passes, and the server check skips.  The
   // fixture's cli-role crate lives at crates/app, so a pass here proves the
   // declaration carries the gate.
@@ -275,9 +257,9 @@ Nothing about compliance here.
     outcome(spawn, "llms-template-compliance-section"),
     Verdict::Fail { .. }
   ));
-  // The mention check fails because its section is gone.
+  // The paragraph check fails because its section is gone.
   assert!(matches!(
-    outcome(spawn, "llms-template-compliance-points-to-canonical-docs"),
+    outcome(spawn, "llms-template-compliance-paragraphs"),
     Verdict::Fail { .. }
   ));
 }

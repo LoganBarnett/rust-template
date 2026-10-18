@@ -185,6 +185,7 @@ fn check_spawn(
 
   let provenance = provenance::load(&dir);
   let ctx = SpawnContext {
+    project: name,
     dir: &dir,
     provenance: &provenance,
     template_head,

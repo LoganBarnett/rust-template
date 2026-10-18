@@ -10,7 +10,9 @@
 #
 # Paths in `target` / `path` are relative to a spawn's project root; `suite`
 # (template-suite-passes) is relative to the template checkout, since that
-# kind runs the template's own suite against the spawn.  See
+# kind runs the template's own suite against the spawn.  A
+# template-paragraphs-in-order check compares the spawn's `target` with the
+# template's copy at template/<target> in the checkout.  See
 # crates/compliance-lib for the kinds and docs/compliance.org for how this
 # checker fits the broader compliance process.
 
@@ -290,13 +292,15 @@ kind = "section-exists"
 target = "llms.org"
 section = ["Template compliance"]
 
+# The section names rust-template and links to it, so a spawn's copy is the
+# renamed text new-project.sh emitted.  The paragraph comparison accepts that.
+
 [[check]]
-id = "llms-template-compliance-points-to-canonical-docs"
-description = "The Template compliance section points to the canonical docs/compliance.org."
-kind = "mention-present"
+id = "llms-template-compliance-paragraphs"
+description = "The Template compliance section carries the template's paragraphs, which point to the canonical docs/compliance.org."
+kind = "template-paragraphs-in-order"
 target = "llms.org"
 section = ["Template compliance"]
-contains = "docs/compliance.org"
 
 [[check]]
 id = "llms-persistent-memory-section"
@@ -304,21 +308,6 @@ description = "llms.org carries the \"Persistent memory\" section."
 kind = "section-exists"
 target = "llms.org"
 section = ["Persistent memory"]
-
-[[check]]
-id = "llms-capturing-plans-section"
-description = "llms.org carries the \"Capturing plans\" section."
-kind = "section-exists"
-target = "llms.org"
-section = ["Capturing plans"]
-
-[[check]]
-id = "llms-capturing-plans-flips-todo-in-pr"
-description = "The Capturing plans section states that completing a TODO flips it to DONE in the same PR."
-kind = "mention-present"
-target = "llms.org"
-section = ["Capturing plans"]
-contains = "in the same change set that does the work"
 
 # The "Imports" heading is a dedicated container for the Claude Code @path
 # import lines, which is what makes the list assertable against a named scope
@@ -360,41 +349,31 @@ kind = "line-present"
 target = "llms.org"
 line = "@CONTRIBUTING.org"
 
-# The org-level half.  Each import must be a paragraph of its own — a blank
-# line before and after — because two imports on adjacent lines are one org
-# paragraph, which is how org-fmt reads them and reflows them.  And the order
-# is part of the convention: README.org (what the project is) frames
-# everything after it, so it precedes CONTRIBUTING.org (how to land a change).
-# The entries are an ordered subsequence of the section's paragraphs, not its
-# exact contents, so a project may add its own imports around them.
+# The org-level half.  Two imports on adjacent lines are one org paragraph, so
+# each import must be a paragraph of its own.  That is how org-fmt reads and
+# reflows them.  The order is part of the convention too.  README.org says
+# what the project is.  That frames everything after it, so it precedes
+# CONTRIBUTING.org.  The template's imports are an ordered subsequence of the
+# section's paragraphs, so a project may add its own imports around them.
 
 [[check]]
 id = "llms-imports-ordered"
-description = "The Imports section carries `@README.org` and then `@CONTRIBUTING.org`, each as a paragraph of its own, in that order."
-kind = "paragraphs-in-order"
+description = "The Imports section carries the template's imports, `@README.org` and then `@CONTRIBUTING.org`, each as a paragraph of its own, in that order."
+kind = "template-paragraphs-in-order"
 target = "llms.org"
 section = ["Imports"]
-paragraphs = ["@README.org", "@CONTRIBUTING.org"]
 
-# Each imported document's authority is pinned, not just its import line.  An
-# import that arrives with no stated standing is one the agent can read and
-# still disregard, which is the failure the imports exist to prevent.
-
-[[check]]
-id = "llms-imports-covers-landing"
-description = "The Working with imports section states that CONTRIBUTING.org covers how to land a change."
-kind = "mention-present"
-target = "llms.org"
-section = ["Working with imports"]
-contains = "covers how to land a change"
+# The rest of the import convention is prose: the standing of each imported
+# document and the rules for editing the list.  An import that arrives with no
+# stated standing is one the agent can read and still disregard.  That is the
+# failure the imports exist to prevent.
 
 [[check]]
-id = "llms-imports-readme-authority"
-description = "The Working with imports section states that a change contradicting README.org is wrong even when it compiles."
-kind = "mention-present"
+id = "llms-working-with-imports-paragraphs"
+description = "The Working with imports section carries the template's paragraphs on how imports reach the agent, what each imported document governs, and how to edit the list."
+kind = "template-paragraphs-in-order"
 target = "llms.org"
 section = ["Working with imports"]
-contains = "wrong even when it compiles"
 
 [[check]]
 id = "llms-imports-editing-rules-section"
@@ -402,39 +381,6 @@ description = "llms.org carries the rules for editing the import list."
 kind = "section-exists"
 target = "llms.org"
 section = ["Working with imports", "Rules for editing the import list"]
-
-# The heading alone is not the convention, so the rule it carries is asserted
-# as a phrase.  A spawn that keeps the heading and guts the body would
-# otherwise pass while losing the rule.
-
-[[check]]
-id = "llms-imports-no-link-downgrade"
-description = "The editing rules state that an import must not be downgraded to an org link."
-kind = "mention-present"
-target = "llms.org"
-section = ["Working with imports", "Rules for editing the import list"]
-contains = "invitation the agent may decline"
-
-# The two shape rules llms-imports-ordered enforces — own paragraph, and
-# relative order — are also stated where the agent will read them, so a
-# failing check is a rule it has already seen rather than one it must
-# reverse-engineer from the failure.  One phrase check per rule.
-
-[[check]]
-id = "llms-imports-own-paragraph-rule"
-description = "The editing rules state that each import is a paragraph of its own, with a blank line before and after."
-kind = "mention-present"
-target = "llms.org"
-section = ["Working with imports", "Rules for editing the import list"]
-contains = "Each import is a paragraph of its own"
-
-[[check]]
-id = "llms-imports-order-rule"
-description = "The editing rules state that README.org and CONTRIBUTING.org keep their relative order in the import list."
-kind = "mention-present"
-target = "llms.org"
-section = ["Working with imports", "Rules for editing the import list"]
-contains = "the two keep their relative order"
 
 # ── Foundation pin agreement ─────────────────────────────────────────
 
@@ -1430,13 +1376,6 @@ when_role = "server"
 # llms.org: major headings a spawn must keep.
 # ---------------------------------------------------------------------------
 [[check]]
-id = "llms-server-role-section"
-description = "llms.org documents the server crate's role and scope."
-kind = "section-exists"
-target = "llms.org"
-section = ["Server crate: role and scope"]
-
-[[check]]
 id = "llms-general-code-guidelines-section"
 description = "llms.org documents the general code guidelines."
 kind = "section-exists"
@@ -1458,18 +1397,26 @@ kind = "section-exists"
 target = "llms.org"
 section = ["General code guidelines", "Prose rules"]
 
-# The older wording asked for present tense, which cannot complete "Applying
-# this commit will ...".
+# Each rule is a list item.  A list item is a paragraph.  The paragraph
+# check therefore asserts every rule.
 [[check]]
-id = "llms-commit-summary-imperative"
-description = "The Commit Messages section asks for the summary line in the imperative mood."
-kind = "mention-present"
+id = "llms-prose-rules-paragraphs"
+description = "The Prose rules section carries the template's rules and its bad and good example."
+kind = "template-paragraphs-in-order"
+target = "llms.org"
+section = ["General code guidelines", "Prose rules"]
+
+# Older spawns asked for a present-tense summary.  The template now asks for an
+# imperative title written for a reviewer.
+[[check]]
+id = "llms-commit-messages-paragraphs"
+description = "The Commit Messages section carries the template's paragraphs on a commit's title, activity, and description."
+kind = "template-paragraphs-in-order"
 target = "llms.org"
 section = ["General code guidelines", "Version Control", "Commit Messages"]
-contains = "imperative mood"
 
-# The functional-style rule and the three smells it names, so a spawn keeps
-# the guidance the reviewer judges imperative code against.
+# A spawn keeps the Functional Style heading.  Its rule and the smells it names
+# are what the reviewer judges imperative code against.
 [[check]]
 id = "llms-functional-style-section"
 description = "llms.org carries the \"Functional Style\" section under the Rust guidelines."
@@ -1477,12 +1424,35 @@ kind = "section-exists"
 target = "llms.org"
 section = ["General code guidelines", "Rust", "Functional Style"]
 
+# A spawn keeps the unwrap ban and its trap fixes, so the reviewer has the list
+# it judges a new unwrap against.
+[[check]]
+id = "llms-no-unwrap-paragraphs"
+description = "The unwrap section carries the template's paragraphs on the ban, its test exemption, the compile-time proofs, and the trap fixes."
+kind = "template-paragraphs-in-order"
+target = "llms.org"
+section = ["General code guidelines", "Rust", "No ~unwrap~ or ~expect~ in non-test code"]
+
 [[check]]
 id = "llms-code-biases-section"
 description = "llms.org carries the \"LLM code biases to avoid\" section under the Code guidelines."
 kind = "section-exists"
 target = "llms.org"
 section = ["General code guidelines", "Code", "LLM code biases to avoid"]
+
+[[check]]
+id = "llms-program-arguments-paragraphs"
+description = "The Program arguments section carries the template's rule to use long arguments and comment short-only ones."
+kind = "template-paragraphs-in-order"
+target = "llms.org"
+section = ["General code guidelines", "Code", "Program arguments"]
+
+[[check]]
+id = "llms-import-paths-paragraphs"
+description = "The Import paths section carries the template's rule that an import names a file."
+kind = "template-paragraphs-in-order"
+target = "llms.org"
+section = ["General code guidelines", "Code", "Import paths"]
 
 # ---------------------------------------------------------------------------
 # CONTRIBUTING.org: file plus major headings a spawn must keep.
@@ -1508,12 +1478,11 @@ target = "CONTRIBUTING.org"
 section = ["Code style", "Control flow: prefer expressions over early returns"]
 
 [[check]]
-id = "contributing-control-flow-question-mark-carveout"
-description = "CONTRIBUTING.org's control-flow convention keeps ? (uniform propagation) as the carve-out."
-kind = "mention-present"
+id = "contributing-control-flow-paragraphs"
+description = "CONTRIBUTING.org's control-flow convention carries the template's paragraphs, including ? as the uniform-propagation carve-out."
+kind = "template-paragraphs-in-order"
 target = "CONTRIBUTING.org"
 section = ["Code style", "Control flow: prefer expressions over early returns"]
-contains = "propagate this error unchanged"
 
 [[check]]
 id = "contributing-error-handling-section"
@@ -1559,15 +1528,15 @@ contains = "/**/@media (prefers-color-scheme: dark) { body {"
 # The guard is meaningless without the paragraph that names it as an artifact
 # of this file rather than a style rule.  A spawn that keeps the guard and
 # drops the explanation would teach readers to write `/**/@media` in real
-# stylesheets, so the closing instruction is asserted alongside the guard.
+# stylesheets.  The section's prose is asserted alongside the guard.  The two
+# guard checks above stay phrase checks because src blocks hold no paragraphs.
 
 [[check]]
-id = "contributing-css-dark-mode-guard-explained"
-description = "CONTRIBUTING.org explains the /**/ at-rule guard as an import-path artifact and tells readers to write the at-rule bare in real stylesheets."
-kind = "mention-present"
+id = "contributing-css-dark-mode-paragraphs"
+description = "CONTRIBUTING.org's light and dark mode section carries the template's paragraphs, including the one that explains the /**/ at-rule guard."
+kind = "template-paragraphs-in-order"
 target = "CONTRIBUTING.org"
 section = ["CSS", "Light and dark mode"]
-contains = "Write the at-rule bare in real stylesheets"
 
 [[check]]
 id = "contributing-systemd-secrets-section"
@@ -1608,36 +1577,11 @@ target = "CONTRIBUTING.org"
 section = ["Changelog conventions"]
 
 [[check]]
-id = "contributing-changelog-numbered-list"
-description = "CONTRIBUTING.org documents that changelog entries are numbered list items."
-kind = "mention-present"
+id = "contributing-changelog-conventions-paragraphs"
+description = "CONTRIBUTING.org's changelog conventions carry the template's paragraphs: the subheadings, adopter-first numbered entries, and the CI-enforced entry per pull request."
+kind = "template-paragraphs-in-order"
 target = "CONTRIBUTING.org"
 section = ["Changelog conventions"]
-contains = "numbered list"
-
-[[check]]
-id = "contributing-changelog-required-per-pr"
-description = "CONTRIBUTING.org states that every pull request must add at least one changelog entry under Upcoming."
-kind = "mention-present"
-target = "CONTRIBUTING.org"
-section = ["Changelog conventions"]
-contains = "Every pull request must add at least one entry under"
-
-[[check]]
-id = "contributing-changelog-ci-enforced"
-description = "CONTRIBUTING.org states that CI rejects a pull request that adds no changelog entry."
-kind = "mention-present"
-target = "CONTRIBUTING.org"
-section = ["Changelog conventions"]
-contains = "CI rejects a pull request that adds none"
-
-[[check]]
-id = "contributing-changelog-adopter-impact"
-description = "CONTRIBUTING.org's changelog conventions tell the author to lead with the adopter impact and required action."
-kind = "mention-present"
-target = "CONTRIBUTING.org"
-section = ["Changelog conventions"]
-contains = "Lead with the impact"
 
 [[check]]
 id = "contributing-code-review-section"

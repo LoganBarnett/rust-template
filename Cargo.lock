@@ -3009,7 +3009,7 @@ dependencies = [
 [[package]]
 name = "orgize"
 version = "0.10.0-alpha.10"
-source = "git+https://github.com/LoganBarnett/orgize.git?branch=fix-multiline-bracket-link#164ec5f93c333a87a9530dbf02a821681c087ea5"
+source = "git+https://github.com/LoganBarnett/orgize.git?branch=fix-blank-line-under-headline#fc4cddaccd75eebde19ac357ec302373b782f839"
 dependencies = [
  "bytecount",
  "cfg-if",

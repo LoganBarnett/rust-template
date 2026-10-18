@@ -21,6 +21,33 @@ The failure mode this guards against is a document that grows by one section per
 observed failure.  Each section arrives with a citation and a defense.  The
 result reads as an essay.  The model writes essays back.
 
+* Imports
+
+** An import is not a link
+
+The import list holds only documents that every change is measured against.  An
+org link is an invitation the agent may decline.  An import is not.  Supporting
+material stays a link.
+
+** How the runner reads the list
+
+The runner matches whole lines.  It does not parse org syntax.  An import is a
+line that is exactly ~@~ followed by a path.
+
+An indented path is not an import.
+
+Neither is a path with trailing text or a path inside a sentence.
+
+Any line that begins with ~@~ will trigger an import.  The runner cannot tell a
+CSS at-rule from an import.
+
+Paths resolve relative to the importing file.  A redundant entry costs nothing.
+
+Each import is a paragraph of its own.  Two imports on adjacent lines form one
+org paragraph.
+
+Order is reading order.
+
 * Prose
 
 ** Short sentences
@@ -43,6 +70,17 @@ nothing.
 
 The existing documents were dense with em dashes.  Those documents are the
 model's examples.  Scrubbing them is part of the rule.
+
+** Two spaces after a sentence
+
+A machine needs an unambiguous sentence boundary.  One space after a period also
+follows "e.g." and "Mr.".  Two spaces follow only a sentence.  Vim's sentence
+text objects rely on that.  Its ~cpoptions~ ~J~ flag names the same convention.
+
+A formatter that strips the second space wins.  Fighting it is churn on every
+save.  ~elm-format~ is one.  Single-spaced prose is matched rather than
+reflowed.  A reflow is a diff with no content.  Web output is exempt.  Browsers
+collapse the whitespace.
 
 ** The conclusion comes first
 
@@ -181,6 +219,16 @@ narrative shape.  Z is the answer.  X and Y belong only where they qualify it.
 Numbers, commands, and quoted output go in tables or code blocks.  The claim in
 the prose then stays checkable at a glance.
 
+* Version control
+
+** Staging is the approval signal
+
+The index records what the reviewer has read and accepted.  Whatever stays
+unstaged still needs review.  An agent that stages its own work erases that
+record.  A commit made on request holds the staged set and nothing more.
+Intent-to-add tracks a new path for the flake and leaves its content unstaged.
+The signal survives.
+
 * Commit messages
 
 ** The summary is imperative
@@ -203,6 +251,257 @@ none.
 
 Git also suggests an "area:" prefix on the summary.  This project does not use
 one.
+
+** The body says why
+
+The body carries the motivation.  The reviewer can always see what changed for
+themselves.  The diff cannot show why the change was needed or what surrounds
+it.
+
+The body might answer a few questions.  Does the fix cost performance?  Were
+other approaches considered and discarded?  Is this the first commit in a series
+of similar refactors?
+
+A fact whose value outlives the commit belongs in the code.  A workaround or a
+surprising change gets a comment beside the line it guards.  The commit can call
+it out as well.  See [[Altitude]].
+
+* Code
+
+** The biases are vague on purpose
+
+The list of LLM code biases names no thresholds.  Each item is a judgement call
+in the "I know it when I see it" sense.  A stated threshold invites code that
+sits just under it.
+
+DRY shows the problem.  A rule of "after three repetitions" lets two functions
+share two hundred lines.  Repetition is also sometimes the honest form.  That
+happens when the language cannot express the abstraction.  Pulling data out of a
+structure in a language without lenses is one example.
+
+** Long arguments document themselves
+
+A long argument reads as a word.  A short one reads as a letter.  ~mkdir
+--parents~ says what it does.  ~mkdir -p~ says it only to a reader who already
+knows.  The long form costs the author a few characters once.  The short form
+costs every reader a lookup.  Where only the short form exists, a comment at
+each use pays that cost instead.
+
+** An import names its file
+
+A directory import makes the reader run the resolver by hand.  Nix turns ~./foo~
+into ~./foo/default.nix~.  Node's ~require~ tries ~foo.js~, ~foo.json~, and
+~foo.node~.  It then tries ~foo/index~ with each extension.  Bundlers add ~.mjs~
+and ~.cjs~.  TypeScript adds ~.ts~, ~.tsx~, and ~.d.ts~.  For years it forbade
+writing the extension at all.  Editor jump-to-definition lands on the directory
+or guesses.  Node is where the scar is deepest.  Nix has one rule.  The explicit
+path is still the cheap side.  Typing ~/default.nix~ costs seconds once.  The
+ambiguity costs hours in a debugger.
+
+A project that already imports directories implicitly keeps its pattern.
+nixpkgs, home-manager, and nix-darwin all do.  Two styles in one tree cost more
+than either alone.
+
+* Rust
+
+** Errors say what was happening
+
+A semantic error names the operation that failed.  A bare file error might carry
+the path.  It still does not say what the program was doing.  It signals only
+that some file somewhere could not be read.  That tells contributors and users
+nothing.
+
+Bad.  Any file read in the program produces this message.
+
+#+begin_example
+Could not read file: No such file or directory (os error 2)
+#+end_example
+
+Good.  The message names the failure and the operation it interrupted.
+
+#+begin_example
+Could not read configuration file: No such file or directory (os error 2)
+#+end_example
+
+Semantic variants see little reuse.  Each one names a single operation.  That is
+acceptable.
+
+** Result is control flow, not recovery
+
+The unwrap ban is not about recovering from errors.  A ~Result~ forces the
+caller to acknowledge a failure.  The error then propagates or converts along
+one visible path.  Recovery is one use of that.  Propagation and forced
+acknowledgment are the rest.  An unwrap trades all of it for brevity.
+
+Models carry an exception-friendly habit from Python and similar languages.
+There an ad hoc ~try~ is normal.  Rust rejects that habit.  Shipping code either
+proves unreachability to the compiler or propagates the error.  There is no
+third option.
+
+** Literals are proven at compile time
+
+A literal regex looks safe to unwrap.  Only a typo can break it.  The first run
+should catch the typo.  That assumes every path holding the unwrap runs.
+Coverage is never complete.  An unwrap on a cold path ships.  The panic waits
+for the rare input that reaches it.  A macro moves the check to compile time.
+Any unwrap left lives in generated code on a path the macro proved unreachable.
+
+** Every carve-out was considered
+
+Each trap in =llms.org= once looked like a fair exception.  Each was rejected.
+The arguments live here so nobody re-derives them.  "But this case is different"
+is itself the warning sign.
+
+*** Lock poisoning
+
+A poisoned lock means another thread panicked mid-update.  Panicking again looks
+idiomatic.  That is an application author's judgment.  The rule also governs
+libraries.  A library that panics on poisoning takes the decision from its
+caller.  That caller may be a daemon, a supervisor, or an FFI host.  Return the
+error and let the caller decide.  ~parking_lot::Mutex~ has no poisoning at all.
+
+*** Build scripts, examples, and benches
+
+A build script runs once.  A panic fails the build loudly.  A ~Result~ there
+looks like ceremony.  The ceremony is the value.  Cargo still sees a non-zero
+exit and prints the error.  A build script that panics drifts toward needing
+tests for its own error paths.
+
+Examples gain nothing from an unwrap over ~?~.  Both fail loudly.  Examples are
+also teaching material.  Users copy whatever they show.  Benches follow the same
+logic.
+
+*** Thread joins
+
+A join error carries the child thread's panic.  Unwrapping it re-raises that
+panic.  The unwrap looks like honest propagation.  Yet not panicking is not
+swallowing.  Converting the error and returning it is the opposite of
+swallowing.  The caller may want to log, retry, or report it.  When a re-raise
+is the intent, ~resume_unwind~ says so.  A bare unwrap hides it.
+
+*** The system clock
+
+~SystemTime::now().duration_since(UNIX_EPOCH)~ fails only when the clock reads
+before 1970.  That happens.  Embedded devices, freshly imaged VMs with bad
+clocks, and containers without time sync all hit it.
+
+*** Check then unwrap
+
+An unwrap right after an emptiness check cannot fail today.  The pair rots the
+first time someone refactors between the two lines.  ~if let~ moves the
+invariant into the type system.
+
+*** Always-set environment variables
+
+A variable set in every deployment is still missing somewhere.  Local
+development, a one-off script, a new environment, and a debugging shell all lack
+it.  Loading config at startup can name the missing variable.
+
+*** Initialization order
+
+Unwrapping a ~OnceCell~ after an earlier initialization usually means the data
+structure is wrong.  ~LazyLock~ exposes the value through ~Deref~.  ~OnceLock~
+has ~get_or_init~.  Neither needs a runtime claim about order.
+
+** Tests may panic
+
+Tests are the one exemption from the unwrap ban.  A panic is the failure signal
+a test wants.  A test is also not a shipping code path.
+
+** Clippy enforces the combinator rule
+
+Clippy enforces the mechanical half of the rule of least power.  The ~manual_*~
+lints flag hand-written versions of standard combinators.  ~manual_map~,
+~manual_filter~, ~manual_find~, and ~manual_let_else~ are examples.
+~option_if_let_else~, ~map_unwrap_or~, ~question_mark~, and ~single_match_else~
+join them.
+
+The lints sit at ~warn~ under ~[workspace.lints.clippy]~ in the root
+=Cargo.toml=.  Locally a warning does not block iteration.  CI and the
+pre-review gate both run clippy with ~--deny warnings~.  There a combinator lint
+blocks the merge like any other error.
+
+Some imperative forms are genuinely clearer.  Multi-line bodies, side effects,
+and nested control flow are the usual cases.  Such a site carries
+~#[allow(clippy::lint_name)]~ with a one-line reason beside it.
+
+** Maximum expressivity is the wrong default
+
+The most expressive construct is the wrong default.  Models reach for ~match~,
+~for~, and early ~return~ anyway.  Most Rust in their training reads that way.
+Those constructs are also the most expressive available.  The narrowest
+construct that fits comes first.  A ~match~ or a loop is the escalation.  It is
+warranted only when the combinator form distorts the meaning.
+
+** Functional style quarantines the imperative
+
+Functional style confines imperative code to where it is unavoidable.  Rust is
+imperative at its core.  Its imperative surfaces are external APIs, the disk,
+the network, and output.  Nearly all the data manipulation those surfaces need
+can still happen in a functional section.  The imperative part is then laid
+bare.  It is not intermingled with data manipulation.  Reasoning about it
+becomes easy.
+
+Early returns hint at a data structure that needs sharpening.  A type introduced
+at an earlier stage can remove the branches.  So can moving each branch into its
+own function.  A function is best read as what it returns.  It is not a series
+of alterations.  An early return says "no further alterations."  A branch says
+"these are the ways a result is produced."
+
+Building a list by pushing onto it is imperative.  It is a sure sign that a
+combinator such as ~filter~ is missing.  Chaining several combinators is fine.
+Rust optimizes iterator chains well.
+
+A long-lived variable marks a function that is too long and does too much.
+Variables marked ~mut~ are the usual case.  Not every ~mut~ is a culprit.  Many
+are.  A long-lived variable also carries its own load.  The reader must assume
+it can be used anywhere from its declaration to the end of its scope.
+
+Functions are named as nouns because verbs are highly subjective in software.
+The noun names what the function returns.  ~foo~ says what comes back.
+~get_foo~ adds a verb that each reader interprets differently.
+
+** Local variables are discouraged rather than banned
+
+Rust sometimes needs a local variable.  Scope and ownership can force a binding.
+A value with more than one use earns a name.
+
+Two tools keep a chain intact without a local.  ~tap~ logs in the middle of a
+call chain without breaking it.  A struct can also be built atomically from
+function calls.  Its ~foo~ field takes the result of ~foo()~ directly.
+
+** Debugging
+
+Permanent log lines are one of the best cures for missing information.  A log
+line at an appropriate level stays after the fix.  A temporary print helps only
+the session that added it.
+
+Integration tests against mock services exercise real behavior.  Unit tests tend
+to exercise contrived situations.
+
+** Candidate types
+
+Candidate types suit processing that runs in phases.  Each phase hands the next
+a type that says how much is already validated.
+
+* Persistent memory
+
+** Auto-memory ships off
+
+Spawned projects ship with the assistant's auto-memory off.  The emitted
+=.claude/settings.json= sets ~autoMemoryEnabled~ to ~false~.  Auto-memory
+accrues files under a contributor's home directory.  Those files are
+machine-local, invisible to review, and scoped to one clone.  With it off, every
+learning goes through the checked-in docs.  A contributor can re-enable it per
+clone for genuinely local scratch context.
+
+* Verification
+
+** Clippy runs before review
+
+The clippy gate in =llms.org= is the same gate CI enforces.  Running it first
+keeps a lint failure from reaching the reviewer or the pipeline.  It also
+surfaces the combinator lints while the change is still in hand.
 
 * Sources
 
