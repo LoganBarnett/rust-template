@@ -166,6 +166,18 @@ let server = server
     .spa::<Frontend>();
 #+end_src
 
+** ~.secure_cookies(false)~
+
+Leave the session cookie's Secure attribute off.  ~listen()~ sets it unless told
+otherwise.  A browser drops a Secure cookie that arrives over plain HTTP from
+any host but ~localhost~.  Sign-in then silently fails.  Pass ~false~ when the
+app is served at an ~http://~ address.  A name on a home network is the usual
+case.  Deriving it from the app's public base URL keeps the two in step.
+
+#+begin_src rustic :results none :exports code
+let server = server.secure_cookies(!base_url.starts_with("http://"));
+#+end_src
+
 ** ~.listen()~
 
 Start listening.  Blocks until graceful shutdown completes.  Internally:

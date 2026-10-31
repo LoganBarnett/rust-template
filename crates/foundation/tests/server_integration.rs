@@ -1,7 +1,8 @@
 //! Integration tests for the foundation server infrastructure.
 //!
-//! Uses `Server::into_test_router()` + `tower::ServiceExt::oneshot`
-//! to drive requests without binding a real listener.
+//! Most tests drive `Server::into_test_router()` with
+//! `tower::ServiceExt::oneshot` and bind no listener.  The
+//! session-cookie tests bind a real one through `listen`.
 
 #![cfg(feature = "auth")]
 // Helpers (test_router_*, request body extraction, etc.) sit outside
@@ -250,6 +251,70 @@ async fn auth_login_redirects_with_oidc() {
     location.contains("stub.invalid"),
     "redirect should point at the stub OIDC provider"
   );
+}
+
+// ── session cookie over a real listener ─────────────────────────────────────
+
+/// Serves a server shaped by `configure` with auth on a free loopback port
+/// and returns the `Set-Cookie` header its `/auth/login` sends.
+/// `into_test_router` always turns Secure off.  Only `listen` shows what a
+/// deployment sends.
+async fn login_cookie_from(configure: impl FnOnce(Server) -> Server) -> String {
+  use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+  let port = std::net::TcpListener::bind("127.0.0.1:0")
+    .unwrap()
+    .local_addr()
+    .unwrap()
+    .port();
+  let config = ServerRunConfig {
+    listen_address: format!("127.0.0.1:{port}").parse().unwrap(),
+    ..test_config("test-app")
+  };
+  let server = configure(Server::new(base_state_with_auth(), config));
+  let serving = tokio::spawn(server.listen());
+
+  // The listener binds on the spawned task.  The two-second deadline and
+  // the twenty milliseconds between tries are coin flips.
+  let mut stream =
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+      loop {
+        if let Ok(s) = tokio::net::TcpStream::connect(("127.0.0.1", port)).await
+        {
+          break s;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+      }
+    })
+    .await
+    .expect("the listener never came up");
+  stream
+    .write_all(
+      b"GET /auth/login HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+    )
+    .await
+    .unwrap();
+  let mut response = String::new();
+  stream.read_to_string(&mut response).await.unwrap();
+  serving.abort();
+
+  response
+    .lines()
+    .find(|line| line.to_ascii_lowercase().starts_with("set-cookie:"))
+    .expect("login should set the session cookie")
+    .to_string()
+}
+
+#[tokio::test]
+async fn listen_marks_the_session_cookie_secure_by_default() {
+  let cookie = login_cookie_from(|server| server).await;
+  assert!(cookie.contains("Secure"), "{cookie}");
+}
+
+#[tokio::test]
+async fn listen_leaves_secure_off_when_told_to() {
+  let cookie = login_cookie_from(|server| server.secure_cookies(false)).await;
+  assert!(!cookie.contains("Secure"), "{cookie}");
 }
 
 // ── SPA fallback ────────────────────────────────────────────────────────────
