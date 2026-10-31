@@ -216,6 +216,12 @@
       # packaged wrapper that carries its own curl, and the engine's fetch test
       # spawns curl too, so the dev shell provides it.
       pkgs.curl
+      # The shell provides git because the macOS shim cannot find one.
+      # /usr/bin/git looks for the real git under DEVELOPER_DIR.  This shell
+      # points DEVELOPER_DIR at the Nix Apple SDK.  That SDK has no git.  The
+      # format-staged tests and `git commit` then fail with "tool 'git' not
+      # found".
+      pkgs.git
     ];
   in {
     devShells = forAllSystems (system: let
