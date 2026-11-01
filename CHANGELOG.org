@@ -3,7 +3,14 @@
 
 * Upcoming
 ** Added
+1. =just review= now pairs renames the way git does, with =--rename-threshold=
+   and =--rename-limit= to override the git configuration.  No action needed.
+2. =just review= now sends a diff or untracked file larger than
+   =--inline-max-bytes= by reference.  No action needed.
 ** Fixes
+1. A review of a branch that moves a large generated file no longer overruns the
+   reviewer's prompt.  Addresses #177.  No action needed.
+2. Clarification to the LLM of documenting arbitrary default values.
 ** Breaking
 ** Maintenance
 ** Security

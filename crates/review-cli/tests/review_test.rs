@@ -974,3 +974,298 @@ fn clearing_priors_puts_a_standing_finding_back_to_the_reviewer() {
   assert!(packet.contains("src.rs"), "{packet}");
   assert!(!packet.contains("REVIEW HISTORY"), "fresh eyes:\n{packet}");
 }
+
+/// `count` numbered lines that each end in `suffix`.  Enough of them overrun
+/// a small inline limit.
+fn numbered(count: usize, suffix: &str) -> String {
+  (1..=count)
+    .map(|n| format!("line {n} {suffix}\n"))
+    .collect()
+}
+
+#[test]
+fn a_large_patch_goes_to_the_reviewer_by_reference() {
+  let repo = Repo::new();
+  repo.write("big.txt", &numbered(200, "before"));
+  repo.commit("add the file");
+  repo.write("big.txt", &numbered(200, "after"));
+  repo.review(
+    &repo.reviewer(&[]),
+    &["--diff", "head", "--inline-max-bytes", "1024"],
+  );
+  let packet = repo.packet();
+  assert!(
+    packet.contains(
+      "diff --git a/big.txt b/big.txt\n--- a/big.txt\n+++ b/big.txt\nPatch \
+       by reference: "
+    ),
+    "{packet}"
+  );
+  assert!(
+    packet.contains(
+      "bytes exceeds --inline-max-bytes 1024.  Read big.txt from the working \
+       tree with the Read tool.  +200 -200 lines across the hunk headers below."
+    ),
+    "{packet}"
+  );
+  assert!(packet.contains("\n@@ -1,200 +1,200 @@\n"), "{packet}");
+  assert!(!packet.contains("+line 1 after\n"), "a hunk body leaked:\n{packet}");
+}
+
+#[test]
+fn the_default_limit_references_a_generated_file_and_inlines_the_rest() {
+  let repo = Repo::new();
+  repo.write("gen.txt", &numbered(5000, "of the generated file"));
+  repo.write("src.rs", "fn main() {}\n");
+  repo.commit("add the files");
+  repo.write("gen.txt", &numbered(5000, "of the regenerated file"));
+  repo.write("src.rs", "fn main() { run() }\n");
+  repo.review(&repo.reviewer(&[]), &["--diff", "head"]);
+  let packet = repo.packet();
+  assert!(packet.contains("exceeds --inline-max-bytes 65536."), "{packet}");
+  assert!(!packet.contains("+line 1 of the regenerated file\n"), "{packet}");
+  assert!(
+    packet.contains("-fn main() {}\n+fn main() { run() }\n"),
+    "a small change still travels whole:\n{packet}"
+  );
+}
+
+#[test]
+fn a_large_untracked_file_goes_by_reference() {
+  let repo = Repo::new();
+  repo.write("gen.txt", &numbered(200, "of the untracked file"));
+  repo.review(
+    &repo.reviewer(&[]),
+    &["--diff", "head", "--inline-max-bytes", "1024"],
+  );
+  let packet = repo.packet();
+  assert!(
+    packet.contains(
+      "----- BEGIN UNTRACKED FILE: gen.txt -----\nContent by reference: "
+    ),
+    "{packet}"
+  );
+  assert!(
+    packet.contains(
+      "bytes exceeds --inline-max-bytes 1024.  Read gen.txt from the working \
+       tree with the Read tool.  200 lines.\n----- END UNTRACKED FILE: \
+       gen.txt -----"
+    ),
+    "{packet}"
+  );
+  assert!(!packet.contains("line 1 of the untracked file"), "{packet}");
+}
+
+#[test]
+fn a_zero_limit_inlines_everything() {
+  let repo = Repo::new();
+  repo.write("big.txt", &numbered(200, "before"));
+  repo.commit("add the file");
+  repo.write("big.txt", &numbered(200, "after"));
+  repo.review(
+    &repo.reviewer(&[]),
+    &["--diff", "head", "--inline-max-bytes", "0"],
+  );
+  let packet = repo.packet();
+  assert!(packet.contains("-line 1 before\n"), "{packet}");
+  assert!(packet.contains("+line 200 after\n"), "{packet}");
+  assert!(!packet.contains("Patch by reference"), "{packet}");
+}
+
+#[test]
+fn the_inline_limit_is_read_from_the_environment() {
+  let repo = Repo::new();
+  repo.write("big.txt", &numbered(200, "before"));
+  repo.commit("add the file");
+  repo.write("big.txt", &numbered(200, "after"));
+  repo.review_env(
+    &repo.reviewer(&[]),
+    &["--diff", "head"],
+    &[("review_inline_max_bytes", "1024")],
+  );
+  let packet = repo.packet();
+  assert!(packet.contains("exceeds --inline-max-bytes 1024."), "{packet}");
+}
+
+#[test]
+fn a_deleted_file_too_large_to_inline_names_nothing_to_read() {
+  let repo = Repo::new();
+  repo.write("big.txt", &numbered(200, "before"));
+  repo.commit("add the file");
+  std::fs::remove_file(repo.dir().join("big.txt")).expect("to delete it");
+  repo.review(
+    &repo.reviewer(&[]),
+    &["--diff", "head", "--inline-max-bytes", "1024"],
+  );
+  let packet = repo.packet();
+  assert!(
+    packet.contains(
+      "deleted file mode 100644\n--- a/big.txt\n+++ /dev/null\nPatch \
+       by reference: "
+    ),
+    "{packet}"
+  );
+  assert!(
+    packet.contains(
+      "The file is deleted, so there is nothing to read.  +0 -200 lines across the hunk headers below."
+    ),
+    "{packet}"
+  );
+}
+
+#[test]
+fn renames_follow_the_git_configuration() {
+  let repo = Repo::new();
+  let body: String = (1..=40).map(|n| format!("line {n}\n")).collect();
+  repo.write("old.txt", &body);
+  repo.commit("add the file");
+  repo.git(&["config", "diff.renames", "false"]);
+  repo.git(&["mv", "old.txt", "new.txt"]);
+  repo.write("new.txt", &body.replace("line 40\n", "line forty\n"));
+  let output = repo.review(&repo.reviewer(&[]), &["--diff", "head"]);
+  let packet = repo.packet();
+  assert!(!packet.contains("rename from"), "{packet}");
+  assert!(
+    packet.contains("deleted file mode 100644\n--- a/old.txt\n"),
+    "{packet}"
+  );
+  assert!(
+    packet.contains("new file mode 100644\n--- /dev/null\n+++ b/new.txt\n"),
+    "{packet}"
+  );
+  assert!(
+    stderr(&output).contains("diff.renames is false"),
+    "{}",
+    stderr(&output)
+  );
+}
+
+/// Two committed files that are each moved and then edited.  Identical moves
+/// pair before the limit is consulted, so the edit is what puts them under
+/// it.  Two sources and two destinations make four pairs.  A limit of one
+/// refuses four whether it is squared or not.
+fn two_edited_moves(repo: &Repo) {
+  let body = |file: usize| -> String {
+    (1..=40)
+      .map(|line| format!("file {file} line {line}\n"))
+      .collect()
+  };
+  repo.write("old1.txt", &body(1));
+  repo.write("old2.txt", &body(2));
+  repo.commit("add the files");
+  repo.git(&["mv", "old1.txt", "new1.txt"]);
+  repo.git(&["mv", "old2.txt", "new2.txt"]);
+  repo.write("new1.txt", &body(1).replace("line 40\n", "line forty\n"));
+  repo.write("new2.txt", &body(2).replace("line 40\n", "line forty\n"));
+}
+
+#[test]
+fn the_rename_limit_follows_the_git_configuration() {
+  let repo = Repo::new();
+  two_edited_moves(&repo);
+  repo.git(&["config", "diff.renameLimit", "1"]);
+  let output = repo.review(
+    &repo.reviewer(&[]),
+    // JSON logs keep a field's name and value together.  The text format
+    // colours them apart.
+    &["--diff", "head", "--log-format", "json"],
+  );
+  let packet = repo.packet();
+  assert!(!packet.contains("rename from"), "{packet}");
+  let logged = stderr(&output);
+  assert!(logged.contains("rename detection was skipped"), "{logged}");
+  assert!(logged.contains("\"pairs\":4"), "{logged}");
+  // The flag lifts the limit.  A fresh record keeps the first verdict from
+  // standing in for a second look.
+  let record = repo.work().join("unlimited.json");
+  repo.review(
+    &repo.reviewer(&[]),
+    &[
+      "--diff",
+      "head",
+      "--rename-limit",
+      "0",
+      "--record-file",
+      record.to_str().expect("a UTF-8 path"),
+    ],
+  );
+  let packet = repo.packet();
+  assert!(
+    packet.contains("rename from old1.txt\nrename to new1.txt\n"),
+    "{packet}"
+  );
+  assert!(
+    packet.contains("rename from old2.txt\nrename to new2.txt\n"),
+    "{packet}"
+  );
+}
+
+#[test]
+fn an_inherited_limit_hands_the_environment_back_to_git() {
+  let repo = Repo::new();
+  two_edited_moves(&repo);
+  let blocked = [("review_rename_limit", "1")];
+  repo.review_env(&repo.reviewer(&[]), &["--diff", "head"], &blocked);
+  let packet = repo.packet();
+  assert!(!packet.contains("rename from"), "{packet}");
+  // The flag beats the environment and names git's own setting.  That
+  // setting is unset here, so the default applies.  A fresh record keeps the
+  // first verdict from standing in for a second look.
+  let record = repo.work().join("inherited.json");
+  repo.review_env(
+    &repo.reviewer(&[]),
+    &[
+      "--diff",
+      "head",
+      "--rename-limit",
+      "inherit",
+      "--record-file",
+      record.to_str().expect("a UTF-8 path"),
+    ],
+    &blocked,
+  );
+  let packet = repo.packet();
+  assert!(
+    packet.contains("rename from old1.txt\nrename to new1.txt\n"),
+    "{packet}"
+  );
+  assert!(
+    packet.contains("rename from old2.txt\nrename to new2.txt\n"),
+    "{packet}"
+  );
+}
+
+#[test]
+fn an_exact_threshold_pairs_identical_moves_only() {
+  let repo = Repo::new();
+  let body: String = (1..=40).map(|n| format!("line {n}\n")).collect();
+  repo.write("old.txt", &body);
+  repo.commit("add the file");
+  repo.git(&["mv", "old.txt", "new.txt"]);
+  repo.write("new.txt", &body.replace("line 40\n", "line forty\n"));
+  repo.review(
+    &repo.reviewer(&[]),
+    &["--diff", "head", "--rename-threshold", "100"],
+  );
+  let packet = repo.packet();
+  assert!(!packet.contains("rename from"), "{packet}");
+  assert!(packet.contains("deleted file mode 100644\n"), "{packet}");
+  assert!(packet.contains("new file mode 100644\n"), "{packet}");
+}
+
+#[test]
+fn a_rename_flag_the_engine_cannot_take_is_refused_before_reviewing() {
+  let refusals = [
+    vec!["--diff", "head", "--rename-threshold", "0"],
+    vec!["--diff", "head", "--rename-threshold", "101"],
+    vec!["--diff", "head", "--rename-limit", "many"],
+  ];
+  refusals.iter().for_each(|args| {
+    let repo = Repo::new();
+    repo.write("src.rs", "fn main() {}\n");
+    let output = repo.review("exit 9", args);
+    assert_eq!(output.status.code(), Some(2), "{args:?}");
+    assert!(stderr(&output).contains(args[2]), "{args:?}: {}", stderr(&output));
+    assert_eq!(repo.calls(), 0, "no reviewer ran for {args:?}");
+  });
+}

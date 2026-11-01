@@ -13,6 +13,7 @@ pub mod markup;
 pub mod patch;
 pub mod prompt;
 pub mod record;
+pub mod reference;
 pub mod review;
 pub mod reviewer;
 pub mod worktree;
@@ -23,6 +24,7 @@ pub use markup::Markup;
 pub use record::Standing;
 pub use review::{run, Outcome, Priors, PriorsApplied, Request, Skipped};
 pub use reviewer::Finding;
+pub use worktree::RenameSettings;
 
 // Re-exported so the front-end takes every leaf type its staged config names
 // from this crate, the way the sibling front-ends do, rather than some from

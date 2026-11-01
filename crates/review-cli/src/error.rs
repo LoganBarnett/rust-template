@@ -21,4 +21,15 @@ pub enum AppError {
      it reads org alone.  Drop --column-wrap, or ask for --format org."
   )]
   WrapNeedsOrg,
+  #[error(
+    "--rename-threshold {asked} is out of range.  Pass a percent from 1 to \
+     100."
+  )]
+  RenameThresholdOutOfRange { asked: u8 },
 }
+
+/// A `--rename-limit` value that is neither a count nor `inherit`.  clap and
+/// serde each prefix it with the flag or key and the value given.
+#[derive(Debug, Error, PartialEq, Eq)]
+#[error("expected a whole number of pairs or inherit: {0}")]
+pub struct RenameLimitParse(#[source] pub std::num::ParseIntError);
