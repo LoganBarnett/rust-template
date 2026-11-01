@@ -45,6 +45,8 @@ pub enum GitFailure {
   DiffPrepare(#[source] gix::Error),
   #[error("could not read the diff algorithm from the git config: {0}")]
   DiffAlgorithm(#[from] gix::config::diff::algorithm::Error),
+  #[error("could not read the rename settings from the git config: {0}")]
+  RenameConfig(#[source] gix::Error),
   #[error("could not render the diff: {0}")]
   DiffRender(#[from] std::io::Error),
   #[error("could not hash the content: {0}")]
@@ -81,6 +83,10 @@ pub enum ReviewError {
     "could not open the repository enclosing the current directory: {0}"
   )]
   RepositoryOpen(#[source] GitFailure),
+  #[error(
+    "could not read how moved files are paired from the git config: {0}"
+  )]
+  RenameConfigRead(#[source] GitFailure),
   #[error("could not resolve the commit under review from `HEAD`: {0}")]
   HeadResolve(#[source] GitFailure),
   #[error("could not resolve the default branch: {0}")]

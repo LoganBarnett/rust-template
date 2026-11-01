@@ -8,6 +8,9 @@
 
 use crate::error::{GitFailure, ReviewError};
 use gix::bstr::{BStr, BString, ByteSlice};
+use gix::config::tree::Diff;
+use gix::diff::rename::Tracking;
+use gix::diff::Rewrites;
 use gix::dir::entry::{Kind, Status};
 use gix::refs::TargetRef;
 use gix::status::index_worktree::Item;
@@ -17,7 +20,8 @@ use gix::ObjectId;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use tracing::warn;
+use tap::Tap;
+use tracing::{info, warn};
 
 /// The review record, and the temporary file the atomic store renames from.
 /// Both are filtered out of every listing this module makes, so the record is
@@ -40,31 +44,54 @@ pub struct ChangeSet {
   pub origins: BTreeMap<String, String>,
 }
 
+/// How moved files are paired.  The git configuration supplies what is unset.
+#[derive(Debug, Clone, Copy)]
+pub struct RenameSettings {
+  /// Similarity a moved file must keep to count as a rename, in percent.
+  pub threshold: u8,
+  /// How many pairs similarity matching may compare.  `None` inherits
+  /// `diff.renameLimit`.  `Some(0)` removes the limit.
+  pub limit: Option<usize>,
+}
+
 /// The repository enclosing the current directory, opened once per pass.
 pub struct Worktree {
   repo: gix::Repository,
   root: PathBuf,
+  /// How the status walk pairs moved files.  `None` pairs nothing.
+  rewrites: Option<Rewrites>,
 }
 
 impl Worktree {
   /// The repository enclosing the current directory, which must have a
   /// working tree.
-  pub fn open() -> Result<Self, ReviewError> {
-    Self::discover().map_err(ReviewError::RepositoryOpen)
+  pub fn open(renames: &RenameSettings) -> Result<Self, ReviewError> {
+    let found = Self::discover().map_err(ReviewError::RepositoryOpen)?;
+    rewrites(&found.repo, renames)
+      .map(|rewrites| Self { rewrites, ..found })
+      .map_err(ReviewError::RenameConfigRead)
   }
 
   fn discover() -> Result<Self, GitFailure> {
     let repo = gix::discover_with_environment_overrides(".")
       .map_err(GitFailure::Open)?;
     let root = repo.workdir().ok_or(GitFailure::Bare)?.to_path_buf();
-    Ok(Self { repo, root })
+    Ok(Self {
+      repo,
+      root,
+      rewrites: None,
+    })
   }
 
   /// A worktree over a repository a test created, since `open` only finds the
   /// one enclosing the current directory.
   #[cfg(test)]
   pub(crate) fn from_parts(repo: gix::Repository, root: PathBuf) -> Self {
-    Self { repo, root }
+    Self {
+      repo,
+      root,
+      rewrites: None,
+    }
   }
 
   /// The absolute path of the working tree's top-level directory, where the
@@ -87,10 +114,7 @@ impl Worktree {
   /// out of its changes against an older base, which is what lets a
   /// branch-scoped review see work that is already committed.
   pub fn changed(&self, base: &ObjectId) -> Result<ChangeSet, ReviewError> {
-    self
-      .changed_between(base)
-      .map(|set| without_record(set, "change set"))
-      .map_err(ReviewError::WorkingTreeList)
+    self.change_set(base, self.rewrites)
   }
 
   /// A change set read from a fixture file instead of the tree, so tests can
@@ -111,9 +135,21 @@ impl Worktree {
   /// Whether the working tree differs from `head` at all, which is how an
   /// unspecified diff base decides between reviewing uncommitted work and
   /// reviewing the branch.  Untracked files count, as they do for `git
-  /// status`.
+  /// status`.  Moved files are not paired.  A move is dirty either way.
+  /// Pairing would cost a similarity pass and a second warning.
   pub fn is_dirty(&self, head: &ObjectId) -> Result<bool, ReviewError> {
-    self.changed(head).map(|set| !set.paths.is_empty())
+    self.change_set(head, None).map(|set| !set.paths.is_empty())
+  }
+
+  fn change_set(
+    &self,
+    base: &ObjectId,
+    rewrites: Option<Rewrites>,
+  ) -> Result<ChangeSet, ReviewError> {
+    self
+      .changed_between(base, rewrites)
+      .map(|set| without_record(set, "change set"))
+      .map_err(ReviewError::WorkingTreeList)
   }
 
   /// The status walk between `base` and the working tree.  An index built
@@ -121,7 +157,11 @@ impl Worktree {
   /// compared by content, and everything else on disk that git does not
   /// ignore is walked as untracked — which is exactly what differs from the
   /// tree, and nothing that merely differs from the index.
-  fn changed_between(&self, base: &ObjectId) -> Result<ChangeSet, GitFailure> {
+  fn changed_between(
+    &self,
+    base: &ObjectId,
+    rewrites: Option<Rewrites>,
+  ) -> Result<ChangeSet, GitFailure> {
     let index = self
       .repo
       .index_from_tree(&self.tree_at(base)?.id)
@@ -132,18 +172,12 @@ impl Worktree {
       .map_err(GitFailure::Status)?
       .index(IndexPersistedOrInMemory::InMemory(index))
       .untracked_files(UntrackedFiles::Files)
-      // Rename tracking is off unless asked for; git has no configuration
-      // for renames between an index and the working tree, so the defaults
-      // (renames only, at git's own similarity threshold) are the closest to
-      // what `git status` shows.
-      .index_worktree_rewrites(Some(gix::diff::Rewrites::default()))
+      // git has no rename settings for an index against the working tree,
+      // so the ones `git diff` reads serve.
+      .index_worktree_rewrites(rewrites)
       .into_index_worktree_iter(Vec::<BString>::new())
-      .map_err(GitFailure::StatusStart)?
-      .try_fold(Accumulated::default(), |set, item| {
-        item
-          .map(|item| set.absorb(&item))
-          .map_err(GitFailure::StatusWalk)
-      })
+      .map_err(GitFailure::StatusStart)
+      .and_then(accumulated)
       .map(Accumulated::into_change_set)
   }
 
@@ -295,6 +329,79 @@ impl Worktree {
       .map_err(GitFailure::Object)?
       .peel_to_tree()
       .map_err(GitFailure::PeelToTree)
+  }
+}
+
+/// How the walk pairs moved files.  The flags sit over `diff.renames` and
+/// `diff.renameLimit`.  `diff.renames = false` turns pairing off and leaves
+/// the flags idle.
+fn rewrites(
+  repo: &gix::Repository,
+  renames: &RenameSettings,
+) -> Result<Option<Rewrites>, GitFailure> {
+  let config = repo.config_snapshot();
+  let file = config.plumbing();
+  let tracking = Diff::RENAMES
+    .try_into_renames(file.boolean(Diff::RENAMES))
+    .map_err(GitFailure::RenameConfig)?
+    .unwrap_or(Tracking::Renames);
+  let configured = Diff::RENAME_LIMIT
+    .try_into_usize(file.integer(Diff::RENAME_LIMIT))
+    .map_err(GitFailure::RenameConfig)?;
+  Ok(match tracking {
+    Tracking::Disabled => {
+      info!(
+        "diff.renames is false, so moved files are not paired and the rename \
+         flags are idle"
+      );
+      None
+    }
+    // The patch has no copy shape, so copies are paired as renames.
+    Tracking::Renames | Tracking::RenamesAndCopies => Some(Rewrites {
+      percentage: Some(f32::from(renames.threshold) / 100.0),
+      // gix 0.68 compares the pair count against this limit unsquared where
+      // git squares it.  gitoxide PR #3062 fixes that and is unreleased.
+      limit: renames
+        .limit
+        .or(configured)
+        .unwrap_or(Rewrites::default().limit),
+      ..Rewrites::default()
+    }),
+  })
+}
+
+/// The walk folded into a change set.  The iterator is bound rather than
+/// chained because `into_outcome` needs it exhausted.
+fn accumulated(
+  mut iter: gix::status::index_worktree::Iter,
+) -> Result<Accumulated, GitFailure> {
+  iter
+    .try_fold(Accumulated::default(), |set, item| {
+      item
+        .map(|item| set.absorb(&item))
+        .map_err(GitFailure::StatusWalk)
+    })
+    .map(|set| set.tap(|_| warn_if_skipped(iter.into_outcome())))
+}
+
+/// Say so when the walk gave up on pairing moved files.  Each of them then
+/// ships as a deletion and an addition with no sign of why.
+fn warn_if_skipped(outcome: Option<gix::status::Outcome>) {
+  if let Some(rewrites) = outcome
+    .and_then(|outcome| outcome.index_worktree.rewrites)
+    .filter(|rewrites| {
+      rewrites.num_similarity_checks_skipped_for_rename_tracking_due_to_limit
+        > 0
+    })
+  {
+    warn!(
+      pairs =
+        rewrites.num_similarity_checks_skipped_for_rename_tracking_due_to_limit,
+      limit = rewrites.options.limit,
+      "rename detection was skipped.  The moved files form more pairs than \
+       the limit allows, so each ships as a deletion and an addition.  Raise \
+       --rename-limit or diff.renameLimit.  0 means no limit."
+    );
   }
 }
 

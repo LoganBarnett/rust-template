@@ -29,6 +29,11 @@ cannot be judged in isolation, but a finding you report against a path that is
 not in the packet is recorded apart from the rest and survives only one further
 round, so report one only when the change under review is what makes it wrong.
 
+An entry by reference is in scope.  The packet carries its header and size
+but not its content.  A diff keeps its hunk headers.  Read the named path with
+the Read tool and judge it as you would an inlined hunk.  Offset and limit reach
+each hunk's range.  Judge a deleted file from its header alone.
+
 ## Conventions
 
 The packet carries the convention documents as they stand in the working tree,

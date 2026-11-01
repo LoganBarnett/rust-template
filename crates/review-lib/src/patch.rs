@@ -9,6 +9,7 @@
 
 use crate::disk;
 use crate::error::{GitFailure, ReviewError};
+use crate::reference::{self, Reference};
 use crate::worktree::Worktree;
 use gix::bstr::{BStr, BString, ByteSlice};
 use gix::diff::blob::pipeline::{Mode, WorktreeRoots};
@@ -19,15 +20,17 @@ use gix::diff::blob::{Algorithm, Platform, ResourceKind, UnifiedDiff};
 use gix::objs::tree::EntryKind;
 use gix::ObjectId;
 use std::collections::BTreeMap;
+use std::fmt;
 use std::path::PathBuf;
-use tracing::debug;
+use tracing::{debug, info};
 
 /// The lines of context around each hunk, as `git diff` prints by default.
 const CONTEXT: u32 = 3;
 
 /// The working tree's diff against `base`, restricted to `paths`, staged and
 /// unstaged together.  A path in `origins` is diffed against the path it was
-/// renamed from.
+/// renamed from.  A file whose hunks exceed `inline_max_bytes` keeps its
+/// header and hunk headers only.
 ///
 /// An empty `paths` is an empty diff: the packet restricts the reviewer to
 /// what this round judges, and nothing is nothing.
@@ -36,11 +39,13 @@ pub fn render(
   base: &ObjectId,
   paths: &[String],
   origins: &BTreeMap<String, String>,
+  inline_max_bytes: Option<usize>,
 ) -> Result<String, ReviewError> {
   if paths.is_empty() {
     Ok(String::new())
   } else {
-    patches(worktree, base, paths, origins).map_err(ReviewError::PacketDiff)
+    patches(worktree, base, paths, origins, inline_max_bytes)
+      .map_err(ReviewError::PacketDiff)
   }
 }
 
@@ -49,6 +54,7 @@ fn patches(
   base: &ObjectId,
   paths: &[String],
   origins: &BTreeMap<String, String>,
+  inline_max_bytes: Option<usize>,
 ) -> Result<String, GitFailure> {
   let tree = worktree.tree_at(base)?;
   // The old side always comes from the object store; the new side is read
@@ -73,6 +79,7 @@ fn patches(
         &mut cache,
         path,
         origins.get(path).map(String::as_str),
+        inline_max_bytes,
       )
     })
     .collect()
@@ -85,6 +92,7 @@ fn file_patch(
   cache: &mut Platform,
   path: &str,
   origin: Option<&str>,
+  inline_max_bytes: Option<usize>,
 ) -> Result<String, GitFailure> {
   let repo = worktree.repo();
   let old_path = origin.unwrap_or(path);
@@ -126,7 +134,7 @@ fn file_patch(
       )
       .map_err(|source| GitFailure::DiffResource(gix::Error::from(source)))?;
     match cache.prepare_diff() {
-      Ok(outcome) => rendered(repo, &outcome, path, origin),
+      Ok(outcome) => rendered(repo, &outcome, path, origin, inline_max_bytes),
       // A path the change set named that is gone from both sides by the
       // time it is rendered has nothing to show, which is not a failure.
       // gix reports that case only as a validation message.  The two sides
@@ -154,6 +162,7 @@ fn rendered(
   outcome: &Outcome<'_>,
   path: &str,
   origin: Option<&str>,
+  inline_max_bytes: Option<usize>,
 ) -> Result<String, GitFailure> {
   let shape = Shape::of(outcome, path, origin);
   match outcome.operation {
@@ -164,12 +173,12 @@ fn rendered(
       shape.new_label()
     )),
     Operation::InternalDiff { algorithm } => {
-      with_hunks(&shape, outcome, algorithm)
+      with_hunks(&shape, outcome, algorithm, inline_max_bytes)
     }
     // An external diff driver is git's presentation choice, not ours; the
     // sides are already loaded, so the internal diff serves.
     Operation::ExternalCommand { .. } => {
-      with_hunks(&shape, outcome, repo.diff_algorithm()?)
+      with_hunks(&shape, outcome, repo.diff_algorithm()?, inline_max_bytes)
     }
   }
 }
@@ -182,13 +191,88 @@ fn with_hunks(
   shape: &Shape<'_>,
   outcome: &Outcome<'_>,
   algorithm: Algorithm,
+  inline_max_bytes: Option<usize>,
 ) -> Result<String, GitFailure> {
   let hunks = hunks(outcome, algorithm)?;
   Ok(if hunks.is_empty() && matches!(shape, Shape::Modified { .. }) {
     String::new()
   } else {
-    format!("{}{hunks}", shape.header())
+    format!("{}{}", shape.header(), Body::of(shape, hunks, inline_max_bytes))
   })
+}
+
+/// What a patch carries below its header: its hunks, or a reference to the
+/// working tree when they are too large to inline.
+enum Body<'a> {
+  Hunks(String),
+  Reference {
+    reference: Reference<'a>,
+    added: usize,
+    removed: usize,
+    /// One `@@` line per hunk, so the reviewer knows which ranges to read.
+    headers: String,
+  },
+}
+
+impl<'a> Body<'a> {
+  fn of(
+    shape: &Shape<'a>,
+    hunks: String,
+    inline_max_bytes: Option<usize>,
+  ) -> Self {
+    match reference::exceeded(inline_max_bytes, hunks.len()) {
+      Some(limit) => {
+        info!(
+          path = shape.path(),
+          bytes = hunks.len(),
+          limit,
+          "the patch goes to the reviewer by reference"
+        );
+        Self::Reference {
+          reference: Reference {
+            what: "Patch",
+            path: shape.read_path(),
+            bytes: hunks.len(),
+            limit,
+          },
+          added: prefixed(&hunks, '+'),
+          removed: prefixed(&hunks, '-'),
+          headers: hunks
+            .lines()
+            .filter(|line| line.starts_with("@@"))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        }
+      }
+      None => Self::Hunks(hunks),
+    }
+  }
+}
+
+impl fmt::Display for Body<'_> {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match self {
+      Self::Hunks(hunks) => f.write_str(hunks),
+      Self::Reference {
+        reference,
+        added,
+        removed,
+        headers,
+      } => writeln!(
+        f,
+        "{reference}  +{added} -{removed} lines across the hunk headers \
+         below.\n{headers}"
+      ),
+    }
+  }
+}
+
+/// The lines of `hunks` marked `prefix`.
+fn prefixed(hunks: &str, prefix: char) -> usize {
+  hunks
+    .lines()
+    .filter(|line| line.starts_with(prefix))
+    .count()
 }
 
 fn hunks(
@@ -260,6 +344,21 @@ impl<'a> Shape<'a> {
     }
   }
 
+  /// The path after the change.  A deletion names its old path.
+  fn path(&self) -> &'a str {
+    match self {
+      Self::Added { path, .. }
+      | Self::Deleted { path, .. }
+      | Self::Modified { path } => path,
+      Self::Renamed { to, .. } => to,
+    }
+  }
+
+  /// The path to read, or `None` for a deletion.
+  fn read_path(&self) -> Option<&'a str> {
+    (!matches!(self, Self::Deleted { .. })).then(|| self.path())
+  }
+
   fn old_label(&self) -> String {
     match self {
       Self::Added { .. } => "/dev/null".to_string(),
@@ -305,9 +404,49 @@ mod tests {
       &worktree.empty_tree(),
       &["gone.rs".to_string()],
       &BTreeMap::new(),
+      None,
     )
     .expect("a path missing from both sides is not a failure");
     assert_eq!(rendered, "");
+  }
+
+  #[test]
+  fn a_patch_by_reference_keeps_its_hunk_headers_alone() {
+    let hunks = "@@ -1,3 +1,4 @@\n a\n-b\n+c\n+d\n@@ -10,2 +11,2 @@\n-x\n+y\n";
+    let text =
+      Body::of(&Shape::Modified { path: "big.rs" }, hunks.to_string(), Some(8))
+        .to_string();
+    assert!(
+      text.starts_with(&format!(
+        "Patch by reference: {} bytes exceeds --inline-max-bytes 8.  Read \
+         big.rs from the working tree with the Read tool.  +3 -2 lines \
+         across the hunk headers below.",
+        hunks.len()
+      )),
+      "{text}"
+    );
+    assert!(text.ends_with("@@ -1,3 +1,4 @@\n@@ -10,2 +11,2 @@\n"), "{text}");
+    assert!(!text.contains("\n-b\n"), "a body line leaked:\n{text}");
+  }
+
+  #[test]
+  fn a_deletion_leaves_nothing_to_read() {
+    assert_eq!(
+      Shape::Deleted {
+        path: "gone.rs",
+        mode: EntryKind::Blob,
+      }
+      .read_path(),
+      None
+    );
+    assert_eq!(
+      Shape::Renamed {
+        from: "old.rs",
+        to: "new.rs",
+      }
+      .read_path(),
+      Some("new.rs")
+    );
   }
 
   #[test]

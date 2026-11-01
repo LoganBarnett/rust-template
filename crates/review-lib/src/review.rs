@@ -7,7 +7,7 @@ use crate::fingerprint::{self, Unreadable};
 use crate::markup::Markup;
 use crate::record::{self, Partition, Record, Standing};
 use crate::reviewer::{self, Scope, Verdict};
-use crate::worktree::{ChangeSet, Worktree};
+use crate::worktree::{ChangeSet, RenameSettings, Worktree};
 use gix::ObjectId;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -27,6 +27,11 @@ pub struct Request {
   /// A file holding a newline-separated change set, used in place of the git
   /// read so tests can drive the pass without a real tree.
   pub git_files_fixture: Option<PathBuf>,
+  /// How moved files are paired.
+  pub renames: RenameSettings,
+  /// Largest patch or untracked file inlined, in bytes.  `None` inlines
+  /// everything.
+  pub inline_max_bytes: Option<usize>,
 }
 
 /// What a pass concluded.
@@ -77,7 +82,7 @@ pub enum Priors {
 }
 
 pub fn run(request: &Request) -> Result<Outcome, ReviewError> {
-  let worktree = Worktree::open()?;
+  let worktree = Worktree::open(&request.renames)?;
   let base = base::resolve(&worktree, request.diff)?;
   let path = request
     .record_file
@@ -208,6 +213,7 @@ fn verdict(
       stale: &partition.stale,
       origins,
       history,
+      inline_max_bytes: request.inline_max_bytes,
     })?,
   )
   .inspect(|returned| {

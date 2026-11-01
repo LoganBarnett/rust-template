@@ -85,7 +85,7 @@ imported.
   comment, delete the comment.
 - Do not describe code that no longer exists.  If the obvious approach fails,
   state the fact that breaks it.
-- A number that was a coin flip says so.
+- Comment default values that are arbitrary as being arbitrary.
 - When unsure whether to write a comment, do not.
 - Draft prose longer than a paragraph in a scratch file.  Rewrite it against
   this list.  Only the rewrite lands.

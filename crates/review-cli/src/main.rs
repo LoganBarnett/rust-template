@@ -49,7 +49,7 @@ fn reviewed(config: &Config) -> Result<ExitCode, AppError> {
   // Before the review, not after: a flag the report cannot honour must not
   // cost a reviewer run to discover.
   render::check(config.format, config.column_wrap)?;
-  let outcome = rust_template_review_lib::run(&config.request())?;
+  let outcome = rust_template_review_lib::run(&config.request()?)?;
   hints::priors(&outcome);
   render::print(config.format, config.output, config.column_wrap, &outcome)?;
   Ok(ExitCode::from(if render::incomplete(&outcome) {

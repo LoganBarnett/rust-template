@@ -8,10 +8,12 @@ use crate::error::{panic_detail, ReviewError};
 use crate::markup::Markup;
 use crate::patch;
 use crate::prompt::REVIEWER;
+use crate::reference::{self, Reference};
 use crate::worktree::Worktree;
 use gix::ObjectId;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::fmt;
 use std::io::{ErrorKind, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, ExitStatus, Stdio};
@@ -87,6 +89,9 @@ pub struct Scope<'a> {
   pub origins: &'a BTreeMap<String, String>,
   /// What earlier rounds reported, pre-rendered by the record.
   pub history: &'a str,
+  /// Largest patch or untracked file inlined, in bytes.  `None` inlines
+  /// everything.
+  pub inline_max_bytes: Option<usize>,
 }
 
 pub fn packet(scope: &Scope) -> Result<String, ReviewError> {
@@ -96,7 +101,9 @@ pub fn packet(scope: &Scope) -> Result<String, ReviewError> {
        It is the complete scope of the review: every hunk of the diff and \
        every untracked file below must be judged against the conventions \
        below.  Files judged on an earlier round and unchanged since are \
-       deliberately absent.\n\n"
+       deliberately absent.  An entry by reference is in scope too.  Its \
+       content was too large to inline, so read the path it names with the \
+       Read tool.\n\n"
         .to_string(),
       format!("CONVENTIONS (working tree)\n{}\n\n", "-".repeat(40)),
       conventions(scope.worktree)?,
@@ -110,11 +117,12 @@ pub fn packet(scope: &Scope) -> Result<String, ReviewError> {
             scope.worktree,
             scope.base,
             scope.stale,
-            scope.origins
+            scope.origins,
+            scope.inline_max_bytes,
           )?
         )
       ),
-      untracked_sections(scope.worktree, scope.stale)?,
+      untracked_sections(scope.worktree, scope.stale, scope.inline_max_bytes)?,
       "Review every change above against the conventions above and report \
        through the structured output.\n"
         .to_string(),
@@ -181,16 +189,17 @@ fn global_instructions() -> Result<String, ReviewError> {
 }
 
 /// The diff cannot show an untracked file, so each one this round judges
-/// travels whole.
+/// travels whole.  Past `inline_max_bytes` it goes by reference instead.
 fn untracked_sections(
   worktree: &Worktree,
   stale: &[String],
+  inline_max_bytes: Option<usize>,
 ) -> Result<String, ReviewError> {
   worktree.untracked_files().map(|paths| {
     paths
       .into_iter()
       .filter(|path| path != LICENSE && stale.contains(path))
-      .map(|path| untracked_block(worktree.root(), &path))
+      .map(|path| untracked_block(worktree.root(), &path, inline_max_bytes))
       .collect()
   })
 }
@@ -199,7 +208,11 @@ fn untracked_sections(
 /// the time the packet is built, though it was readable when it was hashed
 /// moments earlier, is marked rather than dropped, so the reviewer knows there
 /// was something there.
-fn untracked_block(root: &Path, path: &str) -> String {
+fn untracked_block(
+  root: &Path,
+  path: &str,
+  inline_max_bytes: Option<usize>,
+) -> String {
   disk::read(root, path).map_or_else(
     |error| {
       warn!(path, %error, "could not read the untracked path for the packet");
@@ -208,13 +221,17 @@ fn untracked_block(root: &Path, path: &str) -> String {
         &format!("(could not be read: {error}; not shown)"),
       )
     },
-    |content| content_block(path, content),
+    |content| content_block(path, content, inline_max_bytes),
   )
 }
 
 /// An untracked path's content as a packet block.  A link is its target, as
 /// git stores it; a path that vanished contributes nothing.
-fn content_block(path: &str, content: Content) -> String {
+fn content_block(
+  path: &str,
+  content: Content,
+  inline_max_bytes: Option<usize>,
+) -> String {
   match content {
     Content::Missing => String::new(),
     Content::Link(target) => {
@@ -222,10 +239,62 @@ fn content_block(path: &str, content: Content) -> String {
     }
     Content::File(bytes) => block(
       &format!("UNTRACKED FILE: {path}"),
-      &String::from_utf8(bytes).unwrap_or_else(|error| {
-        format!("(binary content, {} bytes; not shown)", error.as_bytes().len())
-      }),
+      &String::from_utf8(bytes).map_or_else(
+        |error| {
+          format!(
+            "(binary content, {} bytes; not shown)",
+            error.as_bytes().len()
+          )
+        },
+        |text| Untracked::of(path, text, inline_max_bytes).to_string(),
+      ),
     ),
+  }
+}
+
+/// What an untracked file's block carries: its text, or a reference to the
+/// working tree when it is too large to inline.
+enum Untracked<'a> {
+  Text(String),
+  Reference {
+    reference: Reference<'a>,
+    lines: usize,
+  },
+}
+
+impl<'a> Untracked<'a> {
+  fn of(path: &'a str, text: String, inline_max_bytes: Option<usize>) -> Self {
+    match reference::exceeded(inline_max_bytes, text.len()) {
+      Some(limit) => {
+        info!(
+          path,
+          bytes = text.len(),
+          limit,
+          "the untracked file goes to the reviewer by reference"
+        );
+        Self::Reference {
+          reference: Reference {
+            what: "Content",
+            path: Some(path),
+            bytes: text.len(),
+            limit,
+          },
+          lines: text.lines().count(),
+        }
+      }
+      None => Self::Text(text),
+    }
+  }
+}
+
+impl fmt::Display for Untracked<'_> {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match self {
+      Self::Text(text) => f.write_str(text),
+      Self::Reference { reference, lines } => {
+        write!(f, "{reference}  {lines} lines.")
+      }
+    }
   }
 }
 
