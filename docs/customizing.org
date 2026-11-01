@@ -362,8 +362,8 @@ ci = foundation.lib.mkCiShell {
 
 - ~toolchain~ — the Rust toolchain CI compiles and lints with.  The call site
   passes the same ~rust~ the dev shell uses, so local and CI toolchains match.
-- ~changelogRoller~ — ~changelog-roller~, used by the ~changelog~ and ~abi~
-  jobs, the publish flow, and the dependabot automerge flow.
+- ~changelogRoller~: ~changelog-roller~, used by the ~changelog~ and ~abi~ jobs
+  and the publish flow.
 - ~semverChecks~ — ~cargo-semver-checks~, the ~abi~ job's crates.io ABI gate.
 
 ** Adding tools
@@ -421,23 +421,18 @@ compliance check reads this marker back with ~nix eval~ to confirm each shell
 evaluates and exposes it; keep it in place when customizing, or the check will
 flag the shell as missing its marker.
 
-* Dependabot auto-merge: why =allow_auto_merge= stays off
+* Why =allow_auto_merge= stays off
 
-The Dependabot auto-merge workflow lands green dependency PRs on its own, but it
-does /not/ use GitHub's native merge queue — so the repo-level "Allow
-auto-merge" setting (=allow_auto_merge=, Settings → General) is irrelevant.
-Leave it at its default; enabling it changes nothing.  A common misconception,
-since most Dependabot tutorials tell you to turn it on, is that the flow depends
-on it.  It does not.
+The dependency-bump workflow merges its own pull request without GitHub's
+native auto-merge, so the repo-level =allow_auto_merge= setting is irrelevant.
+Leave it at its default.  Enabling it changes nothing.
 
-The workflow triggers on ~workflow_run~ once CI completes, then merges
-synchronously in that run with a direct ~gh pr merge --squash~.  Two properties
-fall out of that choice, and both are the reason not to use =--auto=:
+The workflow dispatches CI for its bump commit, waits, then merges in the same
+run with ~gh pr merge --squash~.  Two properties follow, and both are why it
+does not use =--auto=:
 
-- The ~workflow_run~ event runs in the default-branch context, where
-  ~GITHUB_TOKEN~ has its normal write permissions — a plain =--auto= request
-  from the read-only token a Dependabot ~pull_request~ event hands out cannot
-  merge at all.
+- The scheduled run holds a write-capable ~GITHUB_TOKEN~, so it merges directly
+  rather than asking GitHub to merge later.
 - A merge the ~GITHUB_TOKEN~ performs does not cascade into downstream workflows
   (the "no-cascade" rule), so an =--auto= merge would silently fail to kick off
   publishing.  Merging directly and then dispatching publish via

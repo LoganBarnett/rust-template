@@ -1,9 +1,8 @@
 name: Dependency bump
 
-# The daily scheduled dependency bump — the replacement for Dependabot:
-# `cargo update` is the signal, the usual CI is the gate, and the merge
-# lands lockfile + changelog in one commit.  See
-# reusable-dependency-bump.yml for the flow, and
+# The daily dependency bump.  `cargo update` is the signal, CI is the gate,
+# and the merge lands lockfile and changelog in one commit.  See
+# reusable-dependency-bump.yml for the flow and
 # `[workspace.metadata.dependency-bump]` in Cargo.toml for holds.
 on:
   schedule:

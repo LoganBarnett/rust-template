@@ -25,10 +25,10 @@ The short version, in page order; each has its own section below.
 - Separated concerns with LLM guardrails
 - Types as validation
 - Selective crate generation
-- *GitHub Actions* — tests and formatting on every push, declarative branch
-  protection, Dependabot with guarded auto-merge, changelog enforcement,
-  automatic version cutting and publishing, automatic cross-platform binary
-  publishing, build provenance attestation
+- *GitHub Actions*: tests and formatting on every push, declarative branch
+  protection, scheduled dependency bumps, changelog enforcement, automatic
+  version cutting and publishing, automatic cross-platform binary publishing,
+  build provenance attestation
 - Structured logging
 - Staged configuration
 - Semantic error types
@@ -150,26 +150,23 @@ Branch protection rules live in =.github/branch-protection.json= and are applied
 automatically via a workflow whenever the file changes.  No manual Settings page
 clicks, no drift between what you think is protected and what actually is.
 
-*** Dependabot with guarded auto-merge
+*** Scheduled dependency bumps
 
-Dependabot opens PRs for Cargo and Actions dependency updates.  A workflow
-auto-merges them /only/ if every changed file is a =Cargo.toml=, =Cargo.lock=,
-or workflow YAML — unexpected files block the merge with a warning.
-Dependencies stay current without rubber-stamping changes that touch application
-code.
+A daily =dependency-bump= workflow runs =cargo update=, classifies each bump
+with =cargo audit=, writes the changelog entries, and merges its own pull
+request once CI passes.  Holds live under =[workspace.metadata.dependency-bump]=
+in =Cargo.toml=.  The same bump runs locally with =just dependency-bump=, left
+in the working tree for review.
 
-The scheduled dependency bump (=just dependency-bump=, run daily by the
-=dependency-bump= workflow) also advances the GitHub-hosted runner image the CI
-workflows pin, so =ubuntu-latest= never floats under CI: a newer generally
-available Ubuntu image arrives as a CI-gated pull request instead of changing
-the image under every branch at once.
+The same run advances the runner image the CI workflows pin, so =ubuntu-latest=
+never floats.  A newer Ubuntu image arrives as a CI-gated pull request instead
+of changing under every branch at once.
 
 *** Changelog enforcement
 
-Non-dependabot PRs must include a changelog entry.  The =changelog-roller= tool
-verifies this in CI.  Changelogs that are populated retroactively at release
-time are always incomplete; enforcing entries at PR time means the changelog
-writes itself.
+Every PR must include a changelog entry.  =changelog-roller= verifies this in
+CI.  A changelog written at release time is always incomplete.  Entries at PR
+time mean it writes itself.
 
 *** Automatic version cutting and publishing
 
@@ -279,7 +276,7 @@ conventions and reports what stands.  Every generated project ships it;
 | =--output=      | yes      | Destination directory (must be empty or not yet exist).  |
 | =--description= | no       | One-line description substituted into project metadata.  |
 | =--crates=      | no       | Comma-separated binary crates to include (default: cli,server). =lib= is always included. |
-| =--public=      | no       | Mark the lib crate as publishable to crates.io and emit =publish.yml=.  Without this flag the lib crate keeps =publish = false= and =publish.yml= is omitted; CI, branch protection, dependabot, and the automerge workflow are emitted regardless. |
+| =--public=      | no       | Let the lib crate publish to crates.io.  Without it the crate keeps =publish = []=.  CI, branch protection, publish, and the dependency-bump workflow are emitted regardless. |
 
 ** Examples
 
@@ -319,10 +316,9 @@ Public library published to crates.io:
    project metadata.
 4. Removes any binary crate directories not listed in =--crates= and scrubs
    their entries from =Cargo.toml= and =flake.nix=.
-5. If =--public= is given, removes =publish = false= from the lib crate so it
-   can be published to crates.io.  Otherwise, leaves =publish = false= in place
-   on the lib crate and removes =.github/workflows/publish.yml=; CI, branch
-   protection, dependabot, and automerge are emitted either way.
+5. If =--public= is given, sets the lib crate's =publish= list to crates.io.
+   Otherwise the list stays empty.  CI, branch protection, publish, and the
+   dependency-bump workflow are emitted either way.
 
 After generation, initialize git and allow direnv:
 
@@ -440,7 +436,7 @@ The object key under =templateSpawns= is the project name (=--name=).  Running
 | [[file:docs/getting-started.org][docs/getting-started.org]]          | Development workflow and first steps.              |
 | [[file:docs/customizing.org][docs/customizing.org]]              | Adapting the template for your project.            |
 | [[file:docs/compliance.org][docs/compliance.org]]               | Compliance audits and forward-porting updates.     |
-| [[file:docs/maintenance.org][docs/maintenance.org]]              | Maintainer tooling, such as clearing a Dependabot backlog. |
+| [[file:docs/maintenance.org][docs/maintenance.org]]              | Maintainer tooling, such as runner image pinning. |
 | [[file:docs/contribution-rationale.org][docs/contribution-rationale.org]]   | Why the conventions in =template/llms.org= are what they are. |
 | [[file:CONTRIBUTING.org][CONTRIBUTING.org]]                  | Contributing to this template repository.          |
 | [[file:template/README.org][template/README.org]]               | Full feature list and architecture of emitted projects. |
@@ -491,8 +487,8 @@ Or merge selectively and resolve conflicts, preserving your customizations.
 
 * Maintenance
 
-Maintainers: the tooling for keeping a project healthy after it is running —
-clearing a Dependabot backlog, for one — lives in [[file:docs/maintenance.org][=docs/maintenance.org=]].
+Tooling for keeping a running project healthy, such as runner image pinning,
+lives in [[file:docs/maintenance.org][=docs/maintenance.org=]].
 
 * LLM instructions
 

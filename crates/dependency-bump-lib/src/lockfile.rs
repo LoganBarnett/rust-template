@@ -1,11 +1,10 @@
 //! Lockfile snapshots and the bump diff.
 //!
 //! The engine reads Cargo.lock before and after `cargo update` and derives
-//! what moved from the two snapshots — the lockfile is the one place the
-//! set of resolved versions cannot be reworded out from under us.  Parsing
-//! the TOML directly (rather than scraping a unified diff, as the retired
-//! dependabot-combine tool did with awk) keeps multi-version packages and
-//! formatting noise out of the signal.
+//! what moved from the two snapshots.  The lockfile is the one place the
+//! resolved versions cannot be reworded out from under us.  Parsing the TOML
+//! rather than scraping a diff keeps multi-version packages and formatting
+//! noise out of the signal.
 
 use crate::error::DependencyBumpError;
 use serde::Deserialize;

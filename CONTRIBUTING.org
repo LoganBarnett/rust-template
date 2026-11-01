@@ -133,6 +133,10 @@ commit body is too long.  When several internal changes add up to one
 adopter-visible outcome, prefer a single entry describing that outcome over one
 entry per underlying change.
 
+When compliance checks cover every action an entry would list, the entry says to
+run a compliance sync instead of listing them.  Actions no check covers are
+still spelled out.
+
 When no action is needed, the change itself gets a one-sentence budget — no
 run-ons.
 

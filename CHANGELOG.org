@@ -5,7 +5,12 @@
 ** Added
 ** Fixes
 ** Breaking
+1. Dependabot support is retired in favor of the daily =dependency-bump=
+   workflow.  Run a compliance sync.  Close open Dependabot pull requests by
+   hand.  Major-version bumps now need a hand edit of =Cargo.toml=.
 ** Maintenance
+1. The reusable CI workflow drops the =Gate= job, so every run executes the full
+   suite.  No action needed.
 ** Security
 * v0.144.0
 ** Added
