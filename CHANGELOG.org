@@ -6,9 +6,11 @@
 ** Fixes
 ** Breaking
 ** Maintenance
+** Security
+* v0.143.0
+** Maintenance
 1. Git now works inside the repository's own dev shell on macOS.  No action
    needed.
-** Security
 * v0.142.0
 ** Added
 1. Compliance now checks a documentation section's prose against the template's
