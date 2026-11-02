@@ -430,7 +430,7 @@ value = "main"
 
 [[check]]
 id = "ci-workflow-workflow-dispatch"
-description = "CI must be dispatchable so dependabot-automerge can re-run the required checks against the changelog commit."
+description = "CI must be dispatchable so the dependency-bump flow can run it against its bump commit."
 kind = "yaml-path-exists"
 target = ".github/workflows/ci.yml"
 pointer = "on.workflow_dispatch"
@@ -465,7 +465,7 @@ value = "main"
 
 [[check]]
 id = "publish-workflow-workflow-dispatch"
-description = "Publish must be dispatchable so dependabot-automerge can fire it after a merge."
+description = "Publish must be dispatchable so the dependency-bump flow can fire it after a merge."
 kind = "yaml-path-exists"
 target = ".github/workflows/publish.yml"
 pointer = "on.workflow_dispatch"
@@ -558,117 +558,45 @@ pointer = "on.push.branches"
 value = "main"
 
 # ---------------------------------------------------------------------------
-# Dependabot auto-merge workflow (.github/workflows/dependabot-automerge.yml)
-# — always emitted.
+# Dependabot retirement.
 #
-# The compliance surface stops at this wrapper and its @main delegation to
-# rust-template's reusable-dependabot-automerge workflow (asserted just below).
-# Everything that reusable workflow pulls in — the setup-nix action, and the
-# dependabot-allowlist composite action with its allowlist.sh predicate — is
-# referenced by @main and lives only in rust-template; it is never emitted into
-# a spawn, so no per-spawn file-present check applies to it (the same reason
-# setup-nix has none).  The allowlist predicate's own correctness is instead
-# guarded by test-dependabot-allowlist.sh in this repo's CI.
+# Dependabot is gone from the template in favor of the daily dependency-bump
+# flow.  Each piece it left in a spawn is enforced absent rather than merely no
+# longer emitted.
 # ---------------------------------------------------------------------------
 
 [[check]]
-id = "dependabot-automerge-workflow-present"
-description = "The dependabot auto-merge workflow file must exist."
-kind = "file-present"
+id = "dependabot-config-retired"
+description = "The retired Dependabot config is absent, so the spawn stops inviting bump PRs nothing merges."
+kind = "file-absent"
+path = ".github/dependabot.yml"
+
+[[check]]
+id = "dependabot-automerge-retired"
+description = "The retired dependabot-automerge wrapper is absent.  Its reusable workflow is gone, so a kept wrapper fails a run on every CI completion."
+kind = "file-absent"
 path = ".github/workflows/dependabot-automerge.yml"
 
 [[check]]
-id = "dependabot-automerge-uses-reusable"
-description = "The automerge job must delegate to the rust-template reusable-dependabot-automerge workflow."
-kind = "yaml-path-contains"
-target = ".github/workflows/dependabot-automerge.yml"
-pointer = "jobs.automerge.uses"
-contains = "rust-template/.github/workflows/reusable-dependabot-automerge.yml@main"
-
-[[check]]
-id = "dependabot-automerge-workflow-run-ci"
-description = "Auto-merge must listen for completion of the CI workflow via workflow_run."
-kind = "yaml-seq-contains"
-target = ".github/workflows/dependabot-automerge.yml"
-pointer = "on.workflow_run.workflows"
-value = "CI"
-
-[[check]]
-id = "dependabot-automerge-workflow-run-completed"
-description = "Auto-merge must fire on the completed type of the workflow_run event."
-kind = "yaml-seq-contains"
-target = ".github/workflows/dependabot-automerge.yml"
-pointer = "on.workflow_run.types"
-value = "completed"
-
-# The event/conclusion gate now lives on the reusable workflow's own job
-# (consumed via @main), so the wrapper no longer carries an `if` — and this
-# check forces an older spawn still holding the superseded guard to re-sync and
-# drop it, since that guard would filter out the changelog re-dispatch pass and
-# wedge the two-pass flow.  It forbids only the exact superseded condition, so a
-# spawn that sets its own unrelated `if` (or none) is unaffected.
-[[check]]
-id = "dependabot-automerge-no-legacy-if"
-description = "The automerge wrapper must not carry the superseded inline event/conclusion guard the reusable workflow now owns (a spawn still holding it filters out the changelog re-dispatch pass); a spawn's own unrelated guard is unaffected."
-kind = "yaml-path-not-contains"
-target = ".github/workflows/dependabot-automerge.yml"
-pointer = "jobs.automerge.if"
-contains = "github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'"
-
-[[check]]
-id = "dependabot-automerge-contents-write"
-description = "Auto-merge must grant contents: write to push the changelog commit after the squash-merge."
-kind = "yaml-path-equals"
-target = ".github/workflows/dependabot-automerge.yml"
-pointer = "permissions.contents"
-value = "write"
-
-[[check]]
-id = "dependabot-automerge-pull-requests-write"
-description = "Auto-merge must grant pull-requests: write to perform the merge."
-kind = "yaml-path-equals"
-target = ".github/workflows/dependabot-automerge.yml"
-pointer = "permissions.pull-requests"
-value = "write"
-
-[[check]]
-id = "dependabot-automerge-actions-write"
-description = "Auto-merge must grant actions: write to re-dispatch CI and dispatch the publish workflow."
-kind = "yaml-path-equals"
-target = ".github/workflows/dependabot-automerge.yml"
-pointer = "permissions.actions"
-value = "write"
-
-# ---------------------------------------------------------------------------
-# Dependabot backlog combiner — a one-shot `just dependabot-combine` that
-# bundles the passing open Dependabot PRs into one PR and merges it, for
-# clearing a backlog the per-PR auto-merge did not.  The tool is a package on
-# the rust-template (foundation) flake, not a per-spawn copy, so these checks
-# assert the spawn wires that package into its dev shell and exposes the recipe
-# — nothing is emitted to check for presence.
-# ---------------------------------------------------------------------------
-
-[[check]]
-id = "dependabot-combine-flake-includes-package"
-description = "The spawn's flake must pull the combiner package from the foundation flake into its dev shell."
-kind = "dev-shell-package"
+id = "dependabot-combine-package-retired"
+description = "The dev shell no longer pulls the retired dependabot-combine package.  The foundation flake dropped it, so a shell that still does breaks on the next bump."
+kind = "dev-shell-package-absent"
 package = "dependabot-combine"
 
 [[check]]
-id = "dependabot-combine-justfile-recipe"
-description = "The spawn's justfile must expose the combiner as the dependabot-combine recipe."
-kind = "justfile-recipe"
+id = "dependabot-combine-recipe-retired"
+description = "The justfile no longer exposes the retired dependabot-combine recipe.  Its binary is gone from the dev shell, so the recipe can only fail."
+kind = "justfile-recipe-absent"
 recipe = "dependabot-combine"
 
 # ---------------------------------------------------------------------------
 # Dependency bump (.github/workflows/dependency-bump.yml) — always emitted.
 #
-# The daily scheduled `cargo update` flow that replaces Dependabot.  The
-# compliance surface stops at this wrapper and its @main delegation to
-# rust-template's reusable-dependency-bump workflow; the bump engine itself is
-# the `dependency-bump` package on the foundation flake (wired below), never
-# emitted into a spawn.  Only the schedule's presence is asserted, not its
-# timing — spawns are invited to re-stagger the cron.
+# This is the daily `cargo update` flow.  The compliance surface stops at this
+# wrapper and its @main delegation to rust-template's reusable-dependency-bump
+# workflow.  The engine is the `dependency-bump` package on the foundation
+# flake.  It is wired below and never emitted into a spawn.  Only the schedule's
+# presence is asserted, not its timing.  Spawns may re-stagger the cron.
 # ---------------------------------------------------------------------------
 
 [[check]]
@@ -766,40 +694,6 @@ description = "The spawn's .gitignore ignores the review tool's review.json reco
 kind = "file-contains"
 target = ".gitignore"
 contains = "review.json*"
-
-# ---------------------------------------------------------------------------
-# Dependabot config (.github/dependabot.yml) — always emitted.
-# ---------------------------------------------------------------------------
-
-[[check]]
-id = "dependabot-config-present"
-description = "The dependabot configuration file must exist."
-kind = "file-present"
-path = ".github/dependabot.yml"
-
-[[check]]
-id = "dependabot-config-version"
-description = "The dependabot config must declare config version 2."
-kind = "yaml-path-equals"
-target = ".github/dependabot.yml"
-pointer = "version"
-value = "2"
-
-[[check]]
-id = "dependabot-config-cargo-ecosystem"
-description = "Dependabot must update the cargo ecosystem."
-kind = "yaml-path-equals"
-target = ".github/dependabot.yml"
-pointer = "updates.0.package-ecosystem"
-value = "cargo"
-
-[[check]]
-id = "dependabot-config-github-actions-ecosystem"
-description = "Dependabot must update the github-actions ecosystem."
-kind = "yaml-path-equals"
-target = ".github/dependabot.yml"
-pointer = "updates.1.package-ecosystem"
-value = "github-actions"
 
 # ---------------------------------------------------------------------------
 # Branch-protection rules (.github/branch-protection.json) — always emitted.

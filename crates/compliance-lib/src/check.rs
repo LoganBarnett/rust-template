@@ -210,6 +210,9 @@ pub fn run_check(check: &Check, ctx: &SpawnContext) -> Verdict {
       contains,
     } => yaml_path(ctx.dir, target, pointer, &PathMatch::NotContains(contains)),
     CheckKind::JustfileRecipe { recipe } => justfile_recipe(ctx.dir, recipe),
+    CheckKind::JustfileRecipeAbsent { recipe } => {
+      justfile_recipe_absent(ctx.dir, recipe)
+    }
     CheckKind::TemplateSuitePasses { suite, target } => {
       template_suite_passes(ctx.dir, ctx.template_dir, suite, target)
     }
@@ -1454,48 +1457,77 @@ fn dev_shell_has_package(
 /// text means a mention in a comment does not satisfy the check — only a real
 /// recipe does.  A spawn without a justfile skips.
 fn justfile_recipe(dir: &Path, recipe: &str) -> Verdict {
-  let justfile = dir.join("justfile");
-  if !justfile.exists() {
-    return Verdict::Skip {
-      reason: "justfile not present".to_string(),
-    };
-  }
-  // `--summary` prints the recipe names space-separated; `--justfile` and
-  // `--working-directory` point just at the spawn rather than the process's own
-  // directory.  Every argument is long-form.
-  let output = match Command::new("just")
-    .arg("--justfile")
-    .arg(&justfile)
-    .arg("--working-directory")
-    .arg(dir)
-    .arg("--summary")
-    .output()
-  {
-    Ok(output) => output,
-    Err(error) => {
-      return Verdict::Error {
-        detail: format!("could not run just --summary: {error}"),
+  justfile_recipes(dir).map_or_else(
+    |verdict| verdict,
+    |listed| {
+      if listed.iter().any(|name| name == recipe) {
+        Verdict::Pass
+      } else {
+        Verdict::Fail {
+          detail: format!(
+            "justfile has no recipe \"{recipe}\"; recipes: {}",
+            listed.join(" ")
+          ),
+        }
       }
+    },
+  )
+}
+
+/// The inverse of `justfile_recipe`: the retired recipe must be gone.  The
+/// probe's own verdicts stand, so an unparseable justfile fails here too.
+fn justfile_recipe_absent(dir: &Path, recipe: &str) -> Verdict {
+  justfile_recipes(dir).map_or_else(
+    |verdict| verdict,
+    |listed| {
+      if listed.iter().any(|name| name == recipe) {
+        Verdict::Fail {
+          detail: format!("justfile still has the retired recipe \"{recipe}\""),
+        }
+      } else {
+        Verdict::Pass
+      }
+    },
+  )
+}
+
+/// The recipe names `just --summary` lists.  A missing justfile skips, a
+/// `just` that cannot run errors, and a justfile `just` rejects fails.
+fn justfile_recipes(dir: &Path) -> Result<Vec<String>, Verdict> {
+  let justfile = dir.join("justfile");
+  if justfile.exists() {
+    // `--summary` prints the recipe names space-separated.  `--justfile` and
+    // `--working-directory` point just at the spawn rather than the process's
+    // own directory.
+    let output = Command::new("just")
+      .arg("--justfile")
+      .arg(&justfile)
+      .arg("--working-directory")
+      .arg(dir)
+      .arg("--summary")
+      .output()
+      .map_err(|error| Verdict::Error {
+        detail: format!("could not run just --summary: {error}"),
+      })?;
+    if output.status.success() {
+      Ok(
+        String::from_utf8_lossy(&output.stdout)
+          .split_whitespace()
+          .map(str::to_string)
+          .collect(),
+      )
+    } else {
+      Err(Verdict::Fail {
+        detail: format!(
+          "just --summary failed (unparseable justfile?): {}",
+          String::from_utf8_lossy(&output.stderr).trim()
+        ),
+      })
     }
-  };
-  if !output.status.success() {
-    return Verdict::Fail {
-      detail: format!(
-        "just --summary failed (unparseable justfile?): {}",
-        String::from_utf8_lossy(&output.stderr).trim()
-      ),
-    };
-  }
-  let listed = String::from_utf8_lossy(&output.stdout);
-  if listed.split_whitespace().any(|name| name == recipe) {
-    Verdict::Pass
   } else {
-    Verdict::Fail {
-      detail: format!(
-        "justfile has no recipe \"{recipe}\"; recipes: {}",
-        listed.trim()
-      ),
-    }
+    Err(Verdict::Skip {
+      reason: "justfile not present".to_string(),
+    })
   }
 }
 
@@ -2157,6 +2189,17 @@ mod tests {
     assert!(matches!(justfile_recipe(&dir, "ghost"), Verdict::Fail { .. }));
     assert!(matches!(
       justfile_recipe(&dir.join("missing"), "real"),
+      Verdict::Skip { .. }
+    ));
+    // The absent kind inverts the probe: a real recipe fails, a name only in a
+    // comment passes, and a missing justfile still skips.
+    assert!(matches!(
+      justfile_recipe_absent(&dir, "real"),
+      Verdict::Fail { .. }
+    ));
+    assert!(matches!(justfile_recipe_absent(&dir, "ghost"), Verdict::Pass));
+    assert!(matches!(
+      justfile_recipe_absent(&dir.join("missing"), "real"),
       Verdict::Skip { .. }
     ));
     std::fs::remove_dir_all(&dir).ok();

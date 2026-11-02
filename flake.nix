@@ -201,13 +201,8 @@
       # the binary, not its test suite, so disabling the check phase
       # does not affect what the workflow runs.
       (pkgs.cargo-semver-checks.overrideAttrs (_: {doCheck = false;}))
-      # The one-shot Dependabot-backlog combiner, taken from this flake's own
-      # package output — the very package spawns pull in via
-      # foundation.packages.<system>.dependabot-combine.
-      self.packages.${system}.dependabot-combine
-      # The daily dependency bumper, likewise taken from this flake's own
-      # package output so `just dependency-bump` works here the same way it
-      # does in a spawn.
+      # The daily dependency bumper, from this flake's own package output so
+      # `just dependency-bump` works here as in a spawn.
       self.packages.${system}.dependency-bump
       # The pre-commit formatter.
       self.packages.${system}.format-staged
@@ -376,15 +371,6 @@
           # variants merged above stay bare builds (see nix/compliance-cli.nix).
           compliance-cli = complianceCli;
           default = complianceCli;
-          # One-shot Dependabot-backlog combiner, exposed so spawns include it
-          # in their dev shell (foundation.packages.<system>.dependabot-combine)
-          # rather than carry a copy that drifts.  Only cargo is needed from the
-          # toolchain (for `cargo update --precise`), so the base toolchain is
-          # passed rather than the dev shell's extended one.
-          dependabot-combine = (pkgsFor system).callPackage ./nix/dependabot-combine.nix {
-            rustToolchain = (pkgsFor system).rust-bin.stable.latest.default;
-            changelog-roller = changelog-roller.packages.${system}.default;
-          };
           # The daily dependency bumper (crates/dependency-bump-*), wrapped
           # with its runtime tools on PATH and exposed so spawns pull it from
           # foundation.packages.<system>.dependency-bump rather than carry a

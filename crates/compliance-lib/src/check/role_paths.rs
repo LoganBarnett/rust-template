@@ -239,6 +239,7 @@ pub(super) fn resolve_kind(
     | CheckKind::PinsCurrent
     | CheckKind::CrateTomlPathEquals { .. }
     | CheckKind::JustfileRecipe { .. }
+    | CheckKind::JustfileRecipeAbsent { .. }
     | CheckKind::DevShellEnv { .. }
     | CheckKind::DevShellPackage { .. }
     | CheckKind::DevShellPackageAbsent { .. }

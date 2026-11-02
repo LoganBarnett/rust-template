@@ -1,10 +1,10 @@
 name: Release binaries (reusable)
 
 # Builds the release binaries for a tag and attaches them to that tag's GitHub
-# release.  Invoked by a thin consumer wrapper that a publish run dispatches
-# after it creates the tag (a tag pushed by GITHUB_TOKEN does not itself trigger
-# downstream workflows, so the publish job dispatches this one explicitly — the
-# same workflow_dispatch escape hatch reusable-dependabot-automerge.yml uses).
+# release.  A thin consumer wrapper invokes it.  The publish run dispatches that
+# wrapper after it creates the tag.  A tag pushed by GITHUB_TOKEN triggers no
+# downstream workflow, so publish dispatches this one explicitly.
+# reusable-dependency-bump.yml uses the same escape hatch.
 #
 # Which crates ship a binary comes from each project's rust-template.json
 # `workspaces.<crate>.release-binary` flags, so the same workflow serves a

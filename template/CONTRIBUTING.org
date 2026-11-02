@@ -447,6 +447,10 @@ commit body is too long.  When several internal changes add up to one
 adopter-visible outcome, prefer a single entry describing that outcome over one
 entry per underlying change.
 
+When compliance checks cover every action an entry would list, the entry says to
+run a compliance sync instead of listing them.  Actions no check covers are
+still spelled out.
+
 When no action is needed, the change itself gets a one-sentence budget — no
 run-ons.
 
@@ -465,11 +469,11 @@ time.
 This is a bad example for ~Fixes~:
 
 #+begin_quote
-1. Dependabot bumps merge on their own again.  The auto-merge that shipped last
-   release committed the changelog and then re-ran CI, but a token-dispatched
-   re-run cannot trigger the follow-up that does the merge (GitHub suppresses
-   it), so bumps sat green but unmerged; the flow now commits, re-runs CI, and
-   merges within a single run.  No action needed.
+1. Scheduled dependency bumps merge on their own again.  The bump workflow that
+   shipped last release opened its pull request and then dispatched CI, but a
+   token-dispatched run cannot trigger the follow-up that does the merge
+   (GitHub suppresses it), so bumps sat green but unmerged; the flow now opens,
+   re-runs CI, and merges within a single run.  No action needed.
 #+end_quote
 
 This sits on the long side, and gives us way too much context about the inner
@@ -478,7 +482,7 @@ they need to do, they have to sift that information out.  A better form would
 be:
 
 #+begin_quote
-1. Dependabot bumps merge on their own again.  No action needed.
+1. Scheduled dependency bumps merge on their own again.  No action needed.
 #+end_quote
 
 * Code review

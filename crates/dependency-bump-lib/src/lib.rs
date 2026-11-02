@@ -1,14 +1,13 @@
 //! rust-template-dependency-bump-lib — the engine behind the scheduled
 //! dependency-bump flow.
 //!
-//! Replaces Dependabot as the update signal: `cargo update` consults the
-//! crates index directly, so no bot PR, comment command, or GitHub product
-//! surface is involved.  The engine owns the working-tree transformation —
-//! audit-informed classification, the whole-workspace update, hold
-//! re-pinning, the runner-label advance, changelog composition, and the TSV
-//! report — while the scheduled workflow (reusable-dependency-bump.yml) owns
-//! everything with a remote side effect: branch, commit, PR, CI dispatch,
-//! merge.
+//! `cargo update` is the update signal.  It reads the crates index directly,
+//! so no bot PR, comment command, or GitHub product surface is involved.  The
+//! engine owns the working-tree transformation: audit-informed classification,
+//! the whole-workspace update, hold re-pinning, the runner-label advance,
+//! changelog composition, and the TSV report.  The scheduled workflow,
+//! reusable-dependency-bump.yml, owns every remote side effect: branch, commit,
+//! PR, CI dispatch, merge.
 //!
 //! Policy lives in the workspace manifest under
 //! `[workspace.metadata.dependency-bump]`; see [`holds`] for the v1 hold

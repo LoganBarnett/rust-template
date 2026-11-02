@@ -64,8 +64,8 @@
     # The Rust toolchain (cargo, clippy, rustfmt) every CI job builds
     # and lints with.
     toolchain
-    # Rolls and checks the CHANGELOG; the `changelog` and `abi` jobs, the
-    # publish flow, and dependabot-automerge all shell out to it.
+    # Rolls and checks the CHANGELOG.  The `changelog` and `abi` jobs and the
+    # publish flow shell out to it.
     changelogRoller
     # Formats org-mode files (*.org).
     orgFmt

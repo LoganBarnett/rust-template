@@ -250,15 +250,16 @@ This additive freedom is distinct from the opt-out below.  Presence checks make
 for the other case — deliberately /violating/ a required rule — which must be
 declared with a reason so the deviation stays honest.
 
-Two kinds forbid rather than require, and each earns its place narrowly.
-=yaml-path-not-contains= names a /superseded/ value at a pointer a spawn may
-otherwise set freely, so an absent pointer passes and an unrelated value passes.
-=dev-shell-package-absent= names a package the foundation flake used to expose
-and no longer does; a shell that still pulls it stops evaluating on the next
-foundation bump, so a shell that does not evaluate /fails/ rather than passing
-vacuously.  Reach for either only to retire something the template used to emit
-— never to fence off values a spawn is entitled to choose, which is what a
-presence check on the wanted value already does better.
+Four kinds forbid rather than require.  =yaml-path-not-contains= names a
+superseded value at a pointer a spawn may otherwise set freely, so an absent
+pointer passes and an unrelated value passes.  =file-absent= names a path that
+must not exist, usually a file the template used to emit.
+=justfile-recipe-absent= names a retired recipe.  =dev-shell-package-absent=
+names a package the foundation flake no longer exposes.  A justfile that does
+not parse or a shell that does not evaluate /fails/ rather than passing
+vacuously.  Use them only to retire something the template used to emit, never
+to fence off values a spawn may choose.  A presence check on the wanted value
+already does that better.
 
 ** A propagated change needs a check
 

@@ -167,6 +167,10 @@ pub enum CheckKind {
   /// search this queries just's own parser, so a mention in a comment does not
   /// satisfy it — only a real recipe definition does.
   JustfileRecipe { recipe: String },
+  /// `just --summary` lists no recipe named `recipe`.  It shares the
+  /// `JustfileRecipe` probe and exists to retire a recipe the template used to
+  /// emit.  A justfile that does not parse fails: it is broken, not clean.
+  JustfileRecipeAbsent { recipe: String },
   /// The test suite shipped at `<template_dir>/<suite>` passes when run
   /// against the spawn's copy of `target`: it is invoked as
   /// `bash <suite> --target <spawn>/<target>` and passes iff it exits zero.
@@ -661,6 +665,9 @@ impl RawCheck {
       "justfile-recipe" => CheckKind::JustfileRecipe {
         recipe: require(&id, &kind, "recipe", recipe)?,
       },
+      "justfile-recipe-absent" => CheckKind::JustfileRecipeAbsent {
+        recipe: require(&id, &kind, "recipe", recipe)?,
+      },
       "template-suite-passes" => CheckKind::TemplateSuitePasses {
         suite: require(&id, &kind, "suite", suite)?,
         target: require(&id, &kind, "target", target)?,
@@ -983,6 +990,25 @@ mod tests {
       CheckKind::DevShellPackageAbsent { shell, package } => {
         assert!(shell.is_none());
         assert_eq!(package, "rust-template-review-stop");
+      }
+      other => panic!("wrong kind: {other:?}"),
+    }
+  }
+
+  #[test]
+  fn validates_a_justfile_recipe_absent_check() {
+    let toml = r#"
+            [[check]]
+            id = "x"
+            description = "d"
+            kind = "justfile-recipe-absent"
+            recipe = "dependabot-combine"
+        "#;
+    let raw: RawManifest = toml::from_str(toml).unwrap();
+    let check = raw.check.into_iter().next().unwrap().validate().unwrap();
+    match check.kind {
+      CheckKind::JustfileRecipeAbsent { recipe } => {
+        assert_eq!(recipe, "dependabot-combine");
       }
       other => panic!("wrong kind: {other:?}"),
     }

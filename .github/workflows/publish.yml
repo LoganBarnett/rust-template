@@ -3,11 +3,9 @@ name: Publish
 on:
   push:
     branches: [main]
-  # Allows the dependabot-automerge workflow to fire publish after a
-  # successful auto-merge.  `workflow_dispatch` is one of the two
-  # events exempted from the no-cascade rule that otherwise prevents
-  # `GITHUB_TOKEN`-initiated activity from triggering downstream
-  # workflows.
+  # Lets the dependency-bump workflow fire publish after it merges a bump.
+  # A `GITHUB_TOKEN` merge triggers no downstream workflow, but
+  # `workflow_dispatch` is exempt from that rule.
   workflow_dispatch:
 
 permissions:
