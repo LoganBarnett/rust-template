@@ -293,13 +293,14 @@
 
             echo ""
             echo "Elm frontend (frontend/):"
-            echo "  Build:   cd frontend && elm make src/Main.elm --output public/elm.js"
+            echo "  Build:   pushd frontend && { elm make src/Main.elm --output public/elm.js; popd; }"
             echo "  Format:  treefmt"
             echo "  After changing elm.json dependency versions, regenerate Nix files:"
-            echo "    cd frontend"
-            echo "    elm2nix convert 2>/dev/null > elm-srcs.nix"
+            echo "    pushd frontend"
+            echo "    elm2nix convert > elm-srcs.nix"
             echo "    elm2nix snapshot"
-            echo "    git add elm-srcs.nix registry.dat && git commit"
+            echo "    git add elm-srcs.nix registry.dat"
+            echo "    popd"
           '';
           # A runtime marker identifying this as rust-template's default dev
           # shell.  A compliance check reads it back with `nix eval` to
