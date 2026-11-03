@@ -18,10 +18,11 @@
 # and hermetic.
 #
 # When elm.json dependency versions change, regenerate both files:
-#   cd frontend
-#   nix run 'github:NixOS/nixpkgs/25.11#elm2nix' -- convert 2>/dev/null > elm-srcs.nix
-#   nix run 'github:NixOS/nixpkgs/25.11#elm2nix' -- snapshot
-# then commit elm-srcs.nix and registry.dat.
+#   pushd frontend
+#   elm2nix convert > elm-srcs.nix
+#   elm2nix snapshot
+#   git add elm-srcs.nix registry.dat
+#   popd
 {
   craneLib,
   commonArgs,

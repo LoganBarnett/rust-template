@@ -4,6 +4,12 @@
 * Upcoming
 ** Added
 ** Fixes
+1. Fixed documentation enhancements regarding ~elm2nix~.  Copying them into a
+   spawn is optional.
+   1. Documentation for using ~elm2nix~ now properly uses the Nix develop shell
+      instead of reaching into an arbitrary ~nixpkgs~ tag.
+   2. ~elm2nix~ invocations no longer swallow ~stderr~.
+   3. Use ~pushd~ and ~popd~ to keep the invocations idempotent.
 ** Breaking
 ** Maintenance
 ** Security
