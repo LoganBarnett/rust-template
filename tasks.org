@@ -77,9 +77,8 @@ Same class as the clippy-lints and =.claude= gitignore gaps above: the template
 emits infrastructure with /no codified checker rule/, so an older spawn silently
 lacks it while the checker stays green.  The template ships =template/justfile=
 and puts =pkgs.just= on the emitted devShell's =PATH=, and the emitted
-=llms.org= Verification section tells the reader to run =nix develop --command
-just build= / =just test=.  Neither the justfile's presence nor =just='s
-availability is checked.
+=llms.org= Verification section tells the reader to run =just build= / =just
+test=.  Neither the justfile's presence nor =just='s availability is checked.
 
 This surfaced syncing the =loku= spawn, which predates both: it had no justfile
 and no =just= in its devShell, so the documented =just= commands were dead.  The

@@ -271,8 +271,7 @@
             # previous version on crates.io and reports breaking changes;
             # the job then gates on an Upcoming → Breaking changelog entry
             # when a break is detected.  Provided here so contributors can
-            # run `nix develop --command cargo semver-checks ...` locally
-            # before opening a PR.
+            # run `cargo semver-checks ...` locally before opening a PR.
             #
             # `doCheck = false` skips upstream's `target_feature_*`
             # snapshot tests, which assert against snapshots recorded on
