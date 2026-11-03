@@ -323,21 +323,30 @@ it should be codified here instead.
 
 ** Use the Nix development shell when available
 
-If ~nix~ is available (~which nix~ succeeds), run all commands inside the Nix
-development shell rather than using whatever toolchain is on the system PATH:
+If ~which nix~ succeeds, run every command inside the project's Nix development
+shell.  The shell pins the toolchain.  Never use the one on the system ~PATH~.
+
+When ~RUST_TEMPLATE_SHELL~ is set, the shell is active.  Run tools directly:
 
 #+begin_src sh :results none :exports code
-nix develop --command just build
+just build
+just test
+#+end_src
+
+Otherwise prefix each command with ~nix develop --command~:
+
+#+begin_src sh :results none :exports code
 nix develop --command just test
 #+end_src
 
-This ensures the correct Rust toolchain and associated tools (such as ~rustfmt~)
-are in use.  The pre-commit hook requires ~rustfmt~ in PATH, so ~git commit~
-must also go through the shell:
+Also use the prefix after changing ~flake.nix~.  An active shell does not
+reload.
 
-#+begin_src sh :results none :exports code
-nix develop --command git commit --message "your message"
-#+end_src
+Outside the directory a Claude Code session started in, use the prefix.  A ~cd~
+does not change the shell the session launched with.
+
+Run ~git commit~ inside the shell too.  Its pre-commit hook needs the shell's
+~format-staged~.
 
 ** Run all tests after changes
 
@@ -349,8 +358,7 @@ Any change that touches ~.rs~ files must pass the workspace clippy gate before
 it is presented for review:
 
 #+begin_src sh :results none :exports code
-nix develop --command cargo clippy --workspace --all-targets --all-features \
-  -- --deny warnings
+cargo clippy --workspace --all-targets --all-features -- --deny warnings
 #+end_src
 
 This applies to every contributor, human or agent.  Nothing runs it on your

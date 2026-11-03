@@ -183,9 +183,8 @@
       pkgs.prettier
       pkgs.elmPackages.elm-format
       org-fmt.packages.${system}.default
-      # Used by the reusable CI workflow's `changelog` job; pulled in here
-      # so `nix develop --command changelog-roller ...` works when the
-      # workflow runs against this repository as well as spawned projects.
+      # Used by the reusable CI workflow's `changelog` job.  Pulled in here
+      # so the job's `changelog-roller ...` invocation also runs locally.
       changelog-roller.packages.${system}.default
       # ABI baseline check used by the reusable CI workflow's `abi` job.
       # Compares the workspace's current public API against the previous

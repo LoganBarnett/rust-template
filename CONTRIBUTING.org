@@ -60,7 +60,7 @@ Add the comment as you introduce the dependency, not as a later cleanup pass.
 Run the full test suite after every change:
 
 #+begin_src sh :results none :exports code
-nix develop --command cargo test --workspace
+cargo test --workspace
 #+end_src
 
 Tests must exit with a proper error code.
