@@ -309,6 +309,20 @@ kind = "section-exists"
 target = "llms.org"
 section = ["Persistent memory"]
 
+[[check]]
+id = "llms-working-with-worktrees-section"
+description = "llms.org carries the \"Working with worktrees\" section."
+kind = "section-exists"
+target = "llms.org"
+section = ["Working with worktrees"]
+
+[[check]]
+id = "llms-working-with-worktrees-paragraphs"
+description = "The Working with worktrees section carries the template's paragraphs, including the one that names the .worktrees sibling directory."
+kind = "template-paragraphs-in-order"
+target = "llms.org"
+section = ["Working with worktrees"]
+
 # The "Imports" heading is a dedicated container for the Claude Code @path
 # import lines, which is what makes the list assertable against a named scope
 # rather than a position in the file.  No rule about where the section sits is
@@ -662,6 +676,75 @@ id = "dependency-bump-justfile-recipe"
 description = "The spawn's justfile must expose the bump tool as the dependency-bump recipe."
 kind = "justfile-recipe"
 recipe = "dependency-bump"
+
+# ---------------------------------------------------------------------------
+# Merge when green, in .github/workflows/merge-when-green.yml.  Always emitted.
+#
+# Only the wrapper and its @main delegation are checked.  The gate lives in
+# rust-template.  test-merge-when-green.sh covers it there.
+# ---------------------------------------------------------------------------
+
+[[check]]
+id = "merge-when-green-workflow-present"
+description = "The merge-when-green workflow file must exist."
+kind = "file-present"
+path = ".github/workflows/merge-when-green.yml"
+
+[[check]]
+id = "merge-when-green-uses-reusable"
+description = "The merge job must delegate to the rust-template reusable-merge-when-green workflow."
+kind = "yaml-path-contains"
+target = ".github/workflows/merge-when-green.yml"
+pointer = "jobs.merge.uses"
+contains = "rust-template/.github/workflows/reusable-merge-when-green.yml@main"
+
+[[check]]
+id = "merge-when-green-workflow-run-ci"
+description = "Merge when green must listen for completion of the CI workflow, which lands a pull request approved mid-build."
+kind = "yaml-seq-contains"
+target = ".github/workflows/merge-when-green.yml"
+pointer = "on.workflow_run.workflows"
+value = "CI"
+
+[[check]]
+id = "merge-when-green-workflow-run-completed"
+description = "Merge when green must fire on the completed type of the workflow_run event."
+kind = "yaml-seq-contains"
+target = ".github/workflows/merge-when-green.yml"
+pointer = "on.workflow_run.types"
+value = "completed"
+
+[[check]]
+id = "merge-when-green-issue-comment-created"
+description = "Merge when green must fire on new comments, which lands a pull request whose build is already green."
+kind = "yaml-seq-contains"
+target = ".github/workflows/merge-when-green.yml"
+pointer = "on.issue_comment.types"
+value = "created"
+
+[[check]]
+id = "merge-when-green-contents-write"
+description = "Merge when green must grant contents: write to perform the merge."
+kind = "yaml-path-equals"
+target = ".github/workflows/merge-when-green.yml"
+pointer = "permissions.contents"
+value = "write"
+
+[[check]]
+id = "merge-when-green-pull-requests-write"
+description = "Merge when green must grant pull-requests: write to read the approval comments and answer on the pull request."
+kind = "yaml-path-equals"
+target = ".github/workflows/merge-when-green.yml"
+pointer = "permissions.pull-requests"
+value = "write"
+
+[[check]]
+id = "merge-when-green-actions-write"
+description = "Merge when green must grant actions: write to read the CI runs and dispatch the publish workflow."
+kind = "yaml-path-equals"
+target = ".github/workflows/merge-when-green.yml"
+pointer = "permissions.actions"
+value = "write"
 
 # ---------------------------------------------------------------------------
 # On-demand code review — `just review` judges the current change set against
@@ -1498,6 +1581,20 @@ kind = "mention-present"
 target = "CONTRIBUTING.org"
 section = ["Code review"]
 contains = "just review --diff branch"
+
+[[check]]
+id = "contributing-merging-section"
+description = "CONTRIBUTING.org documents how a maintainer lands a pull request."
+kind = "section-exists"
+target = "CONTRIBUTING.org"
+section = ["Merging a pull request"]
+
+[[check]]
+id = "contributing-merging-paragraphs"
+description = "CONTRIBUTING.org's merging section carries the template's paragraphs on landing a pull request with a /merge comment."
+kind = "template-paragraphs-in-order"
+target = "CONTRIBUTING.org"
+section = ["Merging a pull request"]
 
 # ── Pre-seeded CHANGELOG.org Upcoming scaffold ───────────────────────
 # A fresh emission seeds the Upcoming section with the documented

@@ -49,6 +49,7 @@ jobs:
           - test-formatters.sh
           - ci-test.sh
           - test-runner-labels.sh
+          - test-merge-when-green.sh
     steps:
       - uses: actions/checkout@v7
 
