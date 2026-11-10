@@ -390,8 +390,8 @@ that map by directory name.
 ** Build and verify
 
 #+begin_src sh :exports code
-nix develop --command cargo build --workspace
-nix develop --command cargo test --workspace
+cargo build --workspace
+cargo test --workspace
 #+end_src
 
 Both must succeed before the project is ready.

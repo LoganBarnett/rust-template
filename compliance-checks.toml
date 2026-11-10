@@ -1283,6 +1283,13 @@ kind = "section-exists"
 target = "llms.org"
 section = ["Verification"]
 
+[[check]]
+id = "llms-verification-dev-shell-paragraphs"
+description = "The dev shell section carries the template's paragraphs, including the one that says tools run directly when RUST_TEMPLATE_SHELL is set."
+kind = "template-paragraphs-in-order"
+target = "llms.org"
+section = ["Verification", "Use the Nix development shell when available"]
+
 # The prose rules a spawn's comments and documents are judged against.
 [[check]]
 id = "llms-prose-rules-section"
