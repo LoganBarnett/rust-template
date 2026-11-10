@@ -3,14 +3,17 @@
 
 * Upcoming
 ** Added
+** Fixes
+** Breaking
+** Maintenance
+** Security
+* v0.147.0
+** Added
 1. =llms.org= tells agents to skip =nix develop --command= when the dev shell is
    already active.  Spawns should sync compliance.
 ** Fixes
 1. =llms.org= now says the pre-commit hook needs =format-staged= instead of
    =rustfmt=.  Spawns should sync compliance.
-** Breaking
-** Maintenance
-** Security
 * v0.146.0
 ** Fixes
 1. Fixed documentation enhancements regarding ~elm2nix~.  Copying them into a
