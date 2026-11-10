@@ -1,0 +1,74 @@
+name: Merge-when-green verdict
+description: >-
+  Reports whether the merge-when-green flow should merge one pull request.
+  The rule lives in `verdict.jq`.  `test-merge-when-green.sh` covers it.
+
+inputs:
+  repo:
+    description: The owner/name repository holding the pull request.
+    required: true
+  pr-number:
+    description: >-
+      The pull request to judge.  Empty when a finished CI run triggered the
+      flow.  `head-owner` and `head-branch` locate the pull request then.
+    required: false
+    default: ""
+  head-owner:
+    description: The login that owns the finished CI run's head branch.
+    required: false
+    default: ""
+  head-branch:
+    description: The finished CI run's head branch.
+    required: false
+    default: ""
+  comment-id:
+    description: The id of the comment that triggered the flow, if one did.
+    required: false
+    default: ""
+  marker:
+    description: The comment line a maintainer writes to approve the merge.
+    required: true
+  ci-workflow:
+    description: File name of the CI workflow whose runs gate the merge.
+    required: true
+  github-token:
+    description: >-
+      A token that can read the pull request, its comments, and the CI runs.
+    required: true
+
+outputs:
+  verdict:
+    description: What to do.  Only `merge` lands the pull request.
+    value: ${{ steps.judge.outputs.verdict }}
+  notify:
+    description: '"true" if `message` should be posted on the pull request.'
+    value: ${{ steps.judge.outputs.notify }}
+  message:
+    description: One line saying why the pull request did not merge.
+    value: ${{ steps.judge.outputs.message }}
+  pr-number:
+    description: The number of the pull request that was judged.
+    value: ${{ steps.judge.outputs.pr_number }}
+  head-sha:
+    description: The head commit the verdict was reached for.
+    value: ${{ steps.judge.outputs.head_sha }}
+  base-ref:
+    description: The branch the pull request targets.
+    value: ${{ steps.judge.outputs.base_ref }}
+
+runs:
+  using: composite
+  steps:
+    - name: Gather the facts and judge them
+      id: judge
+      shell: bash
+      run: '"$GITHUB_ACTION_PATH/judge.sh"'
+      env:
+        REPO: ${{ inputs.repo }}
+        PR_NUMBER: ${{ inputs.pr-number }}
+        HEAD_OWNER: ${{ inputs.head-owner }}
+        HEAD_BRANCH: ${{ inputs.head-branch }}
+        COMMENT_ID: ${{ inputs.comment-id }}
+        MARKER: ${{ inputs.marker }}
+        CI_WORKFLOW: ${{ inputs.ci-workflow }}
+        GH_TOKEN: ${{ inputs.github-token }}

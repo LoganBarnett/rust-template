@@ -319,6 +319,18 @@ A project convention or decision belongs in the repository, in ~llms.org~,
 can be reviewed.  Reaching for memory to record a convention is the signal that
 it should be codified here instead.
 
+* Working with worktrees
+
+A git worktree goes in ~../<repo>.worktrees/<branch>~.  It never goes inside the
+clone.
+
+#+begin_src sh :results none :exports code
+git worktree add -b <branch> ../rust-template.worktrees/<branch> main
+#+end_src
+
+~-b~ creates the branch and has no long form.  Run ~git worktree add~ directly.
+A runner's built-in worktree command picks its own location.
+
 * Verification
 
 ** Use the Nix development shell when available

@@ -513,3 +513,15 @@ judges only the files that changed since; pass =--priors clear= to judge the
 recorded files afresh.  =--help= covers the rest.
 
 Nothing in CI runs the review on your behalf.
+
+* Merging a pull request
+
+Comment =/merge= on a line of its own to land a pull request.  CI may still be
+running.  The =merge-when-green= workflow squash-merges the pull request once CI
+passes on the approved commit.
+
+Comment =/merge= again after any push.  An approval covers only the commit it
+was written for.  A branch behind its base is not merged.  Update it, then
+comment again.
+
+Only a comment from someone with write access counts.

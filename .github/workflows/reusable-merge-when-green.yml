@@ -1,0 +1,121 @@
+name: Merge when green (reusable)
+
+# Squash-merges a pull request once CI passes on the commit a marker comment
+# approved.  It needs only GITHUB_TOKEN.  The approval rule lives in the
+# merge-when-green composite action.
+
+on:
+  workflow_call:
+    inputs:
+      marker:
+        description: >-
+          The comment line a maintainer writes to approve the merge.
+        type: string
+        default: "/merge"
+      ci-workflow:
+        description: >-
+          File name of the CI workflow whose pull_request runs gate the merge.
+        type: string
+        default: "ci.yml"
+      publish-workflow:
+        description: >-
+          File name of the publish workflow to dispatch after the merge.  Set
+          to an empty string to skip the dispatch.
+        type: string
+        default: "publish.yml"
+
+jobs:
+  merge:
+    name: Merge when green
+    # Gating here keeps a spawn's wrapper a static pass-through.
+    #
+    # There is no concurrency group.  A group would cancel waiting runs and
+    # drop an approved pull request.
+    if: >
+      (github.event.workflow_run.event == 'pull_request' &&
+       github.event.workflow_run.conclusion == 'success') ||
+      (github.event.issue.pull_request &&
+       contains(github.event.comment.body, inputs.marker))
+    runs-on: ubuntu-24.04
+    permissions:
+      # Perform the merge.
+      contents: write
+      # Read the approval comments and answer on the pull request.
+      pull-requests: write
+      # Read the CI runs and dispatch the publish workflow.
+      actions: write
+    steps:
+      - name: Judge the pull request
+        id: gate
+        uses: LoganBarnett/rust-template/.github/actions/merge-when-green@main
+        with:
+          repo: ${{ github.repository }}
+          pr-number: ${{ github.event.issue.number }}
+          head-owner: ${{ github.event.workflow_run.head_repository.owner.login }}
+          head-branch: ${{ github.event.workflow_run.head_branch }}
+          comment-id: ${{ github.event.comment.id }}
+          marker: ${{ inputs.marker }}
+          ci-workflow: ${{ inputs.ci-workflow }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Answer on the PR
+        if: steps.gate.outputs.notify == 'true'
+        run: gh pr comment "$PR_NUMBER" --repo "$REPO" --body "$MESSAGE"
+        env:
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.gate.outputs.pr-number }}
+          MESSAGE: ${{ steps.gate.outputs.message }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Squash-merge the PR
+        id: merge
+        if: steps.gate.outputs.verdict == 'merge'
+        run: |
+          merged=false
+          state=OPEN
+          # Retry a rejection.  GitHub is usually still computing mergeability.
+          for _ in $(seq 1 5); do
+            # `sha` pins the merge to the judged commit.  Without required
+            # checks, GitHub merges whatever it is asked to.
+            #
+            # Only the run that performs the merge sees success.  Racing runs
+            # cannot both dispatch publish.
+            if gh api --method PUT "repos/$REPO/pulls/$PR_NUMBER/merge" \
+                --raw-field merge_method=squash \
+                --raw-field sha="$HEAD_SHA"; then
+              merged=true
+              break
+            fi
+            state=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
+              --json state --jq '.state')
+            [ "$state" = "OPEN" ] || break
+            sleep 15
+          done
+          if [ "$merged" != "true" ] && [ "$state" = "OPEN" ]; then
+            gh pr comment "$PR_NUMBER" --repo "$REPO" --body \
+              "CI passed on \`${HEAD_SHA:0:7}\`, but the merge was rejected.  See $RUN_URL for the reason."
+          fi
+          echo "merged=$merged" >> "$GITHUB_OUTPUT"
+        env:
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.gate.outputs.pr-number }}
+          HEAD_SHA: ${{ steps.gate.outputs.head-sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Dispatch publish
+        # This stands in for the `push` run a GITHUB_TOKEN merge never fires.
+        # Publish only listens to the default branch.
+        if: >
+          steps.merge.outputs.merged == 'true' &&
+          inputs.publish-workflow != '' &&
+          steps.gate.outputs.base-ref == github.event.repository.default_branch
+        run: |
+          # A failed dispatch must not fail a landed merge.
+          gh workflow run "$WORKFLOW" --repo "$REPO" --ref "$BASE_REF" ||
+            echo "::warning::could not dispatch $WORKFLOW.  Run it manually."
+        env:
+          REPO: ${{ github.repository }}
+          WORKFLOW: ${{ inputs.publish-workflow }}
+          BASE_REF: ${{ steps.gate.outputs.base-ref }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -26,9 +26,9 @@ The short version, in page order; each has its own section below.
 - Types as validation
 - Selective crate generation
 - *GitHub Actions*: tests and formatting on every push, declarative branch
-  protection, scheduled dependency bumps, changelog enforcement, automatic
-  version cutting and publishing, automatic cross-platform binary publishing,
-  build provenance attestation
+  protection, scheduled dependency bumps, merge when green, changelog
+  enforcement, automatic version cutting and publishing, automatic
+  cross-platform binary publishing, build provenance attestation
 - Structured logging
 - Staged configuration
 - Semantic error types
@@ -161,6 +161,12 @@ in the working tree for review.
 The same run advances the runner image the CI workflows pin, so =ubuntu-latest=
 never floats.  A newer Ubuntu image arrives as a CI-gated pull request instead
 of changing under every branch at once.
+
+*** Merge when green
+
+A maintainer comments =/merge= on a pull request and walks away.  The pull
+request squash-merges once CI passes on the approved commit.  A later push voids
+the approval.
 
 *** Changelog enforcement
 

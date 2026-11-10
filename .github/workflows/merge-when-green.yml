@@ -1,0 +1,26 @@
+name: Merge when green
+
+# Squash-merges a pull request once CI passes on the commit a `/merge` comment
+# approved.  It dogfoods the wrapper spawns receive.
+on:
+  # A finished CI run lands a pull request that was approved mid-build.
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+  # The comment itself lands a pull request whose build is already green.
+  issue_comment:
+    types: [created]
+
+permissions:
+  # Perform the merge.
+  contents: write
+  # Read the approval comments and answer on the pull request.
+  pull-requests: write
+  # Read the CI runs and dispatch publish.
+  actions: write
+
+jobs:
+  merge:
+    # This local ref selects the same copy `@main` would.  Both triggers resolve
+    # workflows against the default branch.
+    uses: ./.github/workflows/reusable-merge-when-green.yml

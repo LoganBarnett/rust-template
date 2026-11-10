@@ -5,7 +5,7 @@
 # same scripts as a matrix in .github/workflows/ci.yml rather than through
 # this recipe, so a new script must be added in both places to gate
 # everywhere — here for local runs and there for CI.
-test: test-integration test-formatters ci-test test-runner-labels
+test: test-integration test-formatters ci-test test-runner-labels test-merge-when-green
 
 # Crate-add and project-emission integration tests.
 #
@@ -42,6 +42,10 @@ ci-test:
 # branch at once.
 test-runner-labels:
   ./test-runner-labels.sh
+
+# Tests the merge-when-green verdict against crafted pull request facts.
+test-merge-when-green:
+  ./test-merge-when-green.sh
 
 # Audit every registered spawn against the compliance manifest.
 #

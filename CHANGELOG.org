@@ -3,6 +3,10 @@
 
 * Upcoming
 ** Added
+1. A maintainer's ~/merge~ comment squash-merges a pull request once CI passes.
+   Spawns should sync compliance.
+2. ~llms.org~ tells agents to keep git worktrees in a sibling directory of the
+   clone.  Spawns should sync compliance.
 ** Fixes
 ** Breaking
 ** Maintenance
