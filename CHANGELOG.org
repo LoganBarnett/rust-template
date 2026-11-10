@@ -3,6 +3,10 @@
 
 * Upcoming
 ** Added
+1. =llms.org= numbers its prose rules and adds one asking for numbered lists.
+   Spawns should sync compliance.
+2. =.gitignore= gets a shorter header that compliance now checks for.  Spawns
+   should sync compliance.
 ** Fixes
 ** Breaking
 ** Maintenance

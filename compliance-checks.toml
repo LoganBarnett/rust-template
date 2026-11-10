@@ -283,6 +283,18 @@ id = "no-stale-rust-template-literals"
 description = "No stale rust-template literals remain (foundation refs and the GitHub URL are allowed)."
 kind = "no-stale-literal"
 
+# The header wraps across lines, so one multi-line string matches it whole.
+[[check]]
+id = "gitignore-header"
+description = "The .gitignore carries the template's header on keeping personal ignores global and justifying every entry."
+kind = "file-contains"
+target = ".gitignore"
+contains = """
+# Keep editor, operating system, and personal tooling ignores in your global
+# git ignore.  Entries here are specific to this project, and each one carries
+# a comment that justifies it.
+"""
+
 # ── Documentation (llms.org) ─────────────────────────────────────────
 
 [[check]]
