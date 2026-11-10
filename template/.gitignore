@@ -1,10 +1,6 @@
-# Before adding things like .DS_Store, ignores for your editors, etc, consider
-# instead to use a global git ignore. This keeps the ignores here clean, and
-# specific to this project - not your text editor, OS, or other tooling.
-#
-# Attempts to ignore files specific to your configuration will be rejected.
-#
-# Please justify all ignore entries with comments.
+# Keep editor, operating system, and personal tooling ignores in your global
+# git ignore.  Entries here are specific to this project, and each one carries
+# a comment that justifies it.
 
 # Ignore cargo generated build artifacts.
 target/

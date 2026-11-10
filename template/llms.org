@@ -65,30 +65,31 @@ No file lists in documentation.
 ** Prose rules
 
 These apply to comments, doc comments, org documents, commit bodies, and
-replies.  The rules are stated, not argued.  The reasoning behind each one is in
-rust-template's [[https://github.com/LoganBarnett/rust-template/blob/main/docs/contribution-rationale.org][=docs/contribution-rationale.org=]].  That document is not
-imported.
+replies.  The reasoning behind each one is in rust-template's
+[[https://github.com/LoganBarnett/rust-template/blob/main/docs/contribution-rationale.org][=docs/contribution-rationale.org=]].  That document is not imported.
 
-- Sentences are short.  One idea each.  About twenty words.
-- Punctuation is ASCII.  No em dashes.  No semicolons.  No parentheses.
-- A comma sets off one leading clause or separates a list.  Anything else is two
-  sentences.
-- Comments are complete sentences wrapped at 80 columns.
-- Two spaces follow sentence-ending punctuation.  A formatter that strips them
-  wins.  Match single-spaced prose rather than reflowing it.
-- Open with the conclusion.  The mechanism comes after, or not at all.
-- A fact lives at the lowest level where it applies.  A line of code is the
-  lowest and the README is the highest.  A workaround is explained on the line
-  it guards, never above it.
-- A summary states the outcome.  It never lists the steps.
-- A comment states what the code cannot.  If the code could regenerate the
-  comment, delete the comment.
-- Do not describe code that no longer exists.  If the obvious approach fails,
-  state the fact that breaks it.
-- Comment default values that are arbitrary as being arbitrary.
-- When unsure whether to write a comment, do not.
-- Draft prose longer than a paragraph in a scratch file.  Rewrite it against
-  this list.  Only the rewrite lands.
+1. Sentences are short.  One idea each.  About twenty words.
+2. Punctuation is ASCII.  No em dashes.  No semicolons.  No parentheses.
+3. A comma sets off one leading clause or separates a list.  Anything else is
+   two sentences.
+4. Comments are complete sentences wrapped at 80 columns.
+5. Two spaces follow sentence-ending punctuation.  A formatter that strips them
+   wins.  Match single-spaced prose rather than reflowing it.
+6. Open with the conclusion.  The mechanism comes after, or not at all.
+7. A fact lives at the lowest level where it applies.  A line of code is the
+   lowest and the README is the highest.  A workaround is explained on the line
+   it guards, never above it.
+8. A summary states the outcome.  It never lists the steps.
+9. A comment states what the code cannot.  If the code could regenerate the
+   comment, delete the comment.
+10. Do not describe code that no longer exists.  If the obvious approach fails,
+    state the fact that breaks it.
+11. Comment default values that are arbitrary as being arbitrary.
+12. When unsure whether to write a comment, do not.
+13. Draft prose longer than a paragraph in a scratch file.  Rewrite it against
+    this list.  Only the rewrite lands.
+14. Lists are numbered whenever the format allows.  A number lets a reader refer
+    to an item.
 
 Bad.  The problem is a relative clause in the middle and the fix is the last
 three words.
