@@ -206,6 +206,8 @@ where
   /// Optional single-page-application fallback serving embedded frontend
   /// assets; installed via [`Server::spa`].
   spa: Option<Router>,
+  /// Set by [`Server::secure_cookies`].
+  secure_cookies: bool,
 }
 
 impl Server<BaseServerState> {
@@ -217,6 +219,7 @@ impl Server<BaseServerState> {
       router: ApiRouter::new(),
       config,
       spa: None,
+      secure_cookies: true,
     }
   }
 
@@ -246,6 +249,7 @@ impl Server<BaseServerState> {
       router: ApiRouter::new(),
       config: self.config,
       spa: self.spa,
+      secure_cookies: self.secure_cookies,
     }
   }
 }
@@ -283,11 +287,20 @@ where
     self
   }
 
+  /// Whether `listen` marks the session cookie Secure.  It does unless
+  /// told otherwise.  A browser drops a Secure cookie that arrives over
+  /// plain HTTP from any host but localhost.  An app served at an
+  /// `http://` address passes `false`.  A LAN name is the usual case.
+  pub fn secure_cookies(mut self, secure: bool) -> Self {
+    self.secure_cookies = secure;
+    self
+  }
+
   /// Start listening.  Blocks until graceful shutdown completes.
   pub async fn listen(self) -> Result<(), ServerError> {
     let listen_address = self.config.listen_address.clone();
     let listen_address_display = listen_address.to_string();
-    let app = self.build_router(true);
+    let app = self.build_router();
 
     let listener = tokio_listener::Listener::bind(
       &listen_address,
@@ -340,12 +353,12 @@ where
   /// `tower::ServiceExt::oneshot`.  Uses `secure_cookies=false` so
   /// plain HTTP works in tests.
   pub fn into_test_router(self) -> Router {
-    self.build_router(false)
+    self.secure_cookies(false).build_router()
   }
 
   /// Internal assembly — mirrors what was previously `create_app` +
   /// `base_router` in spawned projects.
-  fn build_router(self, secure_cookies: bool) -> Router {
+  fn build_router(self) -> Router {
     aide::generate::extract_schemas(true);
     let app_name = self.config.app_name.clone();
     let state = self.state;
@@ -397,7 +410,7 @@ where
     // Session layer.
     let session_store = MemoryStore::default();
     let session_layer = SessionManagerLayer::new(session_store)
-      .with_secure(secure_cookies)
+      .with_secure(self.secure_cookies)
       .with_same_site(SameSite::Lax);
 
     full

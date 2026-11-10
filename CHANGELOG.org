@@ -3,6 +3,8 @@
 
 * Upcoming
 ** Added
+1. =Server::secure_cookies(false)= keeps a server's session cookie working over
+   plain HTTP at a non-localhost address.  No action needed.
 ** Fixes
 ** Breaking
 ** Maintenance
