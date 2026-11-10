@@ -3,14 +3,16 @@
 
 * Upcoming
 ** Added
-1. A maintainer's ~/merge~ comment squash-merges a pull request once CI passes.
-   Spawns should sync compliance.
-2. ~llms.org~ tells agents to keep git worktrees in a sibling directory of the
-   clone.  Spawns should sync compliance.
 ** Fixes
 ** Breaking
 ** Maintenance
 ** Security
+* v0.148.0
+** Added
+1. A maintainer's ~/merge~ comment squash-merges a pull request once CI passes.
+   Spawns should sync compliance.
+2. ~llms.org~ tells agents to keep git worktrees in a sibling directory of the
+   clone.  Spawns should sync compliance.
 * v0.147.0
 ** Added
 1. =llms.org= tells agents to skip =nix develop --command= when the dev shell is
