@@ -70,6 +70,21 @@
     '';
   };
 
+  configFile = lib.mkOption {
+    type = lib.types.nullOr lib.types.path;
+    default = null;
+    example = lib.literalExpression ''
+      (pkgs.formats.toml {}).generate "config.toml" {greeting = "hello";}
+    '';
+    description = ''
+      TOML configuration file the service loads.  The module hands the path
+      to the binary through its `<app>_config` environment variable.  That is
+      the environment form of its `--config` flag.  Null leaves the binary on
+      its XDG lookup.  A setting with a flag of its own belongs in the service
+      environment, so reach for this when the configuration is nested.
+    '';
+  };
+
   baseUrl = lib.mkOption {
     type = lib.types.nullOr lib.types.str;
     default = null;

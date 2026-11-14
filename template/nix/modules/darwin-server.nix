@@ -27,6 +27,19 @@
 #     port   = 8080;
 #   };
 #
+# To hand the service a config file rendered by Nix:
+#
+#   services.rust-template-server = {
+#     enable = true;
+#     configFile = (pkgs.formats.toml {}).generate "config.toml" {
+#       greeting = "hello";
+#     };
+#   };
+#
+# The module passes the path through the binary's `<app>_config`
+# environment variable.  A setting with a flag of its own goes in the
+# service environment instead, so configFile is for nested configuration.
+#
 # The health check is on by default and probes /healthz over the service's
 # listener.  To point it elsewhere:
 #

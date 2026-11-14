@@ -1793,6 +1793,24 @@ module = "darwinModules.server"
 option = "healthCheck.logPathStderr"
 value = "/var/log/@service@-healthcheck-stderr.log"
 
+[[check]]
+id = "darwin-service-config-file-option"
+description = "The darwin service module declares a configFile option defaulting to null, so a Nix-rendered config reaches the binary through its <app>_config environment variable rather than a replaced launch script."
+kind = "nix-module-option-default"
+when_role = "server"
+module = "darwinModules.server"
+option = "configFile"
+value = "null"
+
+[[check]]
+id = "nixos-service-config-file-option"
+description = "The NixOS service module declares a configFile option defaulting to null, so a Nix-rendered config reaches the binary through its <app>_config environment variable rather than a replaced ExecStart."
+kind = "nix-module-option-default"
+when_role = "server"
+module = "nixosModules.server"
+option = "configFile"
+value = "null"
+
 # ---------------------------------------------------------------------------
 # Service modules: the foundation helper is called, and the module evaluates
 # inside a full configuration.

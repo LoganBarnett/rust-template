@@ -262,33 +262,36 @@ in {
       )
       + "\n";
 
-    # Every scalar serviceConfig value is wrapped in lib.mkDefault so
-    # downstream modules can override individual fields with plain
-    # assignment.  ProgramArguments and KeepAlive are also wrapped:
-    # they semantically represent "the launch command" and "the restart
-    # policy" — one value each, not lists of contributions — so a
-    # downstream replacement is the natural override shape.
-    # EnvironmentVariables is per-key mkDefault'd via mapAttrs so the
-    # attrset itself can still accept additive contributions.
+    # Every scalar serviceConfig value is wrapped in lib.mkDefault so a
+    # downstream module can override one field with plain assignment
+    # instead of mkForce.  KeepAlive is wrapped too.  It is one restart
+    # policy rather than a list of contributions, so a replacement is the
+    # natural override.  EnvironmentVariables is per-key mkDefault'd via
+    # mapAttrs so the attrset itself still accepts additive contributions.
+    #
+    # Configuration does not go through the launch script.  A setting has
+    # its <app>_<flag> environment variable.  A rendered config file goes
+    # through the configFile option.  Replace `script` only to change how
+    # the process is launched.
     launchd.daemons.${name} = {
+      # A missing package fails at exec and lands in the stderr log.
+      # nix-darwin turns `script` into ProgramArguments that wait for the
+      # Nix store to mount and then exec the script.  Waiting on the
+      # package path instead would block in wait4path with nothing logged.
+      script = lib.mkDefault ''
+        set -euo pipefail
+        ${lib.optionalString (cfg.socket != null) ''
+          # BSD mkdir has no long form of -p.
+          /bin/mkdir -p ${dirOf cfg.socket}
+          /usr/sbin/chown ${cfg.user}:${cfg.group} ${dirOf cfg.socket}
+          /bin/chmod 0750 ${dirOf cfg.socket}
+        ''}
+        # The daemon has no UserName or GroupName, so launchd starts it as
+        # root.  Root can set up a socket directory first.  The service runs
+        # as its own user.
+        exec /usr/bin/sudo --preserve-env --user ${cfg.user} ${execLine}
+      '';
       serviceConfig = {
-        ProgramArguments = lib.mkDefault (let
-          sockSetup =
-            lib.optionalString (cfg.socket != null)
-            ("/bin/mkdir -p ${dirOf cfg.socket}"
-              + " && /usr/sbin/chown ${cfg.user}:${cfg.group} ${dirOf cfg.socket}"
-              + " && /bin/chmod 0750 ${dirOf cfg.socket}"
-              + " && ");
-        in [
-          "/bin/sh"
-          "-c"
-          # Runs as root (no UserName/GroupName) so it can create the
-          # socket directory, then drops to the service user via
-          # sudo(8).
-          (sockSetup
-            + "/bin/wait4path ${cfg.package}"
-            + " && exec /usr/bin/sudo -E -u ${cfg.user} ${execLine}")
-        ]);
         RunAtLoad = lib.mkDefault true;
         KeepAlive = lib.mkDefault {
           Crashed = true;
@@ -308,6 +311,9 @@ in {
             "${envPrefix}_oidc_issuer" = cfg.oidcIssuer;
             "${envPrefix}_oidc_client_id" = cfg.oidcClientId;
             "${envPrefix}_oidc_client_secret_file" = cfg.oidcClientSecretFile;
+          }
+          // lib.optionalAttrs (cfg.configFile != null) {
+            "${envPrefix}_config" = toString cfg.configFile;
           }
         );
         StandardOutPath = lib.mkDefault cfg.logPathStdout;

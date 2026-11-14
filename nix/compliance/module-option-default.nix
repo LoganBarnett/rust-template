@@ -31,6 +31,9 @@
 # the module.  The name varies per spawn (it is `<project>-server`), and the
 # checker has no way to learn it — SpawnContext carries the spawn's directory,
 # not its project name — so the module is asked rather than told.
+#
+# `null` as `expected` matches an option whose default is Nix null.  Null has
+# no string form an --argstr could carry, so the word stands for it.
 {
   spawn,
   module,
@@ -69,12 +72,16 @@ in
       service = builtins.head names;
       declared = lib.attrByPath ([service] ++ optionPath) null services;
       want = builtins.replaceStrings ["@service@"] [service] expected;
+      holds =
+        if want == "null"
+        then declared.default == null
+        else declared.default == want;
     in
       if declared == null
       then "fail: services.${service} declares no option ${option}"
       else if !(declared ? default)
       then "fail: services.${service}.${option} declares no default"
-      else if declared.default == want
+      else if holds
       then "ok"
       else
         "fail: services.${service}.${option} defaults to "

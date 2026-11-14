@@ -3,8 +3,19 @@
 
 * Upcoming
 ** Added
+1. ~mkNixosService~ and ~mkDarwinService~ take a ~configFile~ option that sets
+   the binary's ~<app>_config~ environment variable.  A module that set that
+   variable by hand can set the option instead.  Spawns should sync compliance.
 ** Fixes
+1. A darwin service whose package is missing from the Nix store now fails and
+   logs instead of hanging in ~wait4path~.  No action needed.
 ** Breaking
+1. The darwin service's launch command is nix-darwin's ~script~ option rather
+   than a hand-built ~ProgramArguments~.  A module that replaced
+   ~ProgramArguments~ to pass settings should set the service environment or
+   the ~configFile~ option.  Replace ~script~ only to change how the process
+   is launched.  Use environment variables or ~configFile~ to pass variables to
+   the process when wiring in bespoke options.
 ** Maintenance
 ** Security
 * v0.149.0

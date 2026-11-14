@@ -1507,7 +1507,12 @@ In ~crates/foundation/tests/server_integration.rs~, add a test that issues
 requests to ~/healthz~ and ~/metrics~, then verifies the ~/metrics~ response
 contains incremented ~http_requests_total~ counters with correct labels.
 
-* TODO Add ~configFile~ option to ~mkNixosService~ and ~mkDarwinService~
+* DONE Add ~configFile~ option to ~mkNixosService~ and ~mkDarwinService~
+
+Resolved by adding ~configFile~ to ~service-options.nix~ in the proposed shape.
+Both helpers set ~<app>_config~ from it.  Two ~nix-module-option-default~ checks
+assert the option on spawn modules.  The ~USAGE.org~ config file example sets
+the option in place of the ~ExecStart~ override it used to show.
 
 Spawned projects whose Nix module renders a ~config.toml= into the Nix store
 have no template-aligned way to tell the server where to find it.  The natural
