@@ -162,12 +162,16 @@ in {
           "${envPrefix}_oidc_issuer" = cfg.oidcIssuer;
           "${envPrefix}_oidc_client_id" = cfg.oidcClientId;
         }
+        // lib.optionalAttrs (cfg.configFile != null) {
+          "${envPrefix}_config" = toString cfg.configFile;
+        }
       );
 
-      # Every scalar serviceConfig value is wrapped in lib.mkDefault so
-      # downstream modules — for example, ones that need to inject a
-      # --config flag into ExecStart or pin a different User — can
-      # override with plain assignment instead of reaching for mkForce.
+      # Every scalar serviceConfig value is wrapped in lib.mkDefault so a
+      # downstream module can override one field with plain assignment
+      # instead of mkForce.  Configuration does not go through ExecStart.
+      # A setting has its <app>_<flag> environment variable.  A rendered
+      # config file goes through the configFile option.
       serviceConfig = {
         # Type = notify causes systemd to wait for the binary to call
         # sd_notify(READY=1) before marking the unit active.  The

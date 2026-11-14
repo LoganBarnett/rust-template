@@ -728,15 +728,42 @@ plumbing.
 Every value the helpers set on ~serviceConfig~ / ~socketConfig~ /
 ~launchd.daemons.<name>.serviceConfig~ is wrapped in ~lib.mkDefault~, so plain
 assignment from a downstream module overrides cleanly.  ~lib.mkForce~ is needed
-only when overriding something the helper sets without ~mkDefault~ — typically
-lists like ~wantedBy~, ~after~, and ~requires~, which the module system merges
-by concatenation anyway and so rarely benefit from a forced replacement.
+only when overriding something the helper sets without ~mkDefault~.  That is
+typically a list like ~wantedBy~, ~after~, or ~requires~.  The module system
+merges those by concatenation anyway, so a forced replacement rarely helps.
 
-** Example: inject a generated TOML config file
+The launchd launch command is the ~script~ option.  It is also under
+~mkDefault~.  nix-darwin derives ~ProgramArguments~ from it, so a module that
+must change how the process is launched replaces ~script~ rather than
+~ProgramArguments~.
 
-A common need is to render a configuration file from a Nix attribute and pass
-its path to the server via ~--config~.  After ~mkDefault~ wrapping, plain
-assignment overrides the helper's ~ExecStart~ — no ~mkForce~ required.
+Configuration never goes through ~ExecStart~ or ~script~.  The two seams are
+shown below.
+
+** Simple settings: extend the environment
+
+A flag without ~no_env~ is also an environment variable, so a setting that fits
+one value goes directly under the merged ~services.<name>~ environment.  The
+helper applies ~mkDefault~ per key, so contributing a new key is pure addition
+with no override:
+
+#+begin_src nix :results none :exports code
+config = lib.mkIf cfg.enable {
+  systemd.services.rust-template-server.environment.rust_template_server_poll_interval =
+    "30s";
+};
+#+end_src
+
+The Darwin equivalent contributes to
+~launchd.daemons.<name>.serviceConfig.EnvironmentVariables~.  The shape is the
+same.  Only the attribute path differs.
+
+** Nested settings: hand the service a generated TOML config file
+
+Render the file from a Nix attribute and set ~configFile~.  The helper passes
+the path through the binary's ~<app>_config~ environment variable.  That is the
+environment form of its ~--config~ flag.  ~configFile~ is a shared option, so a
+~common.nix~ imported by both platform modules can set it once.
 
 #+begin_src nix :results none :exports code
 {
@@ -767,32 +794,7 @@ in {
   };
 
   config = lib.mkIf cfg.enable {
-    systemd.services.rust-template-server.serviceConfig.ExecStart =
-      "${cfg.package}/bin/rust-template-server"
-      + (
-        if cfg.socket != null
-        then " --listen sd-listen"
-        else " --listen ${cfg.host}:${toString cfg.port}"
-      )
-      + " --config ${rulesFile}";
+    services.rust-template-server.configFile = rulesFile;
   };
 }
 #+end_src
-
-** Lighter alternative: extend the environment
-
-Where the binary can read configuration through an environment variable, the
-override does not need to touch ~ExecStart~ at all — set the variable directly
-under the merged ~services.<name>~ environment.  The helper applies ~mkDefault~
-per key, so contributing a new key is pure addition with no override:
-
-#+begin_src nix :results none :exports code
-config = lib.mkIf cfg.enable {
-  systemd.services.rust-template-server.environment.rust_template_server_rules_path =
-    "${rulesFile}";
-};
-#+end_src
-
-The Darwin equivalent contributes to
-~launchd.daemons.<name>.serviceConfig.EnvironmentVariables~ — same shape,
-different attribute path.
